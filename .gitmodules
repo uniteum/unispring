@@ -7,3 +7,6 @@
 [submodule "lib/iuniswap"]
 	path = lib/iuniswap
 	url = git@github.com:uniteum/iuniswap.git
+[submodule "lib/ilookup"]
+	path = lib/ilookup
+	url = git@github.com:uniteum/ilookup.git
