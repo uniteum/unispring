@@ -10,3 +10,6 @@
 [submodule "lib/ilookup"]
 	path = lib/ilookup
 	url = git@github.com:uniteum/ilookup.git
+[submodule "lib/ierc20"]
+	path = lib/ierc20
+	url = git@github.com:uniteum/ierc20.git
