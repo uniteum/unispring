@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.30;
+pragma solidity ^0.8.30;
 
 import {IAddressLookup} from "ilookup/IAddressLookup.sol";
 import {ICoinage} from "ierc20/ICoinage.sol";
