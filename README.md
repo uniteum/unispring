@@ -1,7 +1,7 @@
 # Unispring
 
 Fair-launch token factory on Uniswap V4 — permanent liquidity, built-in
-price floor, zero maker capital, auto-compounding fees.
+price floor, zero maker capital, zero fees.
 
 ## Overview
 
@@ -84,18 +84,16 @@ Selling returns tokens to the pool and lowers the price — but never
 below the floor. There is no upper bound; the position extends to
 `MAX_TICK`.
 
-### Auto-compounding fees
+### Zero fee
 
-The Unispring factory holds every position it creates and exposes a
-permissionless `compound(poolId)` function. Anyone can call it to:
+Pools are created with `fee = 0`. There is no swap fee, so there are no
+fees to compound, no caller-reward function, and no operator role of any
+kind. The factory exists only to mint, seed, and lock — once `make()`
+returns, the pool needs nothing further.
 
-1. Collect accumulated trading fees from the position
-2. Pay the caller a fixed percentage of the collected fees
-3. Add the remainder back into the same position
-
-This deepens liquidity over time — more volume means deeper liquidity
-means tighter spreads means more volume. The caller reward ensures
-compounding happens without any centralized operator.
+This is a deliberate trade-off: cheaper trading and a smaller contract
+surface, at the cost of any fee-driven liquidity deepening over time.
+The depth of the position is fixed at the supply that was minted.
 
 ### Singleton factory
 
@@ -139,22 +137,39 @@ make(name, symbol, supply, tickFloor)
   aggregator immediately
 ```
 
-### Compounding
+### Token ordering and the floor
 
-```
-compound(poolId)  ← anyone can call
-        │
-        ▼
-┌──────────────────────────────┐
-│  Collect fees from position   │
-│  Pay caller fixed reward      │
-│  Add remainder back in        │
-└──────────────────────────────┘
-        │
-        ▼
-  Liquidity deepens,
-  spreads tighten
-```
+Lepton deploys each token at a CREATE2 address derived from
+`(maker, name, symbol, supply)` — the maker cannot choose which side of
+the hub the new token's address falls on. Unispring handles both
+orderings inside `make()`:
+
+- If `newToken < hub`, the new token is `currency0`. The position is
+  `[tickFloor, MAX_TICK]` and the pool's initial tick is `tickFloor`
+  (the lower bound), so the position holds only `currency0`.
+- If `newToken > hub`, the new token is `currency1`. The position is
+  `[MIN_TICK, -tickFloor]` and the pool's initial tick is `-tickFloor`
+  (the upper bound), so the position holds only `currency1`.
+
+The maker passes `tickFloor` in **new-token-priced-in-hub** semantics —
+i.e. as if the new token were always `currency0` and the hub were
+`currency1`. The contract translates that to the pool's native tick
+orientation based on the address ordering. Both code paths produce
+identical economic floors.
+
+### Design constants
+
+| Constant       | Value | Notes |
+|:---------------|:------|:------|
+| `FEE`          | `0`   | No swap fee. |
+| `TICK_SPACING` | `1`   | Maximum granularity at the floor. |
+| `HUB`          | `0x7d5b1349157335aeEb929080A51003B529758830` | Uniteum 1, same address on every chain. |
+| `COINAGE`      | `0x14ae57AeD6AC1cd48Fa811Ed885Ab4a4c5e28C42` | Lepton, same address on every chain. |
+| `POOL_MANAGER_LOOKUP` | `0xd6185883DD1Fa3F6F4F0b646f94D1fb46d618c23` | Per-chain `IAddressLookup` resolving the V4 PoolManager. |
+
+Unispring takes no constructor arguments. The bytecode is identical on
+every chain it is deployed to, which lets it be deployed to a single
+deterministic CREATE2 address everywhere.
 
 ## Comparison
 
@@ -169,7 +184,7 @@ compound(poolId)  ← anyone can call
 | Chainlink dependency | No | Yes | No |
 | Contracts required | 1 | 4 | 1 |
 | Ongoing costs | None | Chainlink + gas | None |
-| Fee reinvestment | No | No | Auto-compound |
+| Swap fee | None | None | None |
 | Cross-token routing | N/A | Via Uniswap | Two-hop via hub |
 
 ## Build
