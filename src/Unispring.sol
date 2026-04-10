@@ -34,7 +34,7 @@ contract Unispring is IUnlockCallback {
     /**
      * @notice The hub token every Unispring pool is paired against (Uniteum 1).
      */
-    address public constant HUB = 0x7D5B1349157335aEEB929080a51003B529758830;
+    address public constant HUB = 0x9a24ceab8978DD106f5db4E443D481918876fD62;
 
     /**
      * @notice Per-chain `IAddressLookup` resolving the Uniswap V4 PoolManager.
