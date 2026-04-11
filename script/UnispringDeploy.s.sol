@@ -22,10 +22,10 @@ import {Script, console2} from "forge-std/Script.sol";
  *           HubSaltMin    — inclusive lower bound of the salt search range
  *           HubSaltMax    — exclusive upper bound of the salt search range
  *
- *         Usage: forge script script/UnispringProto.s.sol:UnispringProto -f $chain \
- *                    --private-key $tx_key --broadcast --verify --delay 10 --retries 10
+ * Usage:
+ * forge script script/UnispringDeploy.s.sol -f $chain --private-key $tx_key --broadcast --verify --delay 10 --retries 10
  */
-contract UnispringProto is Script {
+contract UnispringDeploy is Script {
     address constant NICK = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
 
     function run() external {
