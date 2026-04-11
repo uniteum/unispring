@@ -18,21 +18,21 @@ contract CheckPool is Script {
     using StateLibrary for IPoolManager;
 
     function run() external view {
-        Unispring UNISPRING = Unispring(payable(vm.envAddress("Unispring")));
+        Unispring spring = Unispring(payable(vm.envAddress("Unispring")));
         address newToken = vm.envAddress("HelloWorld");
-        address hub = UNISPRING.HUB();
+        address hub = spring.HUB();
         bool newIsCurrency0 = newToken < hub;
 
         PoolKey memory key = PoolKey({
             currency0: Currency.wrap(newIsCurrency0 ? newToken : hub),
             currency1: Currency.wrap(newIsCurrency0 ? hub : newToken),
-            fee: UNISPRING.FEE(),
-            tickSpacing: UNISPRING.TICK_SPACING(),
+            fee: spring.FEE(),
+            tickSpacing: spring.TICK_SPACING(),
             hooks: IHooks(address(0))
         });
         PoolId id = key.toId();
 
-        IPoolManager pm = UNISPRING.poolManager();
+        IPoolManager pm = spring.poolManager();
         (uint160 sqrtPriceX96, int24 tick, uint24 protocolFee, uint24 lpFee) = pm.getSlot0(id);
         uint128 liquidity = pm.getLiquidity(id);
 
