@@ -54,7 +54,7 @@ contract Unispring is IUnlockCallback {
      *      Unispring token. Identical address on every chain when the prototype
      *      is deployed via the CREATE2 factory.
      */
-    ICoinage public immutable LEPTON_PROTO;
+    ICoinage public immutable COINAGE;
 
     /**
      * @notice The hub token, minted by this factory in its constructor.
@@ -196,7 +196,7 @@ contract Unispring is IUnlockCallback {
      *         during its own construction (its runtime code isn't deployed yet),
      *         so pool seeding is deferred to {seedHub}, which must be called once
      *         by the deployer immediately after construction.
-     * @param  leptonProto   Address of the Lepton prototype used to mint tokens.
+     * @param  coinage   Address of the Lepton prototype used to mint tokens.
      * @param  hubName       Name of the hub token (forwarded to Lepton).
      * @param  hubSymbol     Symbol of the hub token (forwarded to Lepton).
      * @param  hubSupply     Fixed supply of the hub token.
@@ -208,7 +208,7 @@ contract Unispring is IUnlockCallback {
      *                       strictly inside `(MIN_TICK, MAX_TICK)`.
      */
     constructor(
-        address leptonProto,
+        address coinage,
         string memory hubName,
         string memory hubSymbol,
         uint256 hubSupply,
@@ -220,8 +220,8 @@ contract Unispring is IUnlockCallback {
             revert TickFloorOutOfRange(hubTickFloor);
         }
 
-        LEPTON_PROTO = ICoinage(leptonProto);
-        IERC20 hubToken = IERC20(address(LEPTON_PROTO.make(hubName, hubSymbol, hubSupply, hubSalt)));
+        COINAGE = ICoinage(coinage);
+        IERC20 hubToken = IERC20(address(COINAGE.make(hubName, hubSymbol, hubSupply, hubSalt)));
         HUB = address(hubToken);
         HUB_SUPPLY = hubSupply;
         HUB_TICK_FLOOR = hubTickFloor;
@@ -305,7 +305,7 @@ contract Unispring is IUnlockCallback {
         }
 
         // 1. Mint the entire fixed supply to this contract.
-        newToken = IERC20(address(LEPTON_PROTO.make(name, symbol, supply, salt)));
+        newToken = IERC20(address(COINAGE.make(name, symbol, supply, salt)));
 
         // 2. Enforce currency0 ordering: new token must sort strictly below the hub.
         if (address(newToken) >= HUB) revert NewTokenMustSortBelowHub(address(newToken));

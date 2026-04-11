@@ -236,7 +236,7 @@ contract UnispringTest is Test {
 
     function test_ConstructorMintsHubAndRegistersImmutables() public view {
         assertEq(unispring.HUB(), HUB_ADDR, "HUB immutable");
-        assertEq(address(unispring.LEPTON_PROTO()), address(coinage), "LEPTON_PROTO immutable");
+        assertEq(address(unispring.COINAGE()), address(coinage), "COINAGE immutable");
         assertEq(unispring.HUB_SUPPLY(), HUB_SUPPLY, "HUB_SUPPLY immutable");
         assertEq(unispring.HUB_TICK_FLOOR(), HUB_TICK_FLOOR, "HUB_TICK_FLOOR immutable");
     }

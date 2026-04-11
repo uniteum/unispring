@@ -12,7 +12,8 @@ import {Script, console2} from "forge-std/Script.sol";
  *         has many leading `f` bytes.
  * @dev    All configuration comes from environment variables — no in-source
  *         defaults. Required:
- *           LeptonProto   — Lepton prototype address
+ *           ICoinage      — Lepton prototype address (same value as the ICoinage
+ *                           export used by the other scripts)
  *           HubName       — hub token name
  *           HubSymbol     — hub token symbol
  *           HubSupply     — hub token supply in wei
@@ -28,7 +29,7 @@ contract UnispringProto is Script {
     address constant NICK = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
 
     function run() external {
-        address leptonProto = vm.envAddress("LeptonProto");
+        address coinageAddr = vm.envAddress("ICoinage");
         string memory hubName = vm.envString("HubName");
         string memory hubSymbol = vm.envString("HubSymbol");
         uint256 hubSupply = vm.envUint("HubSupply");
@@ -42,7 +43,7 @@ contract UnispringProto is Script {
 
         require(saltMax > saltMin, "HubSaltMax must be > HubSaltMin");
 
-        console2.log("leptonProto:", leptonProto);
+        console2.log("coinage    :", coinageAddr);
         console2.log("hubName    :", hubName);
         console2.log("hubSymbol  :", hubSymbol);
         console2.log("hubSupply  :", hubSupply);
@@ -51,7 +52,7 @@ contract UnispringProto is Script {
         console2.log("saltMin    :", saltMin);
         console2.log("saltMax    :", saltMax);
 
-        ICoinage lepton = ICoinage(leptonProto);
+        ICoinage coinage = ICoinage(coinageAddr);
 
         // 1. Mine the Lepton salt over [saltMin, saltMax). For each candidate,
         //    compute the Unispring CREATE2 address the resulting init code would
@@ -66,10 +67,10 @@ contract UnispringProto is Script {
         for (uint256 i = saltMin; i < saltMax; i++) {
             bytes32 salt = bytes32(i);
             bytes memory initCode = abi.encodePacked(
-                type(Unispring).creationCode, abi.encode(leptonProto, hubName, hubSymbol, hubSupply, salt, hubTickFloor)
+                type(Unispring).creationCode, abi.encode(coinageAddr, hubName, hubSymbol, hubSupply, salt, hubTickFloor)
             );
             address unispringAddr = vm.computeCreate2Address(bytes32(0), keccak256(initCode), NICK);
-            (, address hubAddr,) = lepton.made(unispringAddr, hubName, hubSymbol, hubSupply, salt);
+            (, address hubAddr,) = coinage.made(unispringAddr, hubName, hubSymbol, hubSupply, salt);
             if (_leadingFs(hubAddr) >= minFs) {
                 winningSalt = salt;
                 winningInitCode = initCode;
