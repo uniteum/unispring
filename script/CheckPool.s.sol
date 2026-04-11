@@ -18,7 +18,7 @@ contract CheckPool is Script {
     using StateLibrary for IPoolManager;
 
     function run() external view {
-        Unispring UNISPRING = Unispring(vm.envAddress("Unispring"));
+        Unispring UNISPRING = Unispring(payable(vm.envAddress("Unispring")));
         address newToken = vm.envAddress("HelloWorld");
         address hub = UNISPRING.HUB();
         bool newIsCurrency0 = newToken < hub;

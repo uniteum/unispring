@@ -37,7 +37,7 @@ contract QuotePool is Script {
     IV4Quoter constant QUOTER = IV4Quoter(0x61B3f2011A92d183C7dbaDBdA940a7555Ccf9227);
 
     function run() external {
-        Unispring unispring = Unispring(vm.envAddress("Unispring"));
+        Unispring unispring = Unispring(payable(vm.envAddress("Unispring")));
         address newToken = vm.envAddress("HelloWorld");
         address hub = unispring.HUB();
 
@@ -52,12 +52,8 @@ contract QuotePool is Script {
 
         // Sell HUB (currency1) to receive new token (currency0) → oneForZero.
         uint128 exactAmount = 100 ether;
-        IV4Quoter.QuoteExactSingleParams memory params = IV4Quoter.QuoteExactSingleParams({
-            poolKey: key,
-            zeroForOne: false,
-            exactAmount: exactAmount,
-            hookData: ""
-        });
+        IV4Quoter.QuoteExactSingleParams memory params =
+            IV4Quoter.QuoteExactSingleParams({poolKey: key, zeroForOne: false, exactAmount: exactAmount, hookData: ""});
 
         (uint256 amountOut, uint256 gasEstimate) = QUOTER.quoteExactInputSingle(params);
 
