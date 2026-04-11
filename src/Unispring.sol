@@ -44,12 +44,16 @@ contract Unispring is IUnlockCallback {
     IAddressLookup public constant POOL_MANAGER_LOOKUP = IAddressLookup(0xd6185883DD1Fa3F6F4F0b646f94D1fb46d618c23);
 
     /**
-     * @notice Pool fee, in hundredths of a bip. Zero — no swap fee, no compounding.
+     * @notice Pool fee, in hundredths of a bip. Uniswap's LOWEST canonical tier
+     *         (0.01%) so that `smart-order-router`'s fallback enumeration discovers
+     *         the pool. Fees accrue to the single-sided position and can be
+     *         collected or recycled into liquidity later.
      */
-    uint24 public constant FEE = 0;
+    uint24 public constant FEE = 100;
 
     /**
-     * @notice Tick spacing — minimum, for maximum granularity at the floor.
+     * @notice Tick spacing — canonical pairing for the LOWEST fee tier and
+     *         maximum granularity at the floor.
      */
     int24 public constant TICK_SPACING = 1;
 
