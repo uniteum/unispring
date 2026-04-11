@@ -120,11 +120,13 @@ through this stack inherits immutability from end to end.
 ## How it works
 
 ```
-make(name, symbol, supply, tickFloor)
+make(name, symbol, supply, tickFloor, salt)
         │
         ▼
 ┌──────────────────────────────┐
 │  Lepton mints fixed supply    │
+│  at a CREATE2 address that    │
+│  sorts strictly below the hub │
 │  Initialize V4 pool at floor  │
 │  Deposit 100% as single-sided │
 │  position [floor, MAX_TICK]   │
@@ -139,31 +141,120 @@ make(name, symbol, supply, tickFloor)
 
 ### Token ordering and the floor
 
-Lepton deploys each token at a CREATE2 address derived from
-`(maker, name, symbol, supply)` — the maker cannot choose which side of
-the hub the new token's address falls on. Unispring handles both
-orderings inside `make()`:
+Unispring seeds every pool with a single-sided position that holds
+**only the new token** and requires **zero hub capital**. That
+constraint plus Uniswap V4's tick conventions forces a rule that looks
+arbitrary at first glance but is actually load-bearing:
 
-- If `newToken < hub`, the new token is `currency0`. The position is
-  `[tickFloor, MAX_TICK]` and the pool's initial tick is `tickFloor`
-  (the lower bound), so the position holds only `currency0`.
-- If `newToken > hub`, the new token is `currency1`. The position is
-  `[MIN_TICK, -tickFloor]` and the pool's initial tick is `-tickFloor`
-  (the upper bound), so the position holds only `currency1`.
+> **The new token's address must sort strictly below the hub's address.**
 
-The maker passes `tickFloor` in **new-token-priced-in-hub** semantics —
-i.e. as if the new token were always `currency0` and the hub were
-`currency1`. The contract translates that to the pool's native tick
-orientation based on the address ordering. Both code paths produce
-identical economic floors.
+The maker guarantees this by mining a Lepton salt off-chain until the
+deterministic CREATE2 address satisfies the constraint. Unispring's
+`make()` reverts if it doesn't. The rest of this section explains why
+the rule has to exist.
+
+#### The two Uniswap conventions that collide
+
+Every Uniswap V4 position is a tick range `[tickLower, tickUpper]`.
+Two separate pieces of code inspect the current tick against that
+range, and they use **different boundary conventions**:
+
+- **Active-liquidity check** (does this position contribute depth right
+  now?) uses a half-open interval:
+  `tickLower ≤ currentTick < tickUpper`. The lower bound is
+  **inclusive**, the upper bound is **exclusive**.
+- **Token-composition check** (what does this position hold at the
+  current price?) uses a closed interval: at
+  `sqrtPriceCurrent == sqrtPriceLower` the position is 100%
+  `currency0`; at `sqrtPriceCurrent == sqrtPriceUpper` it is 100%
+  `currency1`. **Both** endpoints are inclusive.
+
+At the **lower** boundary the two conventions agree: `currentTick`
+exactly equal to `tickLower` means active *and* single-sided in
+`currency0`. At the **upper** boundary they disagree: `currentTick`
+exactly equal to `tickUpper` means single-sided in `currency1` but
+*not* active. This is the Uniswap equivalent of a fencepost error —
+the two checks count endpoints differently, and only one corner of the
+range ends up in the intersection.
+
+#### What that means for Unispring
+
+Unispring wants to deposit the entire supply of the new token into a
+position that is (a) active at spot — so quoters and aggregators can
+route through it immediately — and (b) holds only the new token — so
+the maker doesn't need to supply any hub.
+
+Those two requirements *can* both be satisfied, but only at the **lower
+boundary** of a range, where the conventions align. So the position
+must be shaped so that the new token sits on the side corresponding to
+that lower-boundary seed: the new token must be `currency0`, the range
+must be `[tickFloor, MAX_TICK]`, and the pool must be initialized at
+exactly `sqrtPrice(tickFloor)`.
+
+The mirror configuration — new token as `currency1`, seeded at the
+upper boundary of `[MIN_TICK, -tickFloor]` — looks symmetric but
+isn't. At `currentTick == tickUpper` the position is single-sided in
+`currency1` (correct) but contributes zero active liquidity (wrong).
+Swap math can eventually cross the boundary on the first trade and
+activate the position, but quoters and frontends pre-filter on
+`getLiquidity > 0` and will never simulate the crossing. The pool
+would exist on chain and be invisible to every aggregator.
+
+Nudging the initial tick one step inside the range doesn't rescue
+the mirror case: the position becomes genuinely mixed and Uniswap
+demands some `currency0` (hub) from the maker, violating the
+zero-capital invariant. The fencepost is load-bearing — there is no
+tick arithmetic trick that fixes it.
+
+The only clean resolution is to avoid the mirror case entirely by
+ensuring `newToken < hub`.
+
+#### Enforcing the ordering via salt mining
+
+Lepton accepts a caller-supplied `salt` for its CREATE2 deployment,
+and exposes a pure `made()` view so addresses can be predicted
+off-chain without spending gas. The maker runs a small loop:
+
+```
+for salt in 0, 1, 2, ...:
+    addr = lepton.made(maker, name, symbol, supply, salt).home
+    if addr < hub:
+        break
+```
+
+and then calls `unispring.make(name, symbol, supply, tickFloor, salt)`
+with the winning salt. Unispring recomputes the address via Lepton's
+deterministic deployment and reverts with
+`NewTokenMustSortBelowHub(newToken)` if the constraint isn't met.
+
+The expected number of salts to try is
+`addressSpace / (addressSpace - hubValue)` — i.e. the smaller the hub
+address, the more tries. This is why the canonical hub is deployed at
+an address with several leading `f` bytes: it makes the search
+succeed on the first try for almost every `(name, symbol, supply)`
+combination, so in practice callers submit `salt = 0` and never think
+about it. The cost of mining a "big" hub address is paid **once**,
+at hub deployment, and amortized across every Unispring token that
+will ever be created.
+
+#### Summary
+
+The position is `[tickFloor, MAX_TICK]`. The pool's initial tick is
+exactly `tickFloor`. The new token is `currency0`, the hub is
+`currency1`. This is the only configuration that is simultaneously
+single-sided in the new token, active at spot, and free for the maker.
+The floor is enforced by the **absence** of liquidity below
+`tickFloor`: sells cannot push price past it because there is nothing
+on the other side to fill against. No hook, no custom curve, no
+operator — just a position whose lower boundary is a wall.
 
 ### Design constants
 
 | Constant       | Value | Notes |
 |:---------------|:------|:------|
-| `FEE`          | `0`   | No swap fee. |
-| `TICK_SPACING` | `1`   | Maximum granularity at the floor. |
-| `HUB`          | `0x7d5b1349157335aeEb929080A51003B529758830` | Uniteum 1, same address on every chain. |
+| `FEE`          | `100` | Uniswap's LOWEST canonical tier (0.01%); required for discovery by `smart-order-router`'s fallback enumeration. |
+| `TICK_SPACING` | `1`   | Canonical pairing for the LOWEST tier; maximum granularity at the floor. |
+| `HUB`          | `0xfFFFfF29e3C82351E7AaBE4C221dEfed6a803D5D` | Uniteum 1, same address on every chain. Mined with a high-`f` prefix so Lepton salt search almost always terminates at `salt = 0`. |
 | `COINAGE`      | `0x14ae57AeD6AC1cd48Fa811Ed885Ab4a4c5e28C42` | Lepton, same address on every chain. |
 | `POOL_MANAGER_LOOKUP` | `0xd6185883DD1Fa3F6F4F0b646f94D1fb46d618c23` | Per-chain `IAddressLookup` resolving the V4 PoolManager. |
 
