@@ -2,7 +2,6 @@
 pragma solidity ^0.8.30;
 
 import {Unispring} from "../src/Unispring.sol";
-import {ICoinage} from "ierc20/ICoinage.sol";
 import {PoolId} from "v4-core/types/PoolId.sol";
 import {Script, console2} from "forge-std/Script.sol";
 
@@ -52,17 +51,34 @@ contract UnispringDeploy is Script {
         console2.log("saltMin    :", saltMin);
         console2.log("saltMax    :", saltMax);
 
-        ICoinage coinage = ICoinage(coinageAddr);
+        // EIP-1167 minimal proxy init code hash for a clone whose implementation
+        // is the Lepton prototype at `coinageAddr`. Matches OpenZeppelin Clones.
+        bytes32 cloneInitCodeHash = keccak256(
+            abi.encodePacked(
+                hex"3d602d80600a3d3981f3363d3d373d3d3d363d73", coinageAddr, hex"5af43d82803e903d91602b57fd5bf3"
+            )
+        );
 
         // 1. Mine the Lepton salt over [saltMin, saltMax). For each candidate,
         //    compute the Unispring CREATE2 address the resulting init code would
-        //    produce, ask Lepton what hub address that Unispring would mint, and
-        //    check the prefix.
+        //    produce, replicate Lepton's clone-address math off-chain (so the
+        //    loop makes no RPC calls), and check the prefix.
+        //
+        //    Solidity never frees memory within a call, so every iteration's
+        //    fresh `initCode` buffer would OOM a long search. We snapshot the
+        //    free-memory pointer and reset it each iteration — the per-iteration
+        //    allocations are strictly scoped, so this is safe.
         bytes32 winningSalt;
         bytes memory winningInitCode;
         address predictedUnispring;
         address predictedHub;
         bool found;
+
+        uint256 memSnapshot;
+        // forge-lint: disable-next-line(asm-keccak256)
+        assembly {
+            memSnapshot := mload(0x40)
+        }
 
         for (uint256 i = saltMin; i < saltMax; i++) {
             bytes32 salt = bytes32(i);
@@ -70,15 +86,27 @@ contract UnispringDeploy is Script {
                 type(Unispring).creationCode, abi.encode(coinageAddr, hubName, hubSymbol, hubSupply, salt, hubTickFloor)
             );
             address unispringAddr = vm.computeCreate2Address(bytes32(0), keccak256(initCode), NICK);
-            (, address hubAddr,) = coinage.made(unispringAddr, hubName, hubSymbol, hubSupply, salt);
+            bytes32 create2Salt = keccak256(abi.encode(unispringAddr, hubName, hubSymbol, hubSupply, salt));
+            address hubAddr = vm.computeCreate2Address(create2Salt, cloneInitCodeHash, coinageAddr);
             if (_leadingFs(hubAddr) >= minFs) {
                 winningSalt = salt;
-                winningInitCode = initCode;
                 predictedUnispring = unispringAddr;
                 predictedHub = hubAddr;
                 found = true;
                 break;
             }
+            assembly {
+                mstore(0x40, memSnapshot)
+            }
+        }
+
+        // Rebuild the winning init code after the mining loop so it survives
+        // the per-iteration memory reset.
+        if (found) {
+            winningInitCode = abi.encodePacked(
+                type(Unispring).creationCode,
+                abi.encode(coinageAddr, hubName, hubSymbol, hubSupply, winningSalt, hubTickFloor)
+            );
         }
 
         require(found, "no salt found in [HubSaltMin, HubSaltMax) - widen the range or lower HubMinFs");
