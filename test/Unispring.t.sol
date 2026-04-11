@@ -66,14 +66,18 @@ contract MockCoinage {
         }
     }
 
-    function make(string calldata, string calldata, uint256 supply) external returns (address t) {
+    function make(string calldata, string calldata, uint256 supply, bytes32) external returns (address t) {
         assembly {
             t := sload(0)
         }
         MockToken(t).mint(msg.sender, supply);
     }
 
-    function made(address, string calldata, string calldata, uint256) external pure returns (bool, address, bytes32) {
+    function made(address, string calldata, string calldata, uint256, bytes32)
+        external
+        pure
+        returns (bool, address, bytes32)
+    {
         return (false, address(0), bytes32(0));
     }
 }
@@ -198,7 +202,7 @@ contract UnispringTest is Test {
         uint256 supply = 1_000_000 ether;
         int24 tickFloor = -120_000;
 
-        (IERC20 t, PoolId poolId) = unispring.make("Foo", "FOO", supply, tickFloor);
+        (IERC20 t, PoolId poolId) = unispring.make("Foo", "FOO", supply, tickFloor, bytes32(0));
 
         // Token registry was populated.
         assertEq(address(t), address(newToken));
@@ -211,31 +215,19 @@ contract UnispringTest is Test {
         assertEq(fee, unispring.FEE(), "fee constant mismatch");
         assertEq(tickSpacing, unispring.TICK_SPACING(), "tickSpacing constant mismatch");
 
-        // Currency ordering is sorted; the new token is on whichever side its address dictates.
-        bool newIsCurrency0 = address(newToken) < unispring.HUB();
-        if (newIsCurrency0) {
-            assertEq(Currency.unwrap(currency0), address(newToken));
-            assertEq(Currency.unwrap(currency1), unispring.HUB());
-            // Single-sided in currency0 → pool price sits at the lower bound (tickFloor).
-            assertEq(sqrtPriceX96, TickMath.getSqrtPriceAtTick(tickFloor));
-        } else {
-            assertEq(Currency.unwrap(currency0), unispring.HUB());
-            assertEq(Currency.unwrap(currency1), address(newToken));
-            // Single-sided in currency1 → pool price sits at the upper bound (-tickFloor).
-            assertEq(sqrtPriceX96, TickMath.getSqrtPriceAtTick(-tickFloor));
-        }
+        // The new token must sort strictly below HUB so it lands as currency0.
+        assertLt(uint160(address(newToken)), uint160(unispring.HUB()), "newToken must sort below HUB");
+        assertEq(Currency.unwrap(currency0), address(newToken));
+        assertEq(Currency.unwrap(currency1), unispring.HUB());
+        // Single-sided in currency0 → pool price sits at the lower bound (tickFloor).
+        assertEq(sqrtPriceX96, TickMath.getSqrtPriceAtTick(tickFloor));
 
         // Liquidity was added with positive delta and the right tick range.
         (, int24 tickLower, int24 tickUpper, int256 liquidityDelta, bool seenModify) = pm.lastModify();
         assertTrue(seenModify, "modifyLiquidity not called");
         assertGt(liquidityDelta, 0, "liquidityDelta must be positive");
-        if (newIsCurrency0) {
-            assertEq(tickLower, tickFloor);
-            assertEq(tickUpper, TickMath.maxUsableTick(unispring.TICK_SPACING()));
-        } else {
-            assertEq(tickLower, TickMath.minUsableTick(unispring.TICK_SPACING()));
-            assertEq(tickUpper, -tickFloor);
-        }
+        assertEq(tickLower, tickFloor);
+        assertEq(tickUpper, TickMath.maxUsableTick(unispring.TICK_SPACING()));
 
         // The caller settled by transferring tokens to the (mock) PoolManager.
         // The mock charges `liquidityDelta` units, so the factory should hold the remainder.

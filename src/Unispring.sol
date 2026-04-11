@@ -29,12 +29,14 @@ contract Unispring is IUnlockCallback {
     /**
      * @notice The Lepton ERC-20 maker used to mint each new token.
      */
-    ICoinage public constant COINAGE = ICoinage(0x14AE57aEd6aC1cD48fA811ED885Ab4a4c5E28c42);
+    ICoinage public constant COINAGE = ICoinage(0x454A1A4982DAF3f079120d9332D55E0D52f0C78b);
 
     /**
      * @notice The hub token every Unispring pool is paired against (Uniteum 1).
+     * @dev The address is mined with a high prefix so that virtually any freshly
+     *      minted Lepton token will sort strictly below it. See {make}.
      */
-    address public constant HUB = 0x1d09540dD256FbbF9C307E05bE1D3aaf0242e747;
+    address public constant HUB = 0xfFFFfF29e3C82351E7AaBE4C221dEfed6a803D5D;
 
     /**
      * @notice Per-chain `IAddressLookup` resolving the Uniswap V4 PoolManager.
@@ -77,6 +79,16 @@ contract Unispring is IUnlockCallback {
     error TickFloorOutOfRange(int24 tickFloor);
 
     /**
+     * @notice Thrown when the freshly minted token does not sort strictly below {HUB}.
+     * @dev    Unispring requires `newToken < HUB` so the new token becomes `currency0`
+     *         of the pool. This is the only currency ordering under which a single-sided
+     *         seed position is both active at spot and requires zero hub capital; see
+     *         README.md for the full derivation. Mine a different Lepton salt until the
+     *         deterministic address sorts below {HUB}.
+     */
+    error NewTokenMustSortBelowHub(address newToken);
+
+    /**
      * @notice Thrown when a pool with the same key has already been created.
      */
     error PoolAlreadyExists(PoolId id);
@@ -100,22 +112,28 @@ contract Unispring is IUnlockCallback {
         uint256 supply;
         int24 tickLower;
         int24 tickUpper;
-        bool newIsCurrency0;
     }
 
     /**
      * @notice Mint a fixed-supply token, pair it against the hub, and lock the
      *         entire supply into a single-sided V4 position with a permanent floor.
+     * @dev    The freshly deployed Lepton token must sort strictly below {HUB} so
+     *         that the new token becomes `currency0` of the pool. This is the only
+     *         ordering under which a single-sided seed can be simultaneously active
+     *         at spot and require zero hub capital. Mine the Lepton salt off-chain
+     *         until the deterministic address satisfies this constraint.
      * @param  name      Token name (passed through to Lepton).
      * @param  symbol    Token symbol (passed through to Lepton).
      * @param  supply    Token supply (passed through to Lepton).
      * @param  tickFloor Price floor expressed in new-token-priced-in-hub semantics.
      *                   Must be a multiple of {TICK_SPACING} and strictly inside
      *                   `(MIN_TICK, MAX_TICK)`.
+     * @param  salt      Caller-supplied Lepton salt; must produce a token address
+     *                   that sorts strictly below {HUB}.
      * @return newToken  The freshly deployed Lepton token.
      * @return poolId    The Uniswap V4 pool id.
      */
-    function make(string calldata name, string calldata symbol, uint256 supply, int24 tickFloor)
+    function make(string calldata name, string calldata symbol, uint256 supply, int24 tickFloor, bytes32 salt)
         external
         returns (IERC20 newToken, PoolId poolId)
     {
@@ -125,59 +143,35 @@ contract Unispring is IUnlockCallback {
         }
 
         // 1. Mint the entire fixed supply to this contract.
-        newToken = IERC20(address(COINAGE.make(name, symbol, supply)));
+        newToken = IERC20(address(COINAGE.make(name, symbol, supply, salt)));
 
-        // 2. Determine pool currency ordering and tick range.
-        bool newIsCurrency0 = address(newToken) < HUB;
-        PoolKey memory key;
-        int24 tickLower;
-        int24 tickUpper;
-        uint160 sqrtPriceX96;
-        if (newIsCurrency0) {
-            // newToken is currency0; floor on token-in-hub price = floor on pool tick.
-            // Range [tickFloor, MAX]; pool price at lower bound; position holds only currency0.
-            key = PoolKey({
-                currency0: Currency.wrap(address(newToken)),
-                currency1: Currency.wrap(HUB),
-                fee: FEE,
-                tickSpacing: TICK_SPACING,
-                hooks: IHooks(address(0))
-            });
-            tickLower = tickFloor;
-            tickUpper = TickMath.maxUsableTick(TICK_SPACING);
-            sqrtPriceX96 = TickMath.getSqrtPriceAtTick(tickLower);
-        } else {
-            // newToken is currency1; floor on token-in-hub price = ceiling on pool tick (sign flipped).
-            // Range [MIN, -tickFloor]; pool price at upper bound; position holds only currency1.
-            key = PoolKey({
-                currency0: Currency.wrap(HUB),
-                currency1: Currency.wrap(address(newToken)),
-                fee: FEE,
-                tickSpacing: TICK_SPACING,
-                hooks: IHooks(address(0))
-            });
-            tickLower = TickMath.minUsableTick(TICK_SPACING);
-            tickUpper = -tickFloor;
-            sqrtPriceX96 = TickMath.getSqrtPriceAtTick(tickUpper);
-        }
+        // 2. Enforce currency0 ordering: new token must sort strictly below the hub.
+        if (address(newToken) >= HUB) revert NewTokenMustSortBelowHub(address(newToken));
+
+        // 3. Build the pool key. newToken is currency0; floor on token-in-hub price
+        //    equals floor on pool tick. Range [tickFloor, MAX]; pool price seeded at
+        //    the lower bound; the position is single-sided in currency0 and active.
+        PoolKey memory key = PoolKey({
+            currency0: Currency.wrap(address(newToken)),
+            currency1: Currency.wrap(HUB),
+            fee: FEE,
+            tickSpacing: TICK_SPACING,
+            hooks: IHooks(address(0))
+        });
+        int24 tickLower = tickFloor;
+        int24 tickUpper = TickMath.maxUsableTick(TICK_SPACING);
+        uint160 sqrtPriceX96 = TickMath.getSqrtPriceAtTick(tickLower);
 
         poolId = key.toId();
         if (address(token[poolId]) != address(0)) revert PoolAlreadyExists(poolId);
         token[poolId] = newToken;
 
-        // 3. Initialize the pool and seed the position via the unlock callback.
+        // 4. Initialize the pool and seed the position via the unlock callback.
         IPoolManager pm = poolManager();
         pm.initialize(key, sqrtPriceX96);
         pm.unlock(
             abi.encode(
-                CallbackData({
-                    key: key,
-                    newToken: newToken,
-                    supply: supply,
-                    tickLower: tickLower,
-                    tickUpper: tickUpper,
-                    newIsCurrency0: newIsCurrency0
-                })
+                CallbackData({key: key, newToken: newToken, supply: supply, tickLower: tickLower, tickUpper: tickUpper})
             )
         );
 
@@ -195,10 +189,8 @@ contract Unispring is IUnlockCallback {
         uint160 sqrtPriceLowerX96 = TickMath.getSqrtPriceAtTick(cb.tickLower);
         uint160 sqrtPriceUpperX96 = TickMath.getSqrtPriceAtTick(cb.tickUpper);
 
-        // Compute liquidity for a single-sided position holding `supply` of the new token.
-        uint128 liquidity = cb.newIsCurrency0
-            ? _liquidityForAmount0(sqrtPriceLowerX96, sqrtPriceUpperX96, cb.supply)
-            : _liquidityForAmount1(sqrtPriceLowerX96, sqrtPriceUpperX96, cb.supply);
+        // Compute liquidity for a single-sided currency0 position holding `supply` of the new token.
+        uint128 liquidity = _liquidityForAmount0(sqrtPriceLowerX96, sqrtPriceUpperX96, cb.supply);
 
         (BalanceDelta delta,) = pm.modifyLiquidity(
             cb.key,
@@ -211,9 +203,9 @@ contract Unispring is IUnlockCallback {
             ""
         );
 
-        // Settle the new token side: PoolManager is owed `-amountNew`.
-        // The hub side delta is zero because the position is single-sided.
-        int128 amountNew = cb.newIsCurrency0 ? delta.amount0() : delta.amount1();
+        // Settle the new token side: PoolManager is owed `-amount0`.
+        // The hub side delta is zero because the position is single-sided in currency0.
+        int128 amountNew = delta.amount0();
         // amountNew is non-positive (a debit owed by the caller); negation fits in uint128.
         // forge-lint: disable-next-line(unsafe-typecast)
         uint256 owed = uint256(uint128(-amountNew));
@@ -245,18 +237,6 @@ contract Unispring is IUnlockCallback {
     {
         uint256 intermediate = FullMath.mulDiv(uint256(sqrtPriceLowerX96), uint256(sqrtPriceUpperX96), FixedPoint96.Q96);
         return _toUint128(FullMath.mulDiv(amount0, intermediate, uint256(sqrtPriceUpperX96 - sqrtPriceLowerX96)));
-    }
-
-    /**
-     * @dev Liquidity for a single-sided position in currency1.
-     *      L = amount1 * Q96 / (sqrtUpper - sqrtLower)
-     */
-    function _liquidityForAmount1(uint160 sqrtPriceLowerX96, uint160 sqrtPriceUpperX96, uint256 amount1)
-        private
-        pure
-        returns (uint128)
-    {
-        return _toUint128(FullMath.mulDiv(amount1, FixedPoint96.Q96, uint256(sqrtPriceUpperX96 - sqrtPriceLowerX96)));
     }
 
     function _toUint128(uint256 x) private pure returns (uint128) {

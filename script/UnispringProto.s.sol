@@ -6,7 +6,7 @@ import {ProtoScript} from "crucible/script/Proto.s.sol";
 
 /**
  * @notice Deploy the Unispring contract.
- * @dev Usage: forge script script/Unispring.s.sol -f $chain --private-key $tx_key --broadcast --verify --delay 10 --retries 10
+ * @dev Usage: forge script script/UnispringProto.s.sol -f $chain --private-key $tx_key --broadcast --verify --delay 10 --retries 10
  */
 contract UnispringProto is ProtoScript {
     function name() internal pure override returns (string memory) {

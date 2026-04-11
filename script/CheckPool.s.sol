@@ -12,15 +12,14 @@ import {Script, console} from "forge-std/Script.sol";
 
 /**
  * @notice Read-only: print slot0 and liquidity for a Unispring pool.
- * @dev    Usage: forge script script/CheckPool.s.sol -f sepolia \
- *                --sig "run(address)" 0x7E7b46b56a03ebBaa7105a1028EC9490714bf174
+ * @dev    Usage: forge script script/CheckPool.s.sol -f 11155111
  */
 contract CheckPool is Script {
     using StateLibrary for IPoolManager;
 
-    Unispring constant UNISPRING = Unispring(0x72A6eA5a58B41aFEE824dF8ebF87714125f494CC);
-
-    function run(address newToken) external view {
+    function run() external view {
+        Unispring UNISPRING = Unispring(vm.envAddress("Unispring"));
+        address newToken = vm.envAddress("HelloWorld");
         address hub = UNISPRING.HUB();
         bool newIsCurrency0 = newToken < hub;
 
