@@ -20,7 +20,7 @@ import {Script, console2} from "forge-std/Script.sol";
  *           HubSymbol     — hub token symbol
  *           HubSupply     — hub token supply in wei
  *           HubTickFloor  — hub starting tick floor (int)
- *           HubMinFs      — minimum leading `f` hex chars the hub address must have
+ *           HubMin        — minimum hub address (search accepts hub >= HubMin)
  *           HubSaltMin    — inclusive lower bound of the salt search range
  *           HubSaltMax    — exclusive upper bound of the salt search range
  *
@@ -40,7 +40,7 @@ contract UnispringDeploy is Script {
         // Tick values are always within int24 range by construction.
         // forge-lint: disable-next-line(unsafe-typecast)
         int24 hubTickFloor = int24(tickFloorRaw);
-        uint256 minFs = vm.envUint("HubMinFs");
+        address hubMin = vm.envAddress("HubMin");
         uint256 saltMin = vm.envUint("HubSaltMin");
         uint256 saltMax = vm.envUint("HubSaltMax");
 
@@ -52,7 +52,7 @@ contract UnispringDeploy is Script {
         console2.log("hubSymbol  :", hubSymbol);
         console2.log("hubSupply  :", hubSupply);
         console2.log("tickFloor  :", int256(hubTickFloor));
-        console2.log("minFs      :", minFs);
+        console2.log("hubMin     :", hubMin);
         console2.log("saltMin    :", saltMin);
         console2.log("saltMax    :", saltMax);
 
@@ -102,7 +102,7 @@ contract UnispringDeploy is Script {
             address unispringAddr = vm.computeCreate2Address(bytes32(0), keccak256(initCode), NICK);
             bytes32 create2Salt = keccak256(abi.encode(unispringAddr, hubName, hubSymbol, hubSupply, salt));
             address hubAddr = vm.computeCreate2Address(create2Salt, cloneInitCodeHash, coinageAddr);
-            if (_leadingFs(hubAddr) >= minFs) {
+            if (uint160(hubAddr) >= uint160(hubMin)) {
                 winningSalt = salt;
                 predictedUnispring = unispringAddr;
                 predictedHub = hubAddr;
@@ -131,7 +131,7 @@ contract UnispringDeploy is Script {
             );
         }
 
-        require(found, "no salt found in [HubSaltMin, HubSaltMax) - widen the range or lower HubMinFs");
+        require(found, "no salt found in [HubSaltMin, HubSaltMax) - widen the range or lower HubMin");
 
         console2.log("winning salt (uint):", uint256(winningSalt));
         console2.log("predicted Unispring:", predictedUnispring);
@@ -157,19 +157,6 @@ contract UnispringDeploy is Script {
             console2.log("hub pool seeded");
         } else {
             console2.log("hub pool already seeded");
-        }
-    }
-
-    /**
-     * @dev Count leading `f` hex characters in `addr`.
-     */
-    function _leadingFs(address addr) private pure returns (uint256 count) {
-        uint160 a = uint160(addr);
-        // 40 hex chars total; iterate from the top nibble down.
-        for (uint256 i = 0; i < 40; i++) {
-            uint256 nibble = (a >> (156 - i * 4)) & 0xf;
-            if (nibble != 0xf) break;
-            count++;
         }
     }
 }
