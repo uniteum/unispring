@@ -85,6 +85,8 @@ contract UnispringDeploy is Script {
             memSnapshot := mload(0x40)
         }
 
+        vm.pauseGasMetering();
+
         for (uint256 i = saltMin; i < saltMax; i++) {
             bytes32 salt = bytes32(i);
             bytes memory initCode = abi.encodePacked(
@@ -113,6 +115,8 @@ contract UnispringDeploy is Script {
                 mstore(0x40, memSnapshot)
             }
         }
+
+        vm.resumeGasMetering();
 
         // Rebuild the winning init code after the mining loop so it survives
         // the per-iteration memory reset.
