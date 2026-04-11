@@ -105,7 +105,7 @@ contract BootstrapHub is Script {
         address recipient = vm.envOr("Recipient", msg.sender);
         address existing = vm.envOr("Bootstrapper", address(0));
 
-        IPoolManager pm = unispring.poolManager();
+        IPoolManager pm = unispring.POOL_MANAGER();
 
         // Reconstruct the hub pool key from Unispring's constants and immutables.
         PoolKey memory key = PoolKey({

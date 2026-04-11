@@ -256,7 +256,7 @@ operator — just a position whose lower boundary is a wall.
 | `TICK_SPACING` | `1`   | Canonical pairing for the LOWEST tier; maximum granularity at the floor. |
 | `HUB`          | `0xfFFFfF29e3C82351E7AaBE4C221dEfed6a803D5D` | Uniteum 1, same address on every chain. Mined with a high-`f` prefix so Lepton salt search almost always terminates at `salt = 0`. |
 | `COINAGE`      | `0x14ae57AeD6AC1cd48Fa811Ed885Ab4a4c5e28C42` | Lepton, same address on every chain. |
-| `POOL_MANAGER_LOOKUP` | `0xd6185883DD1Fa3F6F4F0b646f94D1fb46d618c23` | Per-chain `IAddressLookup` resolving the V4 PoolManager. |
+| `POOL_MANAGER` | immutable | Uniswap V4 PoolManager, resolved at construction from an `IAddressLookup` passed in as a constructor argument. |
 
 Unispring takes no constructor arguments. The bytecode is identical on
 every chain it is deployed to, which lets it be deployed to a single

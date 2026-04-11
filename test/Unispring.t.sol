@@ -223,7 +223,9 @@ contract UnispringTest is Test {
 
         // 3. Construct Unispring. Its constructor mints the hub token (returning
         //    the etched address) but does not yet touch the PoolManager.
-        unispring = new Unispring(address(coinage), "Hub", "HUB", HUB_SUPPLY, bytes32(0), HUB_TICK_FLOOR);
+        unispring = new Unispring(
+            IAddressLookup(LOOKUP_ADDR), address(coinage), "Hub", "HUB", HUB_SUPPLY, bytes32(0), HUB_TICK_FLOOR
+        );
 
         // 4. Seed the hub pool in a separate call (constructor cannot receive callbacks).
         unispring.seedHub();

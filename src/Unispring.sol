@@ -30,9 +30,10 @@ contract Unispring is IUnlockCallback {
     using StateLibrary for IPoolManager;
 
     /**
-     * @notice Per-chain `IAddressLookup` resolving the Uniswap V4 PoolManager.
+     * @notice The Uniswap V4 PoolManager, resolved from the `IAddressLookup`
+     *         supplied at construction.
      */
-    IAddressLookup public constant POOL_MANAGER_LOOKUP = IAddressLookup(0xd6185883DD1Fa3F6F4F0b646f94D1fb46d618c23);
+    IPoolManager public immutable POOL_MANAGER;
 
     /**
      * @notice Pool fee, in hundredths of a bip. Uniswap's LOWEST canonical tier
@@ -196,6 +197,9 @@ contract Unispring is IUnlockCallback {
      *         during its own construction (its runtime code isn't deployed yet),
      *         so pool seeding is deferred to {seedHub}, which must be called once
      *         by the deployer immediately after construction.
+     * @param  poolManagerLookup `IAddressLookup` resolving the chain-local
+     *                       Uniswap V4 PoolManager. Dereferenced once in the
+     *                       constructor and stored as {POOL_MANAGER}.
      * @param  coinage   Address of the Lepton prototype used to mint tokens.
      * @param  hubName       Name of the hub token (forwarded to Lepton).
      * @param  hubSymbol     Symbol of the hub token (forwarded to Lepton).
@@ -208,6 +212,7 @@ contract Unispring is IUnlockCallback {
      *                       strictly inside `(MIN_TICK, MAX_TICK)`.
      */
     constructor(
+        IAddressLookup poolManagerLookup,
         address coinage,
         string memory hubName,
         string memory hubSymbol,
@@ -220,6 +225,7 @@ contract Unispring is IUnlockCallback {
             revert TickFloorOutOfRange(hubTickFloor);
         }
 
+        POOL_MANAGER = IPoolManager(poolManagerLookup.value());
         COINAGE = ICoinage(coinage);
         IERC20 hubToken = IERC20(address(COINAGE.make(hubName, hubSymbol, hubSupply, hubSalt)));
         HUB = address(hubToken);
@@ -263,7 +269,7 @@ contract Unispring is IUnlockCallback {
         hubPool = poolId;
         token[poolId] = IERC20(HUB);
 
-        IPoolManager pm = poolManager();
+        IPoolManager pm = POOL_MANAGER;
         pm.initialize(key, sqrtPriceX96);
         pm.unlock(
             abi.encode(
@@ -329,7 +335,7 @@ contract Unispring is IUnlockCallback {
         token[poolId] = newToken;
 
         // 4. Initialize the pool and seed the position via the unlock callback.
-        IPoolManager pm = poolManager();
+        IPoolManager pm = POOL_MANAGER;
         pm.initialize(key, sqrtPriceX96);
         pm.unlock(
             abi.encode(
@@ -354,18 +360,17 @@ contract Unispring is IUnlockCallback {
      * @param  tickUpper  Upper tick of the Unispring position in that pool.
      */
     function plow(PoolKey calldata key, int24 tickLower, int24 tickUpper) external {
-        poolManager()
-            .unlock(
-                abi.encode(Action.PLOW, abi.encode(PlowData({key: key, tickLower: tickLower, tickUpper: tickUpper})))
-            );
+        POOL_MANAGER.unlock(
+            abi.encode(Action.PLOW, abi.encode(PlowData({key: key, tickLower: tickLower, tickUpper: tickUpper})))
+        );
     }
 
     /**
      * @inheritdoc IUnlockCallback
      */
     function unlockCallback(bytes calldata data) external returns (bytes memory) {
-        IPoolManager pm = poolManager();
-        if (msg.sender != address(pm)) revert InvalidUnlockCaller();
+        if (msg.sender != address(POOL_MANAGER)) revert InvalidUnlockCaller();
+        IPoolManager pm = POOL_MANAGER;
 
         (Action action, bytes memory inner) = abi.decode(data, (Action, bytes));
         if (action == Action.SEED_CURRENCY0) {
@@ -376,13 +381,6 @@ contract Unispring is IUnlockCallback {
             _plow(pm, abi.decode(inner, (PlowData)));
         }
         return "";
-    }
-
-    /**
-     * @notice Resolve the chain-local Uniswap V4 PoolManager.
-     */
-    function poolManager() public view returns (IPoolManager) {
-        return IPoolManager(POOL_MANAGER_LOOKUP.value());
     }
 
     /**

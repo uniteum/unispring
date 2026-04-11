@@ -32,7 +32,7 @@ contract CheckPool is Script {
         });
         PoolId id = key.toId();
 
-        IPoolManager pm = spring.poolManager();
+        IPoolManager pm = spring.POOL_MANAGER();
         (uint160 sqrtPriceX96, int24 tick, uint24 protocolFee, uint24 lpFee) = pm.getSlot0(id);
         uint128 liquidity = pm.getLiquidity(id);
 

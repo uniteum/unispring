@@ -2,6 +2,7 @@
 pragma solidity ^0.8.30;
 
 import {Unispring} from "../src/Unispring.sol";
+import {IAddressLookup} from "ilookup/IAddressLookup.sol";
 import {PoolId} from "v4-core/types/PoolId.sol";
 import {Script, console2} from "forge-std/Script.sol";
 
@@ -11,6 +12,8 @@ import {Script, console2} from "forge-std/Script.sol";
  *         has many leading `f` bytes.
  * @dev    All configuration comes from environment variables — no in-source
  *         defaults. Required:
+ *           IPoolManagerLookup — per-chain `IAddressLookup` resolving the V4
+ *                                PoolManager
  *           ICoinage      — Lepton prototype address (same value as the ICoinage
  *                           export used by the other scripts)
  *           HubName       — hub token name
@@ -28,6 +31,7 @@ contract UnispringDeploy is Script {
     address constant NICK = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
 
     function run() external {
+        address poolManagerLookupAddr = vm.envAddress("PoolManagerLookup");
         address coinageAddr = vm.envAddress("ICoinage");
         string memory hubName = vm.envString("HubName");
         string memory hubSymbol = vm.envString("HubSymbol");
@@ -42,6 +46,7 @@ contract UnispringDeploy is Script {
 
         require(saltMax > saltMin, "HubSaltMax must be > HubSaltMin");
 
+        console2.log("pmLookup   :", poolManagerLookupAddr);
         console2.log("coinage    :", coinageAddr);
         console2.log("hubName    :", hubName);
         console2.log("hubSymbol  :", hubSymbol);
@@ -83,7 +88,16 @@ contract UnispringDeploy is Script {
         for (uint256 i = saltMin; i < saltMax; i++) {
             bytes32 salt = bytes32(i);
             bytes memory initCode = abi.encodePacked(
-                type(Unispring).creationCode, abi.encode(coinageAddr, hubName, hubSymbol, hubSupply, salt, hubTickFloor)
+                type(Unispring).creationCode,
+                abi.encode(
+                    IAddressLookup(poolManagerLookupAddr),
+                    coinageAddr,
+                    hubName,
+                    hubSymbol,
+                    hubSupply,
+                    salt,
+                    hubTickFloor
+                )
             );
             address unispringAddr = vm.computeCreate2Address(bytes32(0), keccak256(initCode), NICK);
             bytes32 create2Salt = keccak256(abi.encode(unispringAddr, hubName, hubSymbol, hubSupply, salt));
@@ -105,7 +119,15 @@ contract UnispringDeploy is Script {
         if (found) {
             winningInitCode = abi.encodePacked(
                 type(Unispring).creationCode,
-                abi.encode(coinageAddr, hubName, hubSymbol, hubSupply, winningSalt, hubTickFloor)
+                abi.encode(
+                    IAddressLookup(poolManagerLookupAddr),
+                    coinageAddr,
+                    hubName,
+                    hubSymbol,
+                    hubSupply,
+                    winningSalt,
+                    hubTickFloor
+                )
             );
         }
 
