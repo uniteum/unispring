@@ -8,15 +8,18 @@ import {Script, console2} from "forge-std/Script.sol";
 
 /**
  * @notice Deploy Unispring via Nick's CREATE2 deployer, salt-mining the hub's
- *         Lepton salt so the resulting hub address has many leading `f` bytes.
- * @dev    Environment variables (all optional except LeptonProto):
- *           LeptonProto     — Lepton prototype address (required)
- *           HubName         — hub token name, default "Uniteum 1"
- *           HubSymbol       — hub token symbol, default "UT1"
- *           HubSupply       — hub token supply in wei, default 10_000_000 ether
- *           HubTickFloor    — hub's starting tick floor, default -60000
- *           HubMinFs        — minimum number of leading `f` hex chars, default 4
- *           HubMaxTries     — max salt attempts, default 1_000_000
+ *         Lepton salt over a caller-supplied range so the resulting hub address
+ *         has many leading `f` bytes.
+ * @dev    All configuration comes from environment variables — no in-source
+ *         defaults. Required:
+ *           LeptonProto   — Lepton prototype address
+ *           HubName       — hub token name
+ *           HubSymbol     — hub token symbol
+ *           HubSupply     — hub token supply in wei
+ *           HubTickFloor  — hub starting tick floor (int)
+ *           HubMinFs      — minimum leading `f` hex chars the hub address must have
+ *           HubSaltMin    — inclusive lower bound of the salt search range
+ *           HubSaltMax    — exclusive upper bound of the salt search range
  *
  *         Usage: forge script script/UnispringProto.s.sol:UnispringProto -f $chain \
  *                    --private-key $tx_key --broadcast --verify --delay 10 --retries 10
@@ -26,15 +29,18 @@ contract UnispringProto is Script {
 
     function run() external {
         address leptonProto = vm.envAddress("LeptonProto");
-        string memory hubName = vm.envOr("HubName", string("Uniteum 1"));
-        string memory hubSymbol = vm.envOr("HubSymbol", string("UT1"));
-        uint256 hubSupply = vm.envOr("HubSupply", uint256(10_000_000 ether));
-        int256 tickFloorRaw = vm.envOr("HubTickFloor", int256(-60_000));
+        string memory hubName = vm.envString("HubName");
+        string memory hubSymbol = vm.envString("HubSymbol");
+        uint256 hubSupply = vm.envUint("HubSupply");
+        int256 tickFloorRaw = vm.envInt("HubTickFloor");
         // Tick values are always within int24 range by construction.
         // forge-lint: disable-next-line(unsafe-typecast)
         int24 hubTickFloor = int24(tickFloorRaw);
-        uint256 minFs = vm.envOr("HubMinFs", uint256(4));
-        uint256 maxTries = vm.envOr("HubMaxTries", uint256(1_000_000));
+        uint256 minFs = vm.envUint("HubMinFs");
+        uint256 saltMin = vm.envUint("HubSaltMin");
+        uint256 saltMax = vm.envUint("HubSaltMax");
+
+        require(saltMax > saltMin, "HubSaltMax must be > HubSaltMin");
 
         console2.log("leptonProto:", leptonProto);
         console2.log("hubName    :", hubName);
@@ -42,19 +48,22 @@ contract UnispringProto is Script {
         console2.log("hubSupply  :", hubSupply);
         console2.log("tickFloor  :", int256(hubTickFloor));
         console2.log("minFs      :", minFs);
+        console2.log("saltMin    :", saltMin);
+        console2.log("saltMax    :", saltMax);
 
         ICoinage lepton = ICoinage(leptonProto);
 
-        // 1. Mine the Lepton salt. For each candidate, compute the Unispring
-        //    CREATE2 address the resulting init code would produce, ask Lepton
-        //    what hub address that Unispring would mint, and check the prefix.
+        // 1. Mine the Lepton salt over [saltMin, saltMax). For each candidate,
+        //    compute the Unispring CREATE2 address the resulting init code would
+        //    produce, ask Lepton what hub address that Unispring would mint, and
+        //    check the prefix.
         bytes32 winningSalt;
         bytes memory winningInitCode;
         address predictedUnispring;
         address predictedHub;
         bool found;
 
-        for (uint256 i = 0; i < maxTries; i++) {
+        for (uint256 i = saltMin; i < saltMax; i++) {
             bytes32 salt = bytes32(i);
             bytes memory initCode = abi.encodePacked(
                 type(Unispring).creationCode, abi.encode(leptonProto, hubName, hubSymbol, hubSupply, salt, hubTickFloor)
@@ -71,7 +80,7 @@ contract UnispringProto is Script {
             }
         }
 
-        require(found, "no salt found within maxTries - raise HubMaxTries or lower HubMinFs");
+        require(found, "no salt found in [HubSaltMin, HubSaltMax) - widen the range or lower HubMinFs");
 
         console2.log("winning salt (uint):", uint256(winningSalt));
         console2.log("predicted Unispring:", predictedUnispring);
@@ -113,4 +122,3 @@ contract UnispringProto is Script {
         }
     }
 }
-
