@@ -90,6 +90,15 @@ contract Unispring is IUnlockCallback {
     mapping(PoolId => IERC20) public token;
 
     /**
+     * @notice Price floor of the position for a given token, in
+     *         new-token-priced-in-counterparty semantics.
+     * @dev    Set once in {make} (or {seedHub} for the hub token). Used by
+     *         {plow} to reconstruct the full position coordinates from just
+     *         a token address.
+     */
+    mapping(address => int24) public floor;
+
+    /**
      * @notice Emitted when a token is minted, paired against the hub, and seeded.
      * @param maker     The address that called {make} (or this contract itself
      *                  for the hub pool seeded during construction).
@@ -140,6 +149,12 @@ contract Unispring is IUnlockCallback {
      * @notice Thrown when {seedHub} is called after the hub pool has already been seeded.
      */
     error HubAlreadySeeded();
+
+    /**
+     * @notice Thrown when {plow} is called with a token address that was not
+     *         created by this factory.
+     */
+    error UnknownToken(address token);
 
     /**
      * @notice Thrown when {unlockCallback} is invoked by anyone other than the PoolManager.
@@ -277,6 +292,7 @@ contract Unispring is IUnlockCallback {
         poolId = key.toId();
         hubPool = poolId;
         token[poolId] = IERC20(HUB);
+        floor[HUB] = HUB_TICK_FLOOR;
 
         IPoolManager pm = POOL_MANAGER;
         pm.initialize(key, sqrtPriceX96);
@@ -342,6 +358,7 @@ contract Unispring is IUnlockCallback {
         poolId = key.toId();
         if (address(token[poolId]) != address(0)) revert PoolAlreadyExists(poolId);
         token[poolId] = newToken;
+        floor[address(newToken)] = tickLower;
 
         // 4. Initialize the pool and seed the position via the unlock callback.
         IPoolManager pm = POOL_MANAGER;
@@ -359,16 +376,47 @@ contract Unispring is IUnlockCallback {
     /**
      * @notice Permissionlessly compound accrued fees back into a Unispring
      *         position. Anyone can call. No operator role, no reward.
-     * @dev    Collects fees from the position identified by `(key, tickLower,
-     *         tickUpper)`, then deposits as much of the collected amounts as
-     *         possible back into the same position as additional liquidity.
-     *         Any leftover of one side stays in the factory's balance and is
-     *         consumed on a future call once the other side has caught up.
-     * @param  key        Pool key of a Unispring-owned pool.
-     * @param  tickLower  Lower tick of the Unispring position in that pool.
-     * @param  tickUpper  Upper tick of the Unispring position in that pool.
+     * @dev    Reconstructs the full pool key and tick range from the token
+     *         address alone, then collects fees and deposits as much of the
+     *         collected amounts as possible back into the same position as
+     *         additional liquidity. Any leftover of one side stays in the
+     *         factory's balance and is consumed on a future call once the
+     *         other side has caught up.
+     * @param  newToken  Address of a token created by this factory (or {HUB}
+     *                   for the hub pool).
      */
-    function plow(PoolKey calldata key, int24 tickLower, int24 tickUpper) external {
+    function plow(address newToken) external {
+        int24 f = floor[newToken];
+        if (f == 0) revert UnknownToken(newToken);
+
+        PoolKey memory key;
+        int24 tickLower;
+        int24 tickUpper;
+
+        if (newToken == HUB) {
+            // Hub pool: ETH is currency0, HUB is currency1.
+            key = PoolKey({
+                currency0: Currency.wrap(address(0)),
+                currency1: Currency.wrap(HUB),
+                fee: FEE,
+                tickSpacing: TICK_SPACING,
+                hooks: IHooks(address(0))
+            });
+            tickLower = TickMath.minUsableTick(TICK_SPACING);
+            tickUpper = -f;
+        } else {
+            // Regular pool: token is currency0, HUB is currency1.
+            key = PoolKey({
+                currency0: Currency.wrap(newToken),
+                currency1: Currency.wrap(HUB),
+                fee: FEE,
+                tickSpacing: TICK_SPACING,
+                hooks: IHooks(address(0))
+            });
+            tickLower = f;
+            tickUpper = TickMath.maxUsableTick(TICK_SPACING);
+        }
+
         POOL_MANAGER.unlock(
             abi.encode(Action.PLOW, abi.encode(PlowData({key: key, tickLower: tickLower, tickUpper: tickUpper})))
         );

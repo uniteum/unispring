@@ -5,7 +5,6 @@ import {Unispring} from "../src/Unispring.sol";
 import {IAddressLookup} from "ilookup/IAddressLookup.sol";
 import {IERC20} from "ierc20/IERC20.sol";
 import {Test} from "forge-std/Test.sol";
-import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {IUnlockCallback} from "v4-core/interfaces/callback/IUnlockCallback.sol";
 import {TickMath} from "v4-core/libraries/TickMath.sol";
 import {BalanceDelta, toBalanceDelta} from "v4-core/types/BalanceDelta.sol";
@@ -302,19 +301,12 @@ contract UnispringTest is Test {
         int24 tickFloor = -120_000;
         unispring.make("Foo", "FOO", 1_000_000 ether, tickFloor, bytes32(0));
 
-        PoolKey memory key = PoolKey({
-            currency0: Currency.wrap(NEW_TOKEN_ADDR),
-            currency1: Currency.wrap(HUB_ADDR),
-            fee: unispring.FEE(),
-            tickSpacing: unispring.TICK_SPACING(),
-            hooks: IHooks(address(0))
-        });
         int24 tickUpper = TickMath.maxUsableTick(unispring.TICK_SPACING());
 
         // No fees accrue in this mock, but Unispring holds leftover new-token from
         // the initial seed. The plow function should collect (zero) fees and then
         // deposit the leftover as additional liquidity — without reverting.
-        unispring.plow(key, tickFloor, tickUpper);
+        unispring.plow(NEW_TOKEN_ADDR);
 
         // The most recent modifyLiquidity call recorded by the mock was the
         // additive deposit. A positive delta confirms the plow reached the
