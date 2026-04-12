@@ -24,41 +24,37 @@ interface IV4Quoter {
 }
 
 /**
- * @notice Read-only: simulate a HUB → newToken swap directly against the V4Quoter
- *         on Sepolia, bypassing the hosted Uniswap interface entirely.
- * @dev    Usage: forge script script/QuotePool.s.sol -f $chain
+ * @notice Read-only: simulate an ETH → HUB swap against V4Quoter on Sepolia.
+ *         Returns 0 / reverts while the hub pool is still in the mirror-case
+ *         inactive-at-spot state; returns a real quote once BootstrapHub has
+ *         crossed the upper tick.
+ * @dev    Usage: forge script script/QuoteHub.s.sol -f $chain
  *
  *         Env vars required:
- *           Unispring   — Unispring factory address
- *           HelloWorld  — new token address
+ *           Unispring — Unispring factory address
  */
-contract QuotePool is Script {
-    // Uniswap v4 Quoter on Ethereum Sepolia.
+contract QuoteHub is Script {
     IV4Quoter constant QUOTER = IV4Quoter(0x61B3f2011A92d183C7dbaDBdA940a7555Ccf9227);
 
     function run() external {
         Unispring unispring = Unispring(payable(vm.envAddress("Unispring")));
-        address newToken = vm.envAddress("HelloWorld");
-        address hub = unispring.HUB();
 
-        // Case-1 invariant: new token is currency0, HUB is currency1.
         PoolKey memory key = PoolKey({
-            currency0: Currency.wrap(newToken),
-            currency1: Currency.wrap(hub),
+            currency0: Currency.wrap(address(0)),
+            currency1: Currency.wrap(unispring.HUB()),
             fee: unispring.FEE(),
             tickSpacing: unispring.TICK_SPACING(),
             hooks: IHooks(address(0))
         });
 
-        // Sell HUB (currency1) to receive new token (currency0) → oneForZero.
-        uint128 exactAmount = 100 ether;
+        uint128 exactAmount = 1 gwei;
         IV4Quoter.QuoteExactSingleParams memory params =
-            IV4Quoter.QuoteExactSingleParams({poolKey: key, zeroForOne: false, exactAmount: exactAmount, hookData: ""});
+            IV4Quoter.QuoteExactSingleParams({poolKey: key, zeroForOne: true, exactAmount: exactAmount, hookData: ""});
 
         (uint256 amountOut, uint256 gasEstimate) = QUOTER.quoteExactInputSingle(params);
 
-        console.log("HUB in:       ", uint256(exactAmount));
-        console.log("newToken out: ", amountOut);
+        console.log("ETH in:       ", uint256(exactAmount));
+        console.log("HUB out:      ", amountOut);
         console.log("gas estimate: ", gasEstimate);
     }
 }

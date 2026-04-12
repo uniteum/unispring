@@ -95,8 +95,8 @@ contract HubBootstrapper is IUnlockCallback {
  *           BootstrapValue  — wei of ETH to swap, default 1 gwei (1e9).
  *           Recipient       — who receives the swapped HUB, default msg.sender.
  *
- *         Usage: forge script script/BootstrapHub.s.sol:BootstrapHub -f $chain \
- *                    --private-key $tx_key --broadcast
+ *         Usage:
+ * forge script script/BootstrapHub.s.sol:BootstrapHub -f $chain --private-key $tx_key --broadcast
  */
 contract BootstrapHub is Script {
     function run() external {

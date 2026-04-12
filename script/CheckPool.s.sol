@@ -12,7 +12,7 @@ import {Script, console} from "forge-std/Script.sol";
 
 /**
  * @notice Read-only: print slot0 and liquidity for a Unispring pool.
- * @dev    Usage: forge script script/CheckPool.s.sol -f 11155111
+ * @dev    Usage: forge script script/CheckPool.s.sol -f $chain
  */
 contract CheckPool is Script {
     using StateLibrary for IPoolManager;
