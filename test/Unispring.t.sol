@@ -12,7 +12,7 @@ import {BalanceDelta, toBalanceDelta} from "v4-core/types/BalanceDelta.sol";
 import {Currency} from "v4-core/types/Currency.sol";
 import {PoolId} from "v4-core/types/PoolId.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
-import {ModifyLiquidityParams} from "v4-core/types/PoolOperation.sol";
+import {ModifyLiquidityParams, SwapParams} from "v4-core/types/PoolOperation.sol";
 
 /**
  * @notice Minimal mintable ERC-20 used in place of a real Lepton clone.
@@ -183,6 +183,18 @@ contract MockPoolManager {
         // take zero amounts anyway. The real PoolManager transfers the amounts.
     }
 
+    function swap(PoolKey memory, SwapParams memory params, bytes calldata)
+        external
+        payable
+        returns (BalanceDelta delta)
+    {
+        // Return a synthetic delta: caller owes |amountSpecified| of currency0,
+        // receives the same amount of currency1. Sufficient for testing the
+        // buyHub flow without real pool math.
+        int128 amount = int128(params.amountSpecified);
+        delta = toBalanceDelta(amount, -amount);
+    }
+
     /// @dev Implements `extsload(bytes32)` so StateLibrary.getSlot0 can read
     ///      back the sqrtPrice we stored during {initialize}. Only the slot
     ///      shape and sqrtPrice bits matter to Unispring.
@@ -312,5 +324,16 @@ contract UnispringTest is Test {
         assertEq(lo, tickFloor);
         assertEq(up, tickUpper);
         assertGt(delta, 0, "plow should have added liquidity from leftover supply");
+    }
+
+    function test_BuyHubSwapsEthForHub() public {
+        uint256 amountIn = 1 gwei;
+        vm.deal(address(this), amountIn);
+
+        // buyHub should not revert and should forward ETH to the PoolManager.
+        unispring.buyHub{value: amountIn}();
+
+        // The mock PoolManager received the ETH via settle.
+        assertEq(address(pm).balance, amountIn, "PoolManager should hold the ETH");
     }
 }

@@ -15,7 +15,7 @@ import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
 import {Currency} from "v4-core/types/Currency.sol";
 import {PoolId} from "v4-core/types/PoolId.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
-import {ModifyLiquidityParams} from "v4-core/types/PoolOperation.sol";
+import {ModifyLiquidityParams, SwapParams} from "v4-core/types/PoolOperation.sol";
 
 /**
  * @title Unispring
@@ -157,7 +157,8 @@ contract Unispring is IUnlockCallback {
     enum Action {
         SEED_CURRENCY0,
         SEED_CURRENCY1,
-        PLOW
+        PLOW,
+        BUY_HUB
     }
 
     /**
@@ -189,6 +190,14 @@ contract Unispring is IUnlockCallback {
         PoolKey key;
         int24 tickLower;
         int24 tickUpper;
+    }
+
+    /**
+     * @dev Internal payload for the hub bootstrap swap.
+     */
+    struct BuyHubData {
+        address recipient;
+        uint256 amountIn;
     }
 
     /**
@@ -366,6 +375,18 @@ contract Unispring is IUnlockCallback {
     }
 
     /**
+     * @notice Buy hub tokens with native ETH via an exact-input swap on the hub
+     *         pool. Intended as the bootstrap call immediately after {seedHub} to
+     *         cross the upper tick downward and activate the pool for quoters.
+     * @dev    Permissionless. The received HUB tokens are forwarded to `msg.sender`.
+     */
+    function buyHub() external payable {
+        POOL_MANAGER.unlock(
+            abi.encode(Action.BUY_HUB, abi.encode(BuyHubData({recipient: msg.sender, amountIn: msg.value})))
+        );
+    }
+
+    /**
      * @inheritdoc IUnlockCallback
      */
     function unlockCallback(bytes calldata data) external returns (bytes memory) {
@@ -377,8 +398,10 @@ contract Unispring is IUnlockCallback {
             _seedCurrency0(pm, abi.decode(inner, (SeedCurrency0Data)));
         } else if (action == Action.SEED_CURRENCY1) {
             _seedCurrency1(pm, abi.decode(inner, (SeedCurrency1Data)));
-        } else {
+        } else if (action == Action.PLOW) {
             _plow(pm, abi.decode(inner, (PlowData)));
+        } else {
+            _buyHub(pm, abi.decode(inner, (BuyHubData)));
         }
         return "";
     }
@@ -510,6 +533,37 @@ contract Unispring is IUnlockCallback {
         _settleOwed(pm, cb.key.currency1, addDelta.amount1());
 
         emit Plowed(tx.origin, poolId, liquidityToAdd);
+    }
+
+    /**
+     * @dev Execute an exact-input ETH → HUB swap and forward received HUB to the
+     *      recipient. Called inside `unlockCallback`.
+     */
+    function _buyHub(IPoolManager pm, BuyHubData memory cb) private {
+        PoolKey memory key = PoolKey({
+            currency0: Currency.wrap(address(0)),
+            currency1: Currency.wrap(HUB),
+            fee: FEE,
+            tickSpacing: TICK_SPACING,
+            hooks: IHooks(address(0))
+        });
+
+        BalanceDelta delta = pm.swap(
+            key,
+            SwapParams({
+                zeroForOne: true, amountSpecified: -int256(cb.amountIn), sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+            }),
+            ""
+        );
+
+        // We owe currency0 (ETH) and are owed currency1 (HUB).
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 paid = uint256(uint128(-delta.amount0()));
+        pm.settle{value: paid}();
+
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 received = uint256(uint128(delta.amount1()));
+        pm.take(key.currency1, cb.recipient, received);
     }
 
     /**
