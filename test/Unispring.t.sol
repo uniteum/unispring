@@ -267,7 +267,7 @@ contract UnispringTest is Test {
 
         // Token registry was populated.
         assertEq(address(t), NEW_TOKEN_ADDR);
-        assertEq(address(unispring.token(poolId)), NEW_TOKEN_ADDR);
+        assertEq(address(unispring.poolToken(poolId)), NEW_TOKEN_ADDR);
 
         // Pool was initialized with the right key shape.
         (Currency currency0, Currency currency1, uint24 fee, int24 tickSpacing, uint160 sqrtPriceX96, bool seenInit) =

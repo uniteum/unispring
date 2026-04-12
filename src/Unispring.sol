@@ -87,7 +87,7 @@ contract Unispring is IUnlockCallback {
     /**
      * @notice The new token created by Unispring for a given pool.
      */
-    mapping(PoolId => IERC20) public token;
+    mapping(PoolId => IERC20) public poolToken;
 
     /**
      * @notice Price floor of the position for a given token, in
@@ -291,7 +291,7 @@ contract Unispring is IUnlockCallback {
 
         poolId = key.toId();
         hubPool = poolId;
-        token[poolId] = IERC20(HUB);
+        poolToken[poolId] = IERC20(HUB);
         floor[HUB] = HUB_TICK_FLOOR;
 
         IPoolManager pm = POOL_MANAGER;
@@ -356,8 +356,8 @@ contract Unispring is IUnlockCallback {
         uint160 sqrtPriceX96 = TickMath.getSqrtPriceAtTick(tickLower);
 
         poolId = key.toId();
-        if (address(token[poolId]) != address(0)) revert PoolAlreadyExists(poolId);
-        token[poolId] = newToken;
+        if (address(poolToken[poolId]) != address(0)) revert PoolAlreadyExists(poolId);
+        poolToken[poolId] = newToken;
         floor[address(newToken)] = tickLower;
 
         // 4. Initialize the pool and seed the position via the unlock callback.
