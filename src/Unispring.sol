@@ -382,18 +382,18 @@ contract Unispring is IUnlockCallback {
      *         additional liquidity. Any leftover of one side stays in the
      *         factory's balance and is consumed on a future call once the
      *         other side has caught up.
-     * @param  newToken  Address of a token created by this factory (or {HUB}
+     * @param  token  Address of a token created by this factory (or {HUB}
      *                   for the hub pool).
      */
-    function plow(address newToken) external {
-        int24 f = floor[newToken];
-        if (f == 0) revert UnknownToken(newToken);
+    function plow(address token) external {
+        int24 f = floor[token];
+        if (f == 0) revert UnknownToken(token);
 
         PoolKey memory key;
         int24 tickLower;
         int24 tickUpper;
 
-        if (newToken == HUB) {
+        if (token == HUB) {
             // Hub pool: ETH is currency0, HUB is currency1.
             key = PoolKey({
                 currency0: Currency.wrap(address(0)),
@@ -407,7 +407,7 @@ contract Unispring is IUnlockCallback {
         } else {
             // Regular pool: token is currency0, HUB is currency1.
             key = PoolKey({
-                currency0: Currency.wrap(newToken),
+                currency0: Currency.wrap(token),
                 currency1: Currency.wrap(HUB),
                 fee: FEE,
                 tickSpacing: TICK_SPACING,
