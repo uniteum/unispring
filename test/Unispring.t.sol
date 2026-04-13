@@ -55,34 +55,6 @@ contract MockToken {
 }
 
 /**
- * @notice Stand-in for Lepton. Returns a pre-set token and mints supply to the caller.
- *         Reads the address to return from storage slot 0 so that {setReturn}
- *         can be called between invocations to rotate the returned token.
- */
-contract MockCoinage {
-    function setReturn(address t) external {
-        assembly {
-            sstore(0, t)
-        }
-    }
-
-    function make(string calldata, string calldata, uint256 supply, bytes32) external returns (address t) {
-        assembly {
-            t := sload(0)
-        }
-        MockToken(t).mint(msg.sender, supply);
-    }
-
-    function made(address, string calldata, string calldata, uint256, bytes32)
-        external
-        pure
-        returns (bool, address, bytes32)
-    {
-        return (false, address(0), bytes32(0));
-    }
-}
-
-/**
  * @notice Minimal stand-in for the Uniswap V4 PoolManager. Implements just the
  *         subset of selectors that Unispring touches: `initialize`, `unlock`,
  *         `modifyLiquidity`, `sync`, `settle`, `take`, and extsload (for
@@ -211,10 +183,9 @@ contract MockPoolManager {
 contract UnispringTest is Test {
     Unispring internal unispring;
     MockPoolManager internal pm;
-    MockCoinage internal coinage;
 
     address internal constant HUB_ADDR = 0xFFfFfFffFFfffFFfFFfFFFFFffFFFffffFfFFFfF;
-    address internal constant NEW_TOKEN_ADDR = 0x1111111111111111111111111111111111111111;
+    address internal constant SPOKE_TOKEN_ADDR = 0x1111111111111111111111111111111111111111;
     address internal constant LOOKUP_ADDR = 0xd6185883DD1Fa3F6F4F0b646f94D1fb46d618c23;
 
     uint256 internal constant HUB_SUPPLY = 10_000_000 ether;
@@ -225,32 +196,24 @@ contract UnispringTest is Test {
         pm = new MockPoolManager();
         vm.mockCall(LOOKUP_ADDR, abi.encodeWithSelector(IAddressLookup.value.selector), abi.encode(address(pm)));
 
-        // 2. Deploy a real MockCoinage contract and etch a MockToken at the
-        //    fixed HUB address so it has working ERC-20 code.
-        coinage = new MockCoinage();
+        // 2. Etch a MockToken at the fixed HUB address so it has working ERC-20 code.
         MockToken template = new MockToken("", "");
         vm.etch(HUB_ADDR, address(template).code);
-        coinage.setReturn(HUB_ADDR);
 
-        // 3. Construct Unispring. Its constructor mints the hub token (returning
-        //    the etched address) but does not yet touch the PoolManager.
-        unispring = new Unispring(
-            IAddressLookup(LOOKUP_ADDR), address(coinage), "Hub", "HUB", HUB_SUPPLY, bytes32(0), HUB_TICK_FLOOR
-        );
+        // 3. Construct Unispring bound to the hub at HUB_ADDR.
+        unispring = new Unispring(IAddressLookup(LOOKUP_ADDR), IERC20(HUB_ADDR), HUB_TICK_FLOOR);
 
-        // 4. Seed the hub pool in a separate call (constructor cannot receive callbacks).
+        // 4. Fund Unispring with the hub supply, then seed the hub pool.
+        MockToken(HUB_ADDR).mint(address(unispring), HUB_SUPPLY);
         unispring.seedHub();
 
-        // 5. Etch a second MockToken at the fixed new-token address, below HUB_ADDR,
-        //    and point the mock coinage at it for upcoming `make` calls.
-        vm.etch(NEW_TOKEN_ADDR, address(template).code);
-        coinage.setReturn(NEW_TOKEN_ADDR);
+        // 5. Etch a second MockToken at the fixed spoke-token address, below HUB_ADDR,
+        //    ready for upcoming `addSpoke` calls.
+        vm.etch(SPOKE_TOKEN_ADDR, address(template).code);
     }
 
-    function test_ConstructorMintsHubAndRegistersImmutables() public view {
+    function test_ConstructorRegistersImmutables() public view {
         assertEq(unispring.HUB(), HUB_ADDR, "HUB immutable");
-        assertEq(address(unispring.COINAGE()), address(coinage), "COINAGE immutable");
-        assertEq(unispring.HUB_SUPPLY(), HUB_SUPPLY, "HUB_SUPPLY immutable");
         assertEq(unispring.HUB_TICK_FLOOR(), HUB_TICK_FLOOR, "HUB_TICK_FLOOR immutable");
     }
 
@@ -259,15 +222,18 @@ contract UnispringTest is Test {
         unispring.seedHub();
     }
 
-    function test_MakeInitializesPoolAndAddsLiquidity() public {
+    function test_AddSpokeInitializesPoolAndAddsLiquidity() public {
         uint256 supply = 1_000_000 ether;
         int24 tickFloor = -120_000;
 
-        (IERC20 t, PoolId poolId) = unispring.make("Foo", "FOO", supply, tickFloor, bytes32(0));
+        // Mint spoke supply to this test contract and approve Unispring to pull it.
+        MockToken(SPOKE_TOKEN_ADDR).mint(address(this), supply);
+        MockToken(SPOKE_TOKEN_ADDR).approve(address(unispring), supply);
+
+        PoolId poolId = unispring.addSpoke(IERC20(SPOKE_TOKEN_ADDR), supply, tickFloor);
 
         // Token registry was populated.
-        assertEq(address(t), NEW_TOKEN_ADDR);
-        assertEq(address(unispring.poolToken(poolId)), NEW_TOKEN_ADDR);
+        assertEq(address(unispring.poolToken(poolId)), SPOKE_TOKEN_ADDR);
 
         // Pool was initialized with the right key shape.
         (Currency currency0, Currency currency1, uint24 fee, int24 tickSpacing, uint160 sqrtPriceX96, bool seenInit) =
@@ -276,9 +242,9 @@ contract UnispringTest is Test {
         assertEq(fee, unispring.FEE(), "fee constant mismatch");
         assertEq(tickSpacing, unispring.TICK_SPACING(), "tickSpacing constant mismatch");
 
-        // New token must sort strictly below HUB so it lands as currency0.
-        assertLt(uint160(NEW_TOKEN_ADDR), uint160(unispring.HUB()), "newToken must sort below HUB");
-        assertEq(Currency.unwrap(currency0), NEW_TOKEN_ADDR);
+        // Spoke token must sort strictly below HUB so it lands as currency0.
+        assertLt(uint160(SPOKE_TOKEN_ADDR), uint160(unispring.HUB()), "spoke must sort below HUB");
+        assertEq(Currency.unwrap(currency0), SPOKE_TOKEN_ADDR);
         assertEq(Currency.unwrap(currency1), unispring.HUB());
         // Single-sided in currency0 → pool price sits at the lower bound (tickFloor).
         assertEq(sqrtPriceX96, TickMath.getSqrtPriceAtTick(tickFloor));
@@ -290,23 +256,27 @@ contract UnispringTest is Test {
         assertEq(tickLower, tickFloor);
         assertEq(tickUpper, TickMath.maxUsableTick(unispring.TICK_SPACING()));
 
-        // The caller settled by transferring new-token to the (mock) PoolManager.
-        uint256 pmBalance = MockToken(NEW_TOKEN_ADDR).balanceOf(address(pm));
-        uint256 leftover = MockToken(NEW_TOKEN_ADDR).balanceOf(address(unispring));
+        // The caller settled by transferring spoke tokens to the (mock) PoolManager.
+        uint256 pmBalance = MockToken(SPOKE_TOKEN_ADDR).balanceOf(address(pm));
+        uint256 leftover = MockToken(SPOKE_TOKEN_ADDR).balanceOf(address(unispring));
         assertEq(pmBalance + leftover, supply, "supply must be conserved");
         assertGt(pmBalance, 0, "PoolManager received zero tokens");
     }
 
     function test_PlowDoesNotRevert() public {
+        uint256 supply = 1_000_000 ether;
         int24 tickFloor = -120_000;
-        unispring.make("Foo", "FOO", 1_000_000 ether, tickFloor, bytes32(0));
+
+        MockToken(SPOKE_TOKEN_ADDR).mint(address(this), supply);
+        MockToken(SPOKE_TOKEN_ADDR).approve(address(unispring), supply);
+        unispring.addSpoke(IERC20(SPOKE_TOKEN_ADDR), supply, tickFloor);
 
         int24 tickUpper = TickMath.maxUsableTick(unispring.TICK_SPACING());
 
-        // No fees accrue in this mock, but Unispring holds leftover new-token from
-        // the initial seed. The plow function should collect (zero) fees and then
-        // deposit the leftover as additional liquidity — without reverting.
-        unispring.plow(NEW_TOKEN_ADDR);
+        // No fees accrue in this mock, but Unispring holds leftover spoke tokens
+        // from the initial seed. The plow function should collect (zero) fees and
+        // then deposit the leftover as additional liquidity — without reverting.
+        unispring.plow(SPOKE_TOKEN_ADDR);
 
         // The most recent modifyLiquidity call recorded by the mock was the
         // additive deposit. A positive delta confirms the plow reached the

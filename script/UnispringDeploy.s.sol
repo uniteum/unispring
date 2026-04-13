@@ -3,26 +3,24 @@ pragma solidity ^0.8.30;
 
 import {Unispring} from "../src/Unispring.sol";
 import {IAddressLookup} from "ilookup/IAddressLookup.sol";
+import {IERC20} from "ierc20/IERC20.sol";
 import {PoolId} from "v4-core/types/PoolId.sol";
 import {Script, console2} from "forge-std/Script.sol";
 
 /**
- * @notice Deploy Unispring via Nick's CREATE2 deployer, salt-mining the hub's
- *         Lepton salt over a caller-supplied range so the resulting hub address
- *         has many leading `f` bytes.
+ * @notice Deploy Unispring via Nick's CREATE2 deployer against an
+ *         externally-minted hub, fund it with the configured hub amount, and
+ *         seed the hub pool.
  * @dev    All configuration comes from environment variables — no in-source
  *         defaults. Required:
- *           IPoolManagerLookup — per-chain `IAddressLookup` resolving the V4
- *                                PoolManager
- *           ICoinage      — Lepton prototype address (same value as the ICoinage
- *                           export used by the other scripts)
- *           HubName       — hub token name
- *           HubSymbol     — hub token symbol
- *           HubSupply     — hub token supply in wei
- *           HubTickFloor  — hub starting tick floor (int)
- *           HubMin        — minimum hub address (search accepts hub >= HubMin)
- *           HubSaltMin    — inclusive lower bound of the salt search range
- *           HubSaltMax    — exclusive upper bound of the salt search range
+ *           PoolManagerLookup — per-chain `IAddressLookup` resolving the V4
+ *                               PoolManager
+ *           HUB               — address of the already-deployed hub token
+ *           HubTickFloor      — hub starting tick floor (int)
+ *           HubAmount         — wei amount of hub to transfer into Unispring
+ *                               before calling `seedHub`
+ *
+ *         The broadcaster must hold at least `HubAmount` of the hub token.
  *
  * Usage:
  * forge script script/UnispringDeploy.s.sol -f $chain --private-key $tx_key --broadcast --verify --delay 10 --retries 10
@@ -32,119 +30,32 @@ contract UnispringDeploy is Script {
 
     function run() external {
         address poolManagerLookupAddr = vm.envAddress("PoolManagerLookup");
-        address coinageAddr = vm.envAddress("ICoinage");
-        string memory hubName = vm.envString("HubName");
-        string memory hubSymbol = vm.envString("HubSymbol");
-        uint256 hubSupply = vm.envUint("HubSupply");
+        address hubAddr = vm.envAddress("HUB");
         int256 tickFloorRaw = vm.envInt("HubTickFloor");
         // Tick values are always within int24 range by construction.
         // forge-lint: disable-next-line(unsafe-typecast)
         int24 hubTickFloor = int24(tickFloorRaw);
-        address hubMin = vm.envAddress("HubMin");
-        uint256 saltMin = vm.envUint("HubSaltMin");
-        uint256 saltMax = vm.envUint("HubSaltMax");
+        uint256 hubAmount = vm.envUint("HubAmount");
 
-        require(saltMax > saltMin, "HubSaltMax must be > HubSaltMin");
+        console2.log("pmLookup    :", poolManagerLookupAddr);
+        console2.log("hub         :", hubAddr);
+        console2.log("tickFloor   :", int256(hubTickFloor));
+        console2.log("hubAmount   :", hubAmount);
 
-        console2.log("pmLookup   :", poolManagerLookupAddr);
-        console2.log("coinage    :", coinageAddr);
-        console2.log("hubName    :", hubName);
-        console2.log("hubSymbol  :", hubSymbol);
-        console2.log("hubSupply  :", hubSupply);
-        console2.log("tickFloor  :", int256(hubTickFloor));
-        console2.log("hubMin     :", hubMin);
-        console2.log("saltMin    :", saltMin);
-        console2.log("saltMax    :", saltMax);
-
-        // EIP-1167 minimal proxy init code hash for a clone whose implementation
-        // is the Lepton prototype at `coinageAddr`. Matches OpenZeppelin Clones.
-        bytes32 cloneInitCodeHash = keccak256(
-            abi.encodePacked(
-                hex"3d602d80600a3d3981f3363d3d373d3d3d363d73", coinageAddr, hex"5af43d82803e903d91602b57fd5bf3"
-            )
+        // 1. Compute the deterministic Unispring CREATE2 address. No salt mining:
+        //    the init code is fixed by (lookup, hub, hubTickFloor) and the salt
+        //    is always zero.
+        bytes memory initCode = abi.encodePacked(
+            type(Unispring).creationCode,
+            abi.encode(IAddressLookup(poolManagerLookupAddr), IERC20(hubAddr), hubTickFloor)
         );
-
-        // 1. Mine the Lepton salt over [saltMin, saltMax). For each candidate,
-        //    compute the Unispring CREATE2 address the resulting init code would
-        //    produce, replicate Lepton's clone-address math off-chain (so the
-        //    loop makes no RPC calls), and check the prefix.
-        //
-        //    Solidity never frees memory within a call, so every iteration's
-        //    fresh `initCode` buffer would OOM a long search. We snapshot the
-        //    free-memory pointer and reset it each iteration — the per-iteration
-        //    allocations are strictly scoped, so this is safe.
-        bytes32 winningSalt;
-        bytes memory winningInitCode;
-        address predictedUnispring;
-        address predictedHub;
-        bool found;
-
-        uint256 memSnapshot;
-        // forge-lint: disable-next-line(asm-keccak256)
-        assembly {
-            memSnapshot := mload(0x40)
-        }
-
-        vm.pauseGasMetering();
-
-        for (uint256 i = saltMin; i < saltMax; i++) {
-            bytes32 salt = bytes32(i);
-            bytes memory initCode = abi.encodePacked(
-                type(Unispring).creationCode,
-                abi.encode(
-                    IAddressLookup(poolManagerLookupAddr),
-                    coinageAddr,
-                    hubName,
-                    hubSymbol,
-                    hubSupply,
-                    salt,
-                    hubTickFloor
-                )
-            );
-            address unispringAddr = vm.computeCreate2Address(bytes32(0), keccak256(initCode), NICK);
-            bytes32 create2Salt = keccak256(abi.encode(unispringAddr, hubName, hubSymbol, hubSupply, salt));
-            address hubAddr = vm.computeCreate2Address(create2Salt, cloneInitCodeHash, coinageAddr);
-            if (uint160(hubAddr) >= uint160(hubMin)) {
-                winningSalt = salt;
-                predictedUnispring = unispringAddr;
-                predictedHub = hubAddr;
-                found = true;
-                break;
-            }
-            assembly {
-                mstore(0x40, memSnapshot)
-            }
-        }
-
-        vm.resumeGasMetering();
-
-        // Rebuild the winning init code after the mining loop so it survives
-        // the per-iteration memory reset.
-        if (found) {
-            winningInitCode = abi.encodePacked(
-                type(Unispring).creationCode,
-                abi.encode(
-                    IAddressLookup(poolManagerLookupAddr),
-                    coinageAddr,
-                    hubName,
-                    hubSymbol,
-                    hubSupply,
-                    winningSalt,
-                    hubTickFloor
-                )
-            );
-        }
-
-        require(found, "no salt found in [HubSaltMin, HubSaltMax) - widen the range or lower HubMin");
-
-        console2.log("winning salt (uint):", uint256(winningSalt));
+        address predictedUnispring = vm.computeCreate2Address(bytes32(0), keccak256(initCode), NICK);
         console2.log("predicted Unispring:", predictedUnispring);
-        console2.log("predicted HUB      :", predictedHub);
 
         // 2. Deploy Unispring via Nick's CREATE2 factory (once).
         if (predictedUnispring.code.length == 0) {
             vm.startBroadcast();
-            (bool ok,) = NICK.call(abi.encodePacked(bytes32(0), winningInitCode));
+            (bool ok,) = NICK.call(abi.encodePacked(bytes32(0), initCode));
             vm.stopBroadcast();
             require(ok, "create2 deploy failed");
             console2.log("deployed Unispring:", predictedUnispring);
@@ -152,9 +63,21 @@ contract UnispringDeploy is Script {
             console2.log("Unispring already deployed");
         }
 
-        // 3. Seed the hub pool. Idempotent-ish: if already seeded, we skip.
         Unispring unispring = Unispring(payable(predictedUnispring));
+
+        // 3. Seed the hub pool. Idempotent-ish: if already seeded, we skip.
         if (PoolId.unwrap(unispring.hubPool()) == bytes32(0)) {
+            // Top up Unispring to `hubAmount` of hub tokens before seeding.
+            uint256 currentBalance = IERC20(hubAddr).balanceOf(predictedUnispring);
+            if (currentBalance < hubAmount) {
+                uint256 topUp = hubAmount - currentBalance;
+                vm.startBroadcast();
+                // forge-lint: disable-next-line(erc20-unchecked-transfer)
+                IERC20(hubAddr).transfer(predictedUnispring, topUp);
+                vm.stopBroadcast();
+                console2.log("funded Unispring with hub:", topUp);
+            }
+
             vm.startBroadcast();
             unispring.seedHub();
             vm.stopBroadcast();

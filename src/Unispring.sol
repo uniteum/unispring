@@ -2,7 +2,6 @@
 pragma solidity ^0.8.30;
 
 import {IAddressLookup} from "ilookup/IAddressLookup.sol";
-import {ICoinage} from "ierc20/ICoinage.sol";
 import {IERC20} from "ierc20/IERC20.sol";
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
@@ -19,11 +18,12 @@ import {ModifyLiquidityParams, SwapParams} from "v4-core/types/PoolOperation.sol
 
 /**
  * @title Unispring
- * @notice Fair-launch token factory on Uniswap V4 — permanent liquidity, built-in
- *         price floor, self-bootstrapped hub, compounding via fee plowback.
- * @dev    See README.md for the full design rationale. The factory mints its own
- *         hub token in the constructor, pairs it against native ETH, and seeds
- *         a single-sided hub position. Per-token state is keyed by V4 `PoolId`.
+ * @notice Fair-launch pool seeder on Uniswap V4 — permanent liquidity, built-in
+ *         price floor, hub-paired spokes, compounding via fee plowback.
+ * @dev    See README.md for the full design rationale. The hub token is supplied
+ *         externally at construction; its ETH pool is seeded single-sided by
+ *         {seedHub}. Additional tokens are paired against the hub by {addSpoke}.
+ *         Per-token state is keyed by V4 `PoolId`.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
 contract Unispring is IUnlockCallback {
@@ -50,27 +50,14 @@ contract Unispring is IUnlockCallback {
     int24 public constant TICK_SPACING = 1;
 
     /**
-     * @notice The Lepton ERC-20 maker (prototype address) supplied at construction.
-     * @dev Unispring uses this to mint the hub token and, via {make}, every new
-     *      Unispring token. Identical address on every chain when the prototype
-     *      is deployed via the CREATE2 factory.
-     */
-    ICoinage public immutable COINAGE;
-
-    /**
-     * @notice The hub token, minted by this factory in its constructor.
-     * @dev Address is determined by the constructor arguments and Lepton's
-     *      deterministic deployment. Deploy scripts salt-mine the constructor so
-     *      `HUB` ends up with many leading `f` bytes, which makes future
-     *      {make} calls succeed with `salt = 0` essentially every time.
+     * @notice The hub token, supplied at construction.
+     * @dev    Must have its full intended pool supply transferred to this contract
+     *         before {seedHub} is called; {seedHub} reads `HUB.balanceOf(this)` as
+     *         the amount to seed. Deploy scripts salt-mine the hub's address so
+     *         it has many leading `f` bytes, which makes future {addSpoke} calls
+     *         succeed with spoke tokens whose addresses sort strictly below `HUB`.
      */
     address public immutable HUB;
-
-    /**
-     * @notice Fixed supply of the hub token, minted in the constructor and seeded
-     *         into the hub pool by {seedHub}.
-     */
-    uint256 public immutable HUB_SUPPLY;
 
     /**
      * @notice Price floor the hub pool is seeded at, in hub-priced-in-ETH
@@ -91,25 +78,23 @@ contract Unispring is IUnlockCallback {
 
     /**
      * @notice Price floor of the position for a given token, in
-     *         new-token-priced-in-counterparty semantics.
-     * @dev    Set once in {make} (or {seedHub} for the hub token). Used by
+     *         spoke-token-priced-in-counterparty semantics.
+     * @dev    Set once in {addSpoke} (or {seedHub} for the hub token). Used by
      *         {plow} to reconstruct the full position coordinates from just
      *         a token address.
      */
     mapping(address => int24) public floor;
 
     /**
-     * @notice Emitted when a token is minted, paired against the hub, and seeded.
-     * @param maker     The address that called {make} (or this contract itself
-     *                  for the hub pool seeded during construction).
-     * @param newToken  The freshly deployed Lepton token (the hub, for the
-     *                  constructor-seeded pool).
+     * @notice Emitted when a pool is initialized, paired against the hub, and seeded.
+     * @param seeder    The address that called {addSpoke} or {seedHub}.
+     * @param token     The spoke token (or the hub, for {seedHub}).
      * @param poolId    The Uniswap V4 pool id.
-     * @param supply    The fixed supply minted into the pool.
-     * @param tickFloor The price floor in new-token-priced-in-counterparty
+     * @param supply    The fixed supply seeded into the pool.
+     * @param tickFloor The price floor in spoke-token-priced-in-counterparty
      *                  semantics.
      */
-    event Made(address indexed maker, IERC20 indexed newToken, PoolId indexed poolId, uint256 supply, int24 tickFloor);
+    event Seeded(address indexed seeder, IERC20 indexed token, PoolId indexed poolId, uint256 supply, int24 tickFloor);
 
     /**
      * @notice Emitted when {plow} compounds fees back into a position.
@@ -130,15 +115,15 @@ contract Unispring is IUnlockCallback {
     error TickFloorOutOfRange(int24 tickFloor);
 
     /**
-     * @notice Thrown when the freshly minted token does not sort strictly below {HUB}.
-     * @dev    Unispring's {make} requires `newToken < HUB` so the new token becomes
-     *         `currency0` of the pool. This is the only currency ordering under
-     *         which a single-sided seed position is both active at spot and requires
+     * @notice Thrown when the spoke token does not sort strictly below {HUB}.
+     * @dev    {addSpoke} requires `token < HUB` so the spoke becomes `currency0`
+     *         of the pool. This is the only currency ordering under which a
+     *         single-sided seed position is both active at spot and requires
      *         zero hub capital; see README.md for the full derivation. Mine a
-     *         different Lepton salt until the deterministic address sorts below
+     *         different spoke salt until the deterministic address sorts below
      *         {HUB}.
      */
-    error NewTokenMustSortBelowHub(address newToken);
+    error SpokeMustSortBelowHub(address token);
 
     /**
      * @notice Thrown when a pool with the same key has already been created.
@@ -216,44 +201,28 @@ contract Unispring is IUnlockCallback {
     }
 
     /**
-     * @notice Construct the Unispring factory and mint the hub token.
+     * @notice Construct the Unispring seeder bound to an externally-supplied hub.
      * @dev    The hub pool is NOT seeded here. A contract cannot receive callbacks
      *         during its own construction (its runtime code isn't deployed yet),
      *         so pool seeding is deferred to {seedHub}, which must be called once
-     *         by the deployer immediately after construction.
+     *         after the hub's full intended pool supply has been transferred to
+     *         this contract.
      * @param  poolManagerLookup `IAddressLookup` resolving the chain-local
      *                       Uniswap V4 PoolManager. Dereferenced once in the
      *                       constructor and stored as {POOL_MANAGER}.
-     * @param  coinage   Address of the Lepton prototype used to mint tokens.
-     * @param  hubName       Name of the hub token (forwarded to Lepton).
-     * @param  hubSymbol     Symbol of the hub token (forwarded to Lepton).
-     * @param  hubSupply     Fixed supply of the hub token.
-     * @param  hubSalt       Salt used for the hub's Lepton deployment. Deploy
-     *                       scripts mine this value off-chain so the resulting
-     *                       hub address has many leading `f` bytes.
+     * @param  hub           The hub token. Stored as {HUB}.
      * @param  hubTickFloor  Price floor for the hub, expressed in hub-priced-in-ETH
      *                       semantics. Must be a multiple of {TICK_SPACING} and
      *                       strictly inside `(MIN_TICK, MAX_TICK)`.
      */
-    constructor(
-        IAddressLookup poolManagerLookup,
-        address coinage,
-        string memory hubName,
-        string memory hubSymbol,
-        uint256 hubSupply,
-        bytes32 hubSalt,
-        int24 hubTickFloor
-    ) {
+    constructor(IAddressLookup poolManagerLookup, IERC20 hub, int24 hubTickFloor) {
         if (hubTickFloor % TICK_SPACING != 0) revert TickFloorMisaligned(hubTickFloor);
         if (hubTickFloor <= TickMath.MIN_TICK || hubTickFloor >= TickMath.MAX_TICK) {
             revert TickFloorOutOfRange(hubTickFloor);
         }
 
         POOL_MANAGER = IPoolManager(poolManagerLookup.value());
-        COINAGE = ICoinage(coinage);
-        IERC20 hubToken = IERC20(address(COINAGE.make(hubName, hubSymbol, hubSupply, hubSalt)));
-        HUB = address(hubToken);
-        HUB_SUPPLY = hubSupply;
+        HUB = address(hub);
         HUB_TICK_FLOOR = hubTickFloor;
     }
 
@@ -265,18 +234,21 @@ contract Unispring is IUnlockCallback {
 
     /**
      * @notice Initialize the hub's ETH pool and seed it single-sided with the
-     *         hub supply minted in the constructor. Callable exactly once.
+     *         hub balance currently held by this contract. Callable exactly once.
      * @dev    Permissionless — any caller may trigger it. The deploy script
-     *         calls it immediately after construction. Subsequent calls revert.
-     *         The seed is the fencepost "mirror" case (single-sided currency1
-     *         at the upper boundary, inactive at spot until the first ETH→HUB
-     *         swap crosses the boundary downward). A bootstrap swap is expected
-     *         right after this call so the pool shows as active to quoters and
-     *         hosted front-ends.
+     *         transfers the full hub supply to this contract and then calls
+     *         this immediately. Subsequent calls revert. The seed is the
+     *         fencepost "mirror" case (single-sided currency1 at the upper
+     *         boundary, inactive at spot until the first ETH→HUB swap crosses
+     *         the boundary downward). A bootstrap swap is expected right after
+     *         this call so the pool shows as active to quoters and hosted
+     *         front-ends.
      * @return poolId The pool id of the newly seeded hub pool.
      */
     function seedHub() external returns (PoolId poolId) {
         if (PoolId.unwrap(hubPool) != bytes32(0)) revert HubAlreadySeeded();
+
+        uint256 supply = IERC20(HUB).balanceOf(address(this));
 
         PoolKey memory key = PoolKey({
             currency0: Currency.wrap(address(0)),
@@ -299,53 +271,46 @@ contract Unispring is IUnlockCallback {
         pm.unlock(
             abi.encode(
                 Action.SEED_CURRENCY1,
-                abi.encode(
-                    SeedCurrency1Data({key: key, supply: HUB_SUPPLY, tickLower: tickLower, tickUpper: tickUpper})
-                )
+                abi.encode(SeedCurrency1Data({key: key, supply: supply, tickLower: tickLower, tickUpper: tickUpper}))
             )
         );
 
-        emit Made(address(this), IERC20(HUB), poolId, HUB_SUPPLY, HUB_TICK_FLOOR);
+        emit Seeded(msg.sender, IERC20(HUB), poolId, supply, HUB_TICK_FLOOR);
     }
 
     /**
-     * @notice Mint a fixed-supply token, pair it against the hub, and lock the
-     *         entire supply into a single-sided V4 position with a permanent floor.
-     * @dev    The freshly deployed Lepton token must sort strictly below {HUB} so
-     *         that the new token becomes `currency0` of the pool. Mine the Lepton
-     *         salt off-chain until the deterministic address satisfies this
-     *         constraint; with a high-prefix hub `salt = 0` works almost always.
-     * @param  name      Token name (passed through to Lepton).
-     * @param  symbol    Token symbol (passed through to Lepton).
-     * @param  supply    Token supply (passed through to Lepton).
-     * @param  tickFloor Price floor expressed in new-token-priced-in-hub semantics.
-     *                   Must be a multiple of {TICK_SPACING} and strictly inside
+     * @notice Pair an already-deployed token against the hub and lock `supply`
+     *         into a single-sided V4 position with a permanent floor.
+     * @dev    The spoke token must sort strictly below {HUB} so that it becomes
+     *         `currency0` of the pool. Caller must approve this contract to pull
+     *         `supply` tokens; the pulled balance is then locked into the seed
+     *         position.
+     * @param  token     The spoke token to pair against the hub.
+     * @param  supply    Amount of `token` to pull from the caller and seed into
+     *                   the position.
+     * @param  tickFloor Price floor expressed in spoke-in-hub semantics. Must be
+     *                   a multiple of {TICK_SPACING} and strictly inside
      *                   `(MIN_TICK, MAX_TICK)`.
-     * @param  salt      Caller-supplied Lepton salt; must produce a token address
-     *                   that sorts strictly below {HUB}.
-     * @return newToken  The freshly deployed Lepton token.
      * @return poolId    The Uniswap V4 pool id.
      */
-    function make(string calldata name, string calldata symbol, uint256 supply, int24 tickFloor, bytes32 salt)
-        external
-        returns (IERC20 newToken, PoolId poolId)
-    {
+    function addSpoke(IERC20 token, uint256 supply, int24 tickFloor) external returns (PoolId poolId) {
         if (tickFloor % TICK_SPACING != 0) revert TickFloorMisaligned(tickFloor);
         if (tickFloor <= TickMath.MIN_TICK || tickFloor >= TickMath.MAX_TICK) {
             revert TickFloorOutOfRange(tickFloor);
         }
 
-        // 1. Mint the entire fixed supply to this contract.
-        newToken = IERC20(address(COINAGE.make(name, symbol, supply, salt)));
+        // 1. Enforce currency0 ordering: spoke must sort strictly below the hub.
+        if (address(token) >= HUB) revert SpokeMustSortBelowHub(address(token));
 
-        // 2. Enforce currency0 ordering: new token must sort strictly below the hub.
-        if (address(newToken) >= HUB) revert NewTokenMustSortBelowHub(address(newToken));
+        // 2. Pull the seed supply from the caller.
+        // forge-lint: disable-next-line(erc20-unchecked-transfer)
+        token.transferFrom(msg.sender, address(this), supply);
 
-        // 3. Build the pool key. newToken is currency0; floor on token-in-hub price
+        // 3. Build the pool key. Spoke is currency0; floor on token-in-hub price
         //    equals floor on pool tick. Range [tickFloor, MAX]; pool price seeded at
         //    the lower bound; the position is single-sided in currency0 and active.
         PoolKey memory key = PoolKey({
-            currency0: Currency.wrap(address(newToken)),
+            currency0: Currency.wrap(address(token)),
             currency1: Currency.wrap(HUB),
             fee: FEE,
             tickSpacing: TICK_SPACING,
@@ -357,8 +322,8 @@ contract Unispring is IUnlockCallback {
 
         poolId = key.toId();
         if (address(poolToken[poolId]) != address(0)) revert PoolAlreadyExists(poolId);
-        poolToken[poolId] = newToken;
-        floor[address(newToken)] = tickLower;
+        poolToken[poolId] = token;
+        floor[address(token)] = tickLower;
 
         // 4. Initialize the pool and seed the position via the unlock callback.
         IPoolManager pm = POOL_MANAGER;
@@ -370,7 +335,7 @@ contract Unispring is IUnlockCallback {
             )
         );
 
-        emit Made(msg.sender, newToken, poolId, supply, tickFloor);
+        emit Seeded(msg.sender, token, poolId, supply, tickFloor);
     }
 
     /**
