@@ -30,43 +30,38 @@ numbered so we can refer to them in commits and PRs.
 
 ## Concerns (address these)
 
-1. **Trust is shifted, not removed.** The deploy script still decides HUB
-   supply, floor, and which spokes get added. "Fair launch" here means
-   "can't be rugged *after* seeding"; the pre-seed distribution is entirely
-   off-chain. Document this boundary explicitly.
-
-2. **`addSpoke` is fully permissionless but not gated.** Anyone can register
+1. **`addSpoke` is fully permissionless but not gated.** Anyone can register
    a spoke against the hub. The hub's reputation is hostage to every spoke
    that lands on it. No allowlist, no fee, no metadata. Decide whether this
    is intentional and, if so, say so loudly.
 
-3. **`tx.origin` in the `Plowed` event.** See [src/Unispring.sol:471](src/Unispring.sol#L471)
+2. **`tx.origin` in the `Plowed` event.** See [src/Unispring.sol:471](src/Unispring.sol#L471)
    and [src/Unispring.sol:491](src/Unispring.sol#L491). Not a security
    issue (event topic only) but surprising — use `msg.sender`.
 
-4. **Hub bootstrap is a two-step dance.** `seedHub` leaves the pool inactive
+3. **Hub bootstrap is a two-step dance.** `seedHub` leaves the pool inactive
    at spot until someone calls `buyHub`; between those two txs the pool
    exists but quoters see it as dead. A deploy script handles this, but any
    external caller racing in sees a confusing state. Consider fusing the
    two, or documenting the race.
 
-5. **0.01% fee tier is the worst tier for fee plowback economics.** Chosen
+4. **0.01% fee tier is the worst tier for fee plowback economics.** Chosen
    for router discoverability, but a token that expects its moat to be
    compounded fees will compound very slowly. Either justify in code
    comments or reconsider.
 
-6. **No escape hatch for malicious spoke tokens.** `addSpoke` does an
+5. **No escape hatch for malicious spoke tokens.** `addSpoke` does an
    unchecked `transferFrom` (lint suppressed at [src/Unispring.sol:295](src/Unispring.sol#L295)).
    A fee-on-transfer, rebasing, or blacklisting token could poison `plow`
    forever for that pool. Document the supported token shapes or add a
    probe.
 
-7. **`floor` namespace invariant is undocumented.** `floor[HUB]` and
+6. **`floor` namespace invariant is undocumented.** `floor[HUB]` and
    `floor[token]` share a single `address => int24` mapping. The
    `SpokeMustSortBelowHub` check prevents collision with `HUB`, but the
    invariant isn't stated anywhere. Add a NatSpec line.
 
-8. **`UnknownToken` detection uses `floor[token] == 0`.** See
+7. **`UnknownToken` detection uses `floor[token] == 0`.** See
    [src/Unispring.sol:340-341](src/Unispring.sol#L340-L341). A legitimate
    `tickFloor` of exactly 0 would be indistinguishable from "unknown." The
    constructor forbids `<= MIN_TICK` and `>= MAX_TICK` but allows 0. Either
