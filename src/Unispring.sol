@@ -120,7 +120,7 @@ contract Unispring is IUnlockCallback {
      * @param token     The spoke token (or the hub, for {seedHub}).
      * @param poolId    The Uniswap V4 pool id.
      * @param supply    The fixed supply seeded into the pool.
-     * @param tickFloor The price floor in spoke-token-priced-in-counterparty
+     * @param tickFloor The price floor in token-priced-in-counterparty
      *                  semantics.
      */
     event Seeded(address indexed seeder, IERC20 indexed token, PoolId indexed poolId, uint256 supply, int24 tickFloor);
