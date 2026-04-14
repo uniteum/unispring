@@ -30,10 +30,23 @@ numbered so we can refer to them in commits and PRs.
 
 ## Concerns (address these)
 
-1. **`addSpoke` is fully permissionless but not gated.** Anyone can register
-   a spoke against the hub. The hub's reputation is hostage to every spoke
-   that lands on it. No allowlist, no fee, no metadata. Decide whether this
-   is intentional and, if so, say so loudly.
+1. **Unispring membership is a weak trust signal on its own.** `addSpoke` is
+   permissionless, so "this token is in Unispring" only tells you its
+   supply is floor-locked — it says nothing about the token's bytecode
+   (could be fee-on-transfer, rebasing, blacklisting, upgradeable, or
+   hold a hidden mint).
+
+   **Proposed fix:** a launcher contract that, in a single transaction,
+   (a) calls [Lepton](../lepton/src/Lepton.sol) to mint a fresh fixed-supply
+   clone, and (b) seeds the entire supply into Unispring via `addSpoke`.
+   Tokens that emerge from this launcher carry a strong composite guarantee:
+   vanilla Lepton bytecode (no mint, no blacklist, no fee-on-transfer, no
+   upgrade) + entire supply locked behind a Unispring floor + nobody holds
+   any of it post-seed. Front-ends and indexers can trust the launcher
+   address as a whitelist rather than trusting Unispring membership.
+
+   Unispring itself stays permissionless — the trust layer lives one level
+   up, in the launcher.
 
 2. **`tx.origin` in the `Plowed` event.** See [src/Unispring.sol:471](src/Unispring.sol#L471)
    and [src/Unispring.sol:491](src/Unispring.sol#L491). Not a security
