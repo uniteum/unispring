@@ -274,6 +274,35 @@ contract Unispring is IUnlockCallback {
      *         `currency0` of the pool. Caller must approve this contract to pull
      *         `supply` tokens; the pulled balance is then locked into the seed
      *         position.
+     *
+     *         Permissionless by design: anyone can pair any ERC-20 against the
+     *         hub. A misbehaving or malicious spoke (fee-on-transfer, rebasing,
+     *         blacklisting, revert-on-transfer, ERC777-style transfer hooks)
+     *         can only damage its own pool, never the hub or other spokes:
+     *
+     *           1. Per-pool isolation. Unispring only runs a spoke's code
+     *              during operations on that spoke's own pool. {addSpoke} and
+     *              {plow} for pool A never touch pool B's token.
+     *           2. Reentrancy via transfer hooks is blocked by Uniswap V4's
+     *              single-locker model. A hook cannot re-enter {plow} /
+     *              {addSpoke} / {seedHub} / {buyHub} (each calls
+     *              `POOL_MANAGER.unlock`, which reverts on nested entry), and
+     *              it cannot call the PoolManager directly because
+     *              `take` / `swap` / `modifyLiquidity` require the caller to
+     *              be the active locker.
+     *           3. The hub balance held by this contract (carryover from prior
+     *              plows across all pools) is safe: during a plow we only
+     *              transfer the exact `owed` amount the PoolManager computes
+     *              for the current add. A foreign spoke's transfer hook has
+     *              no path to move HUB.
+     *           4. Fee-on-transfer or revert-on-transfer causes {_plow}'s
+     *              `settle` step to underpay or revert, unwinding the whole
+     *              plow atomically. No partial state.
+     *
+     *         Residual consequence: a bad spoke may become permanently
+     *         un-plowable. Its fees accrue in the pool but cannot be
+     *         compounded. That is a cosmetic wart for that one pool, not a
+     *         compromise of the system.
      * @param  token     The spoke token to pair against the hub.
      * @param  supply    Amount of `token` to pull from the caller and seed into
      *                   the position.
