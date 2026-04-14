@@ -30,6 +30,46 @@ contract Unispring is IUnlockCallback {
     using StateLibrary for IPoolManager;
 
     /**
+     * @dev Discriminator for the unlock callback payload.
+     */
+    enum Action {
+        SEED,
+        PLOW,
+        BUY_HUB
+    }
+
+    /**
+     * @dev Internal payload used to seed a single-sided position. `currency0Sided`
+     *      selects which side of the pair the supply funds: `true` for every
+     *      {addSpoke}-created pool, `false` for the {seedHub}-created hub pool.
+     */
+    struct SeedData {
+        PoolKey key;
+        uint256 supply;
+        int24 tickLower;
+        int24 tickUpper;
+        bool currency0Sided;
+    }
+
+    /**
+     * @dev Internal payload used to compound fees into an existing position.
+     */
+    struct PlowData {
+        PoolKey key;
+        int24 tickLower;
+        int24 tickUpper;
+        address caller;
+    }
+
+    /**
+     * @dev Internal payload for the hub bootstrap swap.
+     */
+    struct BuyHubData {
+        address recipient;
+        uint256 amountIn;
+    }
+
+    /**
      * @notice The Uniswap V4 PoolManager, resolved from the `IAddressLookup`
      *         supplied at construction.
      */
@@ -129,46 +169,6 @@ contract Unispring is IUnlockCallback {
      * @notice Thrown if liquidity computed from supply exceeds `uint128`.
      */
     error LiquidityOverflow();
-
-    /**
-     * @dev Discriminator for the unlock callback payload.
-     */
-    enum Action {
-        SEED,
-        PLOW,
-        BUY_HUB
-    }
-
-    /**
-     * @dev Internal payload used to seed a single-sided position. `currency0Sided`
-     *      selects which side of the pair the supply funds: `true` for every
-     *      {addSpoke}-created pool, `false` for the {seedHub}-created hub pool.
-     */
-    struct SeedData {
-        PoolKey key;
-        uint256 supply;
-        int24 tickLower;
-        int24 tickUpper;
-        bool currency0Sided;
-    }
-
-    /**
-     * @dev Internal payload used to compound fees into an existing position.
-     */
-    struct PlowData {
-        PoolKey key;
-        int24 tickLower;
-        int24 tickUpper;
-        address caller;
-    }
-
-    /**
-     * @dev Internal payload for the hub bootstrap swap.
-     */
-    struct BuyHubData {
-        address recipient;
-        uint256 amountIn;
-    }
 
     /**
      * @notice Construct the Unispring seeder bound to an externally-supplied hub.
@@ -518,21 +518,6 @@ contract Unispring is IUnlockCallback {
     }
 
     /**
-     * @dev Build a pool key with the given currency0 paired against HUB.
-     *      Pass `address(0)` for the hub pool (ETH/HUB), or a spoke token
-     *      address for a spoke pool. Caller must ensure `currency0 < HUB`.
-     */
-    function _poolKey(address currency0) private view returns (PoolKey memory) {
-        return PoolKey({
-            currency0: Currency.wrap(currency0),
-            currency1: Currency.wrap(HUB),
-            fee: FEE,
-            tickSpacing: TICK_SPACING,
-            hooks: IHooks(address(0))
-        });
-    }
-
-    /**
      * @dev Settle a non-positive delta owed to the PoolManager, paying in either
      *      native ETH or ERC-20 depending on the currency.
      */
@@ -549,6 +534,21 @@ contract Unispring is IUnlockCallback {
             erc.transfer(address(pm), owed);
             pm.settle();
         }
+    }
+
+    /**
+     * @dev Build a pool key with the given currency0 paired against HUB.
+     *      Pass `address(0)` for the hub pool (ETH/HUB), or a spoke token
+     *      address for a spoke pool. Caller must ensure `currency0 < HUB`.
+     */
+    function _poolKey(address currency0) private view returns (PoolKey memory) {
+        return PoolKey({
+            currency0: Currency.wrap(currency0),
+            currency1: Currency.wrap(HUB),
+            fee: FEE,
+            tickSpacing: TICK_SPACING,
+            hooks: IHooks(address(0))
+        });
     }
 
     /**
