@@ -155,32 +155,22 @@ contract Unispring is IUnlockCallback {
      * @dev Discriminator for the unlock callback payload.
      */
     enum Action {
-        SEED_CURRENCY0,
-        SEED_CURRENCY1,
+        SEED,
         PLOW,
         BUY_HUB
     }
 
     /**
-     * @dev Internal payload used to seed a single-sided currency0 position
-     *      (every {make}-created pool).
+     * @dev Internal payload used to seed a single-sided position. `currency0Sided`
+     *      selects which side of the pair the supply funds: `true` for every
+     *      {addSpoke}-created pool, `false` for the {seedHub}-created hub pool.
      */
-    struct SeedCurrency0Data {
+    struct SeedData {
         PoolKey key;
         uint256 supply;
         int24 tickLower;
         int24 tickUpper;
-    }
-
-    /**
-     * @dev Internal payload used to seed a single-sided currency1 position
-     *      (the constructor-created hub pool).
-     */
-    struct SeedCurrency1Data {
-        PoolKey key;
-        uint256 supply;
-        int24 tickLower;
-        int24 tickUpper;
+        bool currency0Sided;
     }
 
     /**
@@ -270,8 +260,12 @@ contract Unispring is IUnlockCallback {
         pm.initialize(key, sqrtPriceX96);
         pm.unlock(
             abi.encode(
-                Action.SEED_CURRENCY1,
-                abi.encode(SeedCurrency1Data({key: key, supply: supply, tickLower: tickLower, tickUpper: tickUpper}))
+                Action.SEED,
+                abi.encode(
+                    SeedData({
+                        key: key, supply: supply, tickLower: tickLower, tickUpper: tickUpper, currency0Sided: false
+                    })
+                )
             )
         );
 
@@ -330,8 +324,12 @@ contract Unispring is IUnlockCallback {
         pm.initialize(key, sqrtPriceX96);
         pm.unlock(
             abi.encode(
-                Action.SEED_CURRENCY0,
-                abi.encode(SeedCurrency0Data({key: key, supply: supply, tickLower: tickLower, tickUpper: tickUpper}))
+                Action.SEED,
+                abi.encode(
+                    SeedData({
+                        key: key, supply: supply, tickLower: tickLower, tickUpper: tickUpper, currency0Sided: true
+                    })
+                )
             )
         );
 
@@ -407,10 +405,8 @@ contract Unispring is IUnlockCallback {
         IPoolManager pm = POOL_MANAGER;
 
         (Action action, bytes memory inner) = abi.decode(data, (Action, bytes));
-        if (action == Action.SEED_CURRENCY0) {
-            _seedCurrency0(pm, abi.decode(inner, (SeedCurrency0Data)));
-        } else if (action == Action.SEED_CURRENCY1) {
-            _seedCurrency1(pm, abi.decode(inner, (SeedCurrency1Data)));
+        if (action == Action.SEED) {
+            _seed(pm, abi.decode(inner, (SeedData)));
         } else if (action == Action.PLOW) {
             _plow(pm, abi.decode(inner, (PlowData)));
         } else {
@@ -420,12 +416,15 @@ contract Unispring is IUnlockCallback {
     }
 
     /**
-     * @dev Seed a single-sided currency0 position with `supply` tokens.
+     * @dev Seed a single-sided position with `supply` tokens. `currency0Sided`
+     *      selects which side of the pair the supply funds.
      */
-    function _seedCurrency0(IPoolManager pm, SeedCurrency0Data memory cb) private {
+    function _seed(IPoolManager pm, SeedData memory cb) private {
         uint160 sqrtLower = TickMath.getSqrtPriceAtTick(cb.tickLower);
         uint160 sqrtUpper = TickMath.getSqrtPriceAtTick(cb.tickUpper);
-        uint128 liquidity = _liquidityForAmount0(sqrtLower, sqrtUpper, cb.supply);
+        uint128 liquidity = cb.currency0Sided
+            ? _liquidityForAmount0(sqrtLower, sqrtUpper, cb.supply)
+            : _liquidityForAmount1(sqrtLower, sqrtUpper, cb.supply);
 
         (BalanceDelta delta,) = pm.modifyLiquidity(
             cb.key,
@@ -438,48 +437,16 @@ contract Unispring is IUnlockCallback {
             ""
         );
 
-        // The position is single-sided in currency0, so only `amount0` is owed.
-        // `amount0` is non-positive (a debit owed by the caller); negation fits in uint128.
-        int128 amount0 = delta.amount0();
+        // The position is single-sided, so only the funded side is owed.
+        // That amount is non-positive (a debit owed by the caller); negation fits in uint128.
+        Currency currency = cb.currency0Sided ? cb.key.currency0 : cb.key.currency1;
+        int128 amount = cb.currency0Sided ? delta.amount0() : delta.amount1();
         // forge-lint: disable-next-line(unsafe-typecast)
-        uint256 owed = uint256(uint128(-amount0));
+        uint256 owed = uint256(uint128(-amount));
 
-        IERC20 newToken = IERC20(Currency.unwrap(cb.key.currency0));
-        pm.sync(cb.key.currency0);
+        pm.sync(currency);
         // forge-lint: disable-next-line(erc20-unchecked-transfer)
-        newToken.transfer(address(pm), owed);
-        pm.settle();
-    }
-
-    /**
-     * @dev Seed a single-sided currency1 position with `supply` tokens. Only used
-     *      by the constructor to seed the hub's ETH pool.
-     */
-    function _seedCurrency1(IPoolManager pm, SeedCurrency1Data memory cb) private {
-        uint160 sqrtLower = TickMath.getSqrtPriceAtTick(cb.tickLower);
-        uint160 sqrtUpper = TickMath.getSqrtPriceAtTick(cb.tickUpper);
-        uint128 liquidity = _liquidityForAmount1(sqrtLower, sqrtUpper, cb.supply);
-
-        (BalanceDelta delta,) = pm.modifyLiquidity(
-            cb.key,
-            ModifyLiquidityParams({
-                tickLower: cb.tickLower,
-                tickUpper: cb.tickUpper,
-                liquidityDelta: int256(uint256(liquidity)),
-                salt: bytes32(0)
-            }),
-            ""
-        );
-
-        // The position is single-sided in currency1, so only `amount1` is owed.
-        int128 amount1 = delta.amount1();
-        // forge-lint: disable-next-line(unsafe-typecast)
-        uint256 owed = uint256(uint128(-amount1));
-
-        IERC20 hubToken = IERC20(Currency.unwrap(cb.key.currency1));
-        pm.sync(cb.key.currency1);
-        // forge-lint: disable-next-line(erc20-unchecked-transfer)
-        hubToken.transfer(address(pm), owed);
+        IERC20(Currency.unwrap(currency)).transfer(address(pm), owed);
         pm.settle();
     }
 
