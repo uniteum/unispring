@@ -40,6 +40,15 @@ contract Unispring is IUnlockCallback {
      *         (0.01%) so that `smart-order-router`'s fallback enumeration
      *         discovers every pool. Fees accrue to the single-sided position and
      *         are periodically plowed back into liquidity via {plow}.
+     * @dev    This is a deliberate choice, not an oversight. The tier optimizes
+     *         for discoverability and routing — it is one of the canonical tiers
+     *         every aggregator enumerates, and it keeps routed `ETH→HUB→spoke`
+     *         trades competitive at 0.02% round-trip — at the cost of slow moat
+     *         growth via {plow}. Unispring is opinionated: one recipe, one tier.
+     *         Projects that want a different fee/tickSpacing, multiple fee
+     *         tiers per token, or different liquidity geometry can bypass
+     *         Unispring and call the PoolManager directly. V4 is the substrate;
+     *         Unispring is one recipe on top of it.
      */
     uint24 public constant FEE = 100;
 

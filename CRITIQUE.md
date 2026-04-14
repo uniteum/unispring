@@ -54,10 +54,15 @@ numbered so we can refer to them in commits and PRs.
    external caller racing in sees a confusing state. Consider fusing the
    two, or documenting the race.
 
-3. **0.01% fee tier is the worst tier for fee plowback economics.** Chosen
-   for router discoverability, but a token that expects its moat to be
-   compounded fees will compound very slowly. Either justify in code
-   comments or reconsider.
+3. **0.01% fee tier — deliberate, not accidental.** The tier optimizes
+   for discoverability and routing (it is one of the canonical tiers
+   every SOR enumerates, and it keeps routed `ETH→HUB→spoke` trades
+   competitive at 0.02% round-trip) at the cost of slow moat growth
+   via `plow`. Unispring's opinionated stance is: *one recipe, one
+   tier*. Projects that want a different fee/tickSpacing can bypass
+   Unispring and call the PoolManager directly — V4 is the substrate,
+   Unispring is one recipe on top of it. The rationale is worth a
+   comment on `FEE` so future readers don't mistake it for an oversight.
 
 4. **Malicious spoke tokens — blast radius is self-contained.** A bad
    spoke (fee-on-transfer, rebasing, blacklisting, revert-on-transfer,
