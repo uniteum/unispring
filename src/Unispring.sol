@@ -180,6 +180,7 @@ contract Unispring is IUnlockCallback {
         PoolKey key;
         int24 tickLower;
         int24 tickUpper;
+        address caller;
     }
 
     /**
@@ -357,7 +358,10 @@ contract Unispring is IUnlockCallback {
         }
 
         POOL_MANAGER.unlock(
-            abi.encode(Action.PLOW, abi.encode(PlowData({key: key, tickLower: tickLower, tickUpper: tickUpper})))
+            abi.encode(
+                Action.PLOW,
+                abi.encode(PlowData({key: key, tickLower: tickLower, tickUpper: tickUpper, caller: msg.sender}))
+            )
         );
     }
 
@@ -468,7 +472,7 @@ contract Unispring is IUnlockCallback {
         uint256 balance1 = _balanceOf(cb.key.currency1);
         uint128 liquidityToAdd = _liquidityForAmounts(sqrtCurrent, sqrtLower, sqrtUpper, balance0, balance1);
         if (liquidityToAdd == 0) {
-            emit Plowed(tx.origin, poolId, 0);
+            emit Plowed(cb.caller, poolId, 0);
             return;
         }
 
@@ -488,7 +492,7 @@ contract Unispring is IUnlockCallback {
         _settleOwed(pm, cb.key.currency0, addDelta.amount0());
         _settleOwed(pm, cb.key.currency1, addDelta.amount1());
 
-        emit Plowed(tx.origin, poolId, liquidityToAdd);
+        emit Plowed(cb.caller, poolId, liquidityToAdd);
     }
 
     /**
