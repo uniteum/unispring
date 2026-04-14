@@ -240,13 +240,7 @@ contract Unispring is IUnlockCallback {
 
         uint256 supply = IERC20(HUB).balanceOf(address(this));
 
-        PoolKey memory key = PoolKey({
-            currency0: Currency.wrap(address(0)),
-            currency1: Currency.wrap(HUB),
-            fee: FEE,
-            tickSpacing: TICK_SPACING,
-            hooks: IHooks(address(0))
-        });
+        PoolKey memory key = _poolKey(address(0));
         int24 tickLower = TickMath.minUsableTick(TICK_SPACING);
         int24 tickUpper = -HUB_TICK_FLOOR;
         uint160 sqrtPriceX96 = TickMath.getSqrtPriceAtTick(tickUpper);
@@ -303,13 +297,7 @@ contract Unispring is IUnlockCallback {
         // 3. Build the pool key. Spoke is currency0; floor on token-in-hub price
         //    equals floor on pool tick. Range [tickFloor, MAX]; pool price seeded at
         //    the lower bound; the position is single-sided in currency0 and active.
-        PoolKey memory key = PoolKey({
-            currency0: Currency.wrap(address(token)),
-            currency1: Currency.wrap(HUB),
-            fee: FEE,
-            tickSpacing: TICK_SPACING,
-            hooks: IHooks(address(0))
-        });
+        PoolKey memory key = _poolKey(address(token));
         int24 tickLower = tickFloor;
         int24 tickUpper = TickMath.maxUsableTick(TICK_SPACING);
         uint160 sqrtPriceX96 = TickMath.getSqrtPriceAtTick(tickLower);
@@ -358,24 +346,12 @@ contract Unispring is IUnlockCallback {
 
         if (token == HUB) {
             // Hub pool: ETH is currency0, HUB is currency1.
-            key = PoolKey({
-                currency0: Currency.wrap(address(0)),
-                currency1: Currency.wrap(HUB),
-                fee: FEE,
-                tickSpacing: TICK_SPACING,
-                hooks: IHooks(address(0))
-            });
+            key = _poolKey(address(0));
             tickLower = TickMath.minUsableTick(TICK_SPACING);
             tickUpper = -f;
         } else {
             // Regular pool: token is currency0, HUB is currency1.
-            key = PoolKey({
-                currency0: Currency.wrap(token),
-                currency1: Currency.wrap(HUB),
-                fee: FEE,
-                tickSpacing: TICK_SPACING,
-                hooks: IHooks(address(0))
-            });
+            key = _poolKey(token);
             tickLower = f;
             tickUpper = TickMath.maxUsableTick(TICK_SPACING);
         }
@@ -520,13 +496,7 @@ contract Unispring is IUnlockCallback {
      *      recipient. Called inside `unlockCallback`.
      */
     function _buyHub(IPoolManager pm, BuyHubData memory cb) private {
-        PoolKey memory key = PoolKey({
-            currency0: Currency.wrap(address(0)),
-            currency1: Currency.wrap(HUB),
-            fee: FEE,
-            tickSpacing: TICK_SPACING,
-            hooks: IHooks(address(0))
-        });
+        PoolKey memory key = _poolKey(address(0));
 
         BalanceDelta delta = pm.swap(
             key,
@@ -544,6 +514,21 @@ contract Unispring is IUnlockCallback {
         // forge-lint: disable-next-line(unsafe-typecast)
         uint256 received = uint256(uint128(delta.amount1()));
         pm.take(key.currency1, cb.recipient, received);
+    }
+
+    /**
+     * @dev Build a pool key with the given currency0 paired against HUB.
+     *      Pass `address(0)` for the hub pool (ETH/HUB), or a spoke token
+     *      address for a spoke pool. Caller must ensure `currency0 < HUB`.
+     */
+    function _poolKey(address currency0) private view returns (PoolKey memory) {
+        return PoolKey({
+            currency0: Currency.wrap(currency0),
+            currency1: Currency.wrap(HUB),
+            fee: FEE,
+            tickSpacing: TICK_SPACING,
+            hooks: IHooks(address(0))
+        });
     }
 
     /**
