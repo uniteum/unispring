@@ -2,7 +2,10 @@
 pragma solidity ^0.8.30;
 
 import {Unispring} from "../src/Unispring.sol";
+import {IHooks} from "v4-core/interfaces/IHooks.sol";
+import {Currency} from "v4-core/types/Currency.sol";
 import {PoolId} from "v4-core/types/PoolId.sol";
+import {PoolKey} from "v4-core/types/PoolKey.sol";
 import {Script, console2} from "forge-std/Script.sol";
 
 /**
@@ -22,7 +25,14 @@ contract BootstrapHub is Script {
         Unispring unispring = Unispring(payable(vm.envAddress("Unispring")));
         uint256 amountIn = vm.envOr("BootstrapValue", uint256(1 gwei));
 
-        console2.log("hub pool id     :", uint256(PoolId.unwrap(unispring.hubPool())));
+        PoolKey memory hubKey = PoolKey({
+            currency0: Currency.wrap(address(0)),
+            currency1: Currency.wrap(unispring.HUB()),
+            fee: unispring.FEE(),
+            tickSpacing: unispring.TICK_SPACING(),
+            hooks: IHooks(address(0))
+        });
+        console2.log("hub pool id     :", uint256(PoolId.unwrap(hubKey.toId())));
         console2.log("bootstrap value :", amountIn);
 
         vm.startBroadcast();

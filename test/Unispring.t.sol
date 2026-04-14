@@ -5,6 +5,7 @@ import {Unispring} from "../src/Unispring.sol";
 import {IAddressLookup} from "ilookup/IAddressLookup.sol";
 import {IERC20} from "ierc20/IERC20.sol";
 import {Test} from "forge-std/Test.sol";
+import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {IUnlockCallback} from "v4-core/interfaces/callback/IUnlockCallback.sol";
 import {TickMath} from "v4-core/libraries/TickMath.sol";
 import {BalanceDelta, toBalanceDelta} from "v4-core/types/BalanceDelta.sol";
@@ -90,7 +91,10 @@ contract MockPoolManager {
 
     Currency internal _synced;
 
+    error PoolAlreadyInitialized();
+
     function initialize(PoolKey memory key, uint160 sqrtPriceX96) external returns (int24 tick) {
+        if (sqrtPriceOf[key.toId()] != 0) revert PoolAlreadyInitialized();
         lastInit = Initialize({
             currency0: key.currency0,
             currency1: key.currency1,
@@ -178,6 +182,22 @@ contract MockPoolManager {
     {
         return bytes32(0);
     }
+
+    /// @dev Implements the multi-slot `extsload(bytes32, uint256)` so
+    ///      `StateLibrary.getPositionInfo` sees a non-zero liquidity word
+    ///      for any position query. Returns an `nSlots`-length array whose
+    ///      first word is `1` (liquidity) and remaining words are zero.
+    function extsload(
+        bytes32, /* startSlot */
+        uint256 nSlots
+    )
+        external
+        pure
+        returns (bytes32[] memory data)
+    {
+        data = new bytes32[](nSlots);
+        if (nSlots > 0) data[0] = bytes32(uint256(1));
+    }
 }
 
 contract UnispringTest is Test {
@@ -218,7 +238,10 @@ contract UnispringTest is Test {
     }
 
     function test_SeedHubRevertsOnDoubleCall() public {
-        vm.expectRevert(Unispring.HubAlreadySeeded.selector);
+        // Second seedHub attempts to re-initialize the pool, which the
+        // PoolManager rejects. We just assert it reverts; Unispring no
+        // longer tracks hub-seed state itself.
+        vm.expectRevert();
         unispring.seedHub();
     }
 
@@ -230,10 +253,7 @@ contract UnispringTest is Test {
         MockToken(SPOKE_TOKEN_ADDR).mint(address(this), supply);
         MockToken(SPOKE_TOKEN_ADDR).approve(address(unispring), supply);
 
-        PoolId poolId = unispring.addSpoke(IERC20(SPOKE_TOKEN_ADDR), supply, tickFloor);
-
-        // Token registry was populated.
-        assertEq(address(unispring.poolToken(poolId)), SPOKE_TOKEN_ADDR);
+        unispring.addSpoke(IERC20(SPOKE_TOKEN_ADDR), supply, tickFloor);
 
         // Pool was initialized with the right key shape.
         (Currency currency0, Currency currency1, uint24 fee, int24 tickSpacing, uint160 sqrtPriceX96, bool seenInit) =
@@ -273,10 +293,18 @@ contract UnispringTest is Test {
 
         int24 tickUpper = TickMath.maxUsableTick(unispring.TICK_SPACING());
 
+        PoolKey memory key = PoolKey({
+            currency0: Currency.wrap(SPOKE_TOKEN_ADDR),
+            currency1: Currency.wrap(unispring.HUB()),
+            fee: unispring.FEE(),
+            tickSpacing: unispring.TICK_SPACING(),
+            hooks: IHooks(address(0))
+        });
+
         // No fees accrue in this mock, but Unispring holds leftover spoke tokens
         // from the initial seed. The plow function should collect (zero) fees and
         // then deposit the leftover as additional liquidity — without reverting.
-        unispring.plow(SPOKE_TOKEN_ADDR);
+        unispring.plow(key, tickFloor, tickUpper);
 
         // The most recent modifyLiquidity call recorded by the mock was the
         // additive deposit. A positive delta confirms the plow reached the

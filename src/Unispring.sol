@@ -66,26 +66,6 @@ contract Unispring is IUnlockCallback {
     int24 public immutable HUB_TICK_FLOOR;
 
     /**
-     * @notice The pool id of the native ETH / hub pool, set once by {seedHub}.
-     * @dev Non-zero iff the hub pool has been initialized and seeded.
-     */
-    PoolId public hubPool;
-
-    /**
-     * @notice The new token created by Unispring for a given pool.
-     */
-    mapping(PoolId => IERC20) public poolToken;
-
-    /**
-     * @notice Price floor of the position for a given token, in
-     *         spoke-token-priced-in-counterparty semantics.
-     * @dev    Set once in {addSpoke} (or {seedHub} for the hub token). Used by
-     *         {plow} to reconstruct the full position coordinates from just
-     *         a token address.
-     */
-    mapping(address => int24) public floor;
-
-    /**
      * @notice Emitted when a pool is initialized, paired against the hub, and seeded.
      * @param seeder    The address that called {addSpoke} or {seedHub}.
      * @param token     The spoke token (or the hub, for {seedHub}).
@@ -126,20 +106,10 @@ contract Unispring is IUnlockCallback {
     error SpokeMustSortBelowHub(address token);
 
     /**
-     * @notice Thrown when a pool with the same key has already been created.
+     * @notice Thrown when {plow} is called with a tick range for which this
+     *         contract holds no position (liquidity is zero).
      */
-    error PoolAlreadyExists(PoolId id);
-
-    /**
-     * @notice Thrown when {seedHub} is called after the hub pool has already been seeded.
-     */
-    error HubAlreadySeeded();
-
-    /**
-     * @notice Thrown when {plow} is called with a token address that was not
-     *         created by this factory.
-     */
-    error UnknownToken(address token);
+    error UnknownPosition();
 
     /**
      * @notice Thrown when {unlockCallback} is invoked by anyone other than the PoolManager.
@@ -228,17 +198,16 @@ contract Unispring is IUnlockCallback {
      *         hub balance currently held by this contract. Callable exactly once.
      * @dev    Permissionless — any caller may trigger it. The deploy script
      *         transfers the full hub supply to this contract and then calls
-     *         this immediately. Subsequent calls revert. The seed is the
-     *         fencepost "mirror" case (single-sided currency1 at the upper
-     *         boundary, inactive at spot until the first ETH→HUB swap crosses
-     *         the boundary downward). A bootstrap swap is expected right after
+     *         this immediately. Subsequent calls revert via the PoolManager's
+     *         `PoolAlreadyInitialized` error. The seed is the fencepost
+     *         "mirror" case (single-sided currency1 at the upper boundary,
+     *         inactive at spot until the first ETH→HUB swap crosses the
+     *         boundary downward). A bootstrap swap is expected right after
      *         this call so the pool shows as active to quoters and hosted
      *         front-ends.
      * @return poolId The pool id of the newly seeded hub pool.
      */
     function seedHub() external returns (PoolId poolId) {
-        if (PoolId.unwrap(hubPool) != bytes32(0)) revert HubAlreadySeeded();
-
         uint256 supply = IERC20(HUB).balanceOf(address(this));
 
         PoolKey memory key = _poolKey(address(0));
@@ -247,9 +216,6 @@ contract Unispring is IUnlockCallback {
         uint160 sqrtPriceX96 = TickMath.getSqrtPriceAtTick(tickUpper);
 
         poolId = key.toId();
-        hubPool = poolId;
-        poolToken[poolId] = IERC20(HUB);
-        floor[HUB] = HUB_TICK_FLOOR;
 
         IPoolManager pm = POOL_MANAGER;
         pm.initialize(key, sqrtPriceX96);
@@ -333,9 +299,6 @@ contract Unispring is IUnlockCallback {
         uint160 sqrtPriceX96 = TickMath.getSqrtPriceAtTick(tickLower);
 
         poolId = key.toId();
-        if (address(poolToken[poolId]) != address(0)) revert PoolAlreadyExists(poolId);
-        poolToken[poolId] = token;
-        floor[address(token)] = tickLower;
 
         // 4. Initialize the pool and seed the position via the unlock callback.
         IPoolManager pm = POOL_MANAGER;
@@ -357,34 +320,30 @@ contract Unispring is IUnlockCallback {
     /**
      * @notice Permissionlessly compound accrued fees back into a Unispring
      *         position. Anyone can call. No operator role, no reward.
-     * @dev    Reconstructs the full pool key and tick range from the token
-     *         address alone, then collects fees and deposits as much of the
-     *         collected amounts as possible back into the same position as
-     *         additional liquidity. Any leftover of one side stays in the
-     *         factory's balance and is consumed on a future call once the
+     * @dev    Stateless: the caller supplies the pool key and tick range, and
+     *         Unispring verifies that it owns a non-empty position at that
+     *         range via `StateLibrary.getPositionInfo` before proceeding. The
+     *         PoolManager is the sole source of truth; Unispring keeps no
+     *         per-pool state. Fees are collected via a zero-delta
+     *         `modifyLiquidity`, withdrawn to this contract, and re-deposited
+     *         as additional liquidity. Any leftover of one side stays in the
+     *         contract's balance and is consumed on a future call once the
      *         other side has caught up.
-     * @param  token  Address of a token created by this factory (or {HUB}
-     *                   for the hub pool).
+     *
+     *         Range reconstruction for standard Unispring pools:
+     *         - Hub pool: `_poolKey(address(0))`, range
+     *           `[minUsableTick, -HUB_TICK_FLOOR]`.
+     *         - Spoke pool: `_poolKey(token)`, range `[tickFloor, maxUsableTick]`.
+     *         Off-chain callers can read `tickFloor` from the {Seeded} event.
+     * @param  key        The pool key. Must have `currency1 == HUB` and match
+     *                    Unispring's canonical fee/tickSpacing/hooks.
+     * @param  tickLower  Lower tick of the Unispring position in this pool.
+     * @param  tickUpper  Upper tick of the Unispring position in this pool.
      */
-    function plow(address token) external {
-        int24 f = floor[token];
-        if (f == 0) revert UnknownToken(token);
-
-        PoolKey memory key;
-        int24 tickLower;
-        int24 tickUpper;
-
-        if (token == HUB) {
-            // Hub pool: ETH is currency0, HUB is currency1.
-            key = _poolKey(address(0));
-            tickLower = TickMath.minUsableTick(TICK_SPACING);
-            tickUpper = -f;
-        } else {
-            // Regular pool: token is currency0, HUB is currency1.
-            key = _poolKey(token);
-            tickLower = f;
-            tickUpper = TickMath.maxUsableTick(TICK_SPACING);
-        }
+    function plow(PoolKey memory key, int24 tickLower, int24 tickUpper) external {
+        PoolId poolId = key.toId();
+        (uint128 liquidity,,) = POOL_MANAGER.getPositionInfo(poolId, address(this), tickLower, tickUpper, bytes32(0));
+        if (liquidity == 0) revert UnknownPosition();
 
         POOL_MANAGER.unlock(
             abi.encode(

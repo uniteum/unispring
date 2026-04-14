@@ -4,7 +4,11 @@ pragma solidity ^0.8.30;
 import {Unispring} from "../src/Unispring.sol";
 import {IAddressLookup} from "ilookup/IAddressLookup.sol";
 import {IERC20} from "ierc20/IERC20.sol";
-import {PoolId} from "v4-core/types/PoolId.sol";
+import {IHooks} from "v4-core/interfaces/IHooks.sol";
+import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
+import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
+import {Currency} from "v4-core/types/Currency.sol";
+import {PoolKey} from "v4-core/types/PoolKey.sol";
 import {Script, console2} from "forge-std/Script.sol";
 
 /**
@@ -26,6 +30,8 @@ import {Script, console2} from "forge-std/Script.sol";
  * forge script script/UnispringDeploy.s.sol -f $chain --private-key $tx_key --broadcast --verify --delay 10 --retries 10
  */
 contract UnispringDeploy is Script {
+    using StateLibrary for IPoolManager;
+
     address constant NICK = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
 
     function run() external {
@@ -66,7 +72,18 @@ contract UnispringDeploy is Script {
         Unispring unispring = Unispring(payable(predictedUnispring));
 
         // 3. Seed the hub pool. Idempotent-ish: if already seeded, we skip.
-        if (PoolId.unwrap(unispring.hubPool()) == bytes32(0)) {
+        //    Detect prior seeding by reading slot0 of the hub pool — a
+        //    non-zero sqrtPriceX96 means the pool has been initialized.
+        IPoolManager pm = IPoolManager(IAddressLookup(poolManagerLookupAddr).value());
+        PoolKey memory hubKey = PoolKey({
+            currency0: Currency.wrap(address(0)),
+            currency1: Currency.wrap(hubAddr),
+            fee: unispring.FEE(),
+            tickSpacing: unispring.TICK_SPACING(),
+            hooks: IHooks(address(0))
+        });
+        (uint160 hubSqrtPrice,,,) = pm.getSlot0(hubKey.toId());
+        if (hubSqrtPrice == 0) {
             // Top up Unispring to `hubAmount` of hub tokens before seeding.
             uint256 currentBalance = IERC20(hubAddr).balanceOf(predictedUnispring);
             if (currentBalance < hubAmount) {

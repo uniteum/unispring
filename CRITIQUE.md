@@ -93,13 +93,3 @@ numbered so we can refer to them in commits and PRs.
    - Prefer pairing Unispring with the Lepton launcher (concern 1) so
      the supported-token-shape question never arises in practice.
 
-5. **`floor` namespace invariant is undocumented.** `floor[HUB]` and
-   `floor[token]` share a single `address => int24` mapping. The
-   `SpokeMustSortBelowHub` check prevents collision with `HUB`, but the
-   invariant isn't stated anywhere. Add a NatSpec line.
-
-6. **`UnknownToken` detection uses `floor[token] == 0`.** See
-   [src/Unispring.sol:340-341](src/Unispring.sol#L340-L341). A legitimate
-   `tickFloor` of exactly 0 would be indistinguishable from "unknown." The
-   constructor forbids `<= MIN_TICK` and `>= MAX_TICK` but allows 0. Either
-   forbid 0 explicitly or switch to a separate `registered` mapping.
