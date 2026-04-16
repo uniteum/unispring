@@ -101,14 +101,14 @@ contract Unispring is IUnlockCallback {
     );
 
     /**
-     * @notice Thrown when `tickFloor` is not a multiple of {TICK_SPACING}.
+     * @notice Thrown when `tick` is not a multiple of {TICK_SPACING}.
      */
-    error TickMisaligned(int24 tickFloor);
+    error TickMisaligned(int24 tick);
 
     /**
-     * @notice Thrown when `tickFloor` is not strictly inside `(MIN_TICK, MAX_TICK)`.
+     * @notice Thrown when `tick` is not strictly inside `(MIN_TICK, MAX_TICK)`.
      */
-    error TickOutOfRange(int24 tickFloor);
+    error TickOutOfRange(int24 tick);
 
     /**
      * @notice Thrown when the spoke token does not sort strictly below {HUB}.
@@ -354,13 +354,13 @@ contract Unispring is IUnlockCallback {
     }
 
     /**
-     * @dev Revert unless `tickFloor` is a multiple of {TICK_SPACING} and
+     * @dev Revert unless `tick` is a multiple of {TICK_SPACING} and
      *      strictly inside `(MIN_TICK, MAX_TICK)`.
      */
-    function _requireValidTick(int24 tickFloor) private pure {
-        if (tickFloor % TICK_SPACING != 0) revert TickMisaligned(tickFloor);
-        if (tickFloor <= TickMath.MIN_TICK || tickFloor >= TickMath.MAX_TICK) {
-            revert TickOutOfRange(tickFloor);
+    function _requireValidTick(int24 tick) private pure {
+        if (tick % TICK_SPACING != 0) revert TickMisaligned(tick);
+        if (tick <= TickMath.MIN_TICK || tick >= TickMath.MAX_TICK) {
+            revert TickOutOfRange(tick);
         }
     }
 
