@@ -220,25 +220,7 @@ contract Unispring is IUnlockCallback {
 
         uint256 supply = hub_.balanceOf(address(this));
 
-        PoolKey memory key = _poolKey(address(0));
-        PoolId poolId = key.toId();
-
-        IPoolManager pm = POOL_MANAGER;
-        (uint160 sqrtPriceX96,,,) = pm.getSlot0(poolId);
-        if (sqrtPriceX96 == 0) {
-            pm.initialize(key, TickMath.getSqrtPriceAtTick(tickUpper));
-        }
-        pm.unlock(
-            abi.encode(
-                Action.SEED,
-                abi.encode(
-                    SeedData({
-                        key: key, supply: supply, tickLower: tickLower, tickUpper: tickUpper, currency0Sided: false
-                    })
-                )
-            )
-        );
-
+        PoolId poolId = _addLiquidity(address(0), supply, tickLower, tickUpper, false);
         emit Seeded(msg.sender, hub_, poolId, supply, tickLower, tickUpper);
     }
 
@@ -287,29 +269,8 @@ contract Unispring is IUnlockCallback {
         // forge-lint: disable-next-line(erc20-unchecked-transfer)
         token.transferFrom(msg.sender, address(this), supply);
 
-        // 3. Build the pool key. Spoke is currency0; floor on token-in-hub price
-        //    equals floor on pool tick. Pool price seeded at the lower bound;
-        //    the position is single-sided in currency0 and active.
-        PoolKey memory key = _poolKey(address(token));
-        poolId = key.toId();
-
-        // 4. Initialize the pool and seed the position via the unlock callback.
-        IPoolManager pm = POOL_MANAGER;
-        (uint160 sqrtPriceX96,,,) = pm.getSlot0(poolId);
-        if (sqrtPriceX96 == 0) {
-            pm.initialize(key, TickMath.getSqrtPriceAtTick(tickLower));
-        }
-        pm.unlock(
-            abi.encode(
-                Action.SEED,
-                abi.encode(
-                    SeedData({
-                        key: key, supply: supply, tickLower: tickLower, tickUpper: tickUpper, currency0Sided: true
-                    })
-                )
-            )
-        );
-
+        // 3. Initialize the pool and seed the position via the unlock callback.
+        poolId = _addLiquidity(address(token), supply, tickLower, tickUpper, true);
         emit Seeded(msg.sender, token, poolId, supply, tickLower, tickUpper);
     }
 
@@ -339,6 +300,38 @@ contract Unispring is IUnlockCallback {
             _buyHub(pm, abi.decode(inner, (BuyHubData)));
         }
         return "";
+    }
+
+    /**
+     * @dev Initialize (if needed) and seed a pool with `supply` tokens in a
+     *      single-sided position. Returns the pool id.
+     */
+    function _addLiquidity(address token, uint256 supply, int24 tickLower, int24 tickUpper, bool currency0Sided)
+        private
+        returns (PoolId poolId)
+    {
+        PoolKey memory key = _poolKey(token);
+        poolId = key.toId();
+
+        IPoolManager pm = POOL_MANAGER;
+        (uint160 sqrtPriceX96,,,) = pm.getSlot0(poolId);
+        if (sqrtPriceX96 == 0) {
+            pm.initialize(key, TickMath.getSqrtPriceAtTick(currency0Sided ? tickLower : tickUpper));
+        }
+        pm.unlock(
+            abi.encode(
+                Action.SEED,
+                abi.encode(
+                    SeedData({
+                        key: key,
+                        supply: supply,
+                        tickLower: tickLower,
+                        tickUpper: tickUpper,
+                        currency0Sided: currency0Sided
+                    })
+                )
+            )
+        );
     }
 
     /**
