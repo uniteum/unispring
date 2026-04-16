@@ -55,12 +55,6 @@ contract Unispring is IUnlockCallback {
     }
 
     /**
-     * @notice The Uniswap V4 PoolManager, resolved from the `IAddressLookup`
-     *         supplied at construction.
-     */
-    IPoolManager public immutable POOL_MANAGER;
-
-    /**
      * @notice Pool fee, in hundredths of a bip. Set to zero: Unispring creates
      *         zero-fee pools. No fees accrue to the position and there is no
      *         compounding mechanism.
@@ -71,6 +65,12 @@ contract Unispring is IUnlockCallback {
      * @notice Tick spacing — maximum granularity at the floor.
      */
     int24 public constant TICK_SPACING = 1;
+
+    /**
+     * @notice The Uniswap V4 PoolManager, resolved from the `IAddressLookup`
+     *         supplied at construction.
+     */
+    IPoolManager public immutable POOL_MANAGER;
 
     /**
      * @notice The hub token, supplied at construction.
