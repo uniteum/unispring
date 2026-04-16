@@ -189,7 +189,7 @@ contract UnispringTest is Test {
 
         // 4. Fund Unispring with the hub supply, then seed the hub pool.
         MockToken(HUB_ADDR).mint(address(unispring), HUB_SUPPLY);
-        unispring.seedHub(-HUB_TICK_FLOOR);
+        unispring.seedHub(TickMath.MIN_TICK + 1, -HUB_TICK_FLOOR);
 
         // 5. Etch a second MockToken at the fixed spoke-token address, below HUB_ADDR,
         //    ready for upcoming `addSpoke` calls.
@@ -205,7 +205,7 @@ contract UnispringTest is Test {
         // PoolManager rejects. We just assert it reverts; Unispring no
         // longer tracks hub-seed state itself.
         vm.expectRevert();
-        unispring.seedHub(-HUB_TICK_FLOOR);
+        unispring.seedHub(TickMath.MIN_TICK + 1, -HUB_TICK_FLOOR);
     }
 
     function test_AddSpokeInitializesPoolAndAddsLiquidity() public {
@@ -216,7 +216,8 @@ contract UnispringTest is Test {
         MockToken(SPOKE_TOKEN_ADDR).mint(address(this), supply);
         MockToken(SPOKE_TOKEN_ADDR).approve(address(unispring), supply);
 
-        unispring.addSpoke(IERC20(SPOKE_TOKEN_ADDR), supply, tickFloor);
+        int24 tickUpper = TickMath.MAX_TICK - 1;
+        unispring.addSpoke(IERC20(SPOKE_TOKEN_ADDR), supply, tickFloor, tickUpper);
 
         // Pool was initialized with the right key shape.
         (Currency currency0, Currency currency1, uint24 fee, int24 tickSpacing, uint160 sqrtPriceX96, bool seenInit) =
@@ -233,11 +234,11 @@ contract UnispringTest is Test {
         assertEq(sqrtPriceX96, TickMath.getSqrtPriceAtTick(tickFloor));
 
         // Liquidity was added with positive delta and the right tick range.
-        (, int24 tickLower, int24 tickUpper, int256 liquidityDelta, bool seenModify) = pm.lastModify();
+        (, int24 tickLower_, int24 tickUpper_, int256 liquidityDelta, bool seenModify) = pm.lastModify();
         assertTrue(seenModify, "modifyLiquidity not called");
         assertGt(liquidityDelta, 0, "liquidityDelta must be positive");
-        assertEq(tickLower, tickFloor);
-        assertEq(tickUpper, TickMath.maxUsableTick(unispring.TICK_SPACING()));
+        assertEq(tickLower_, tickFloor);
+        assertEq(tickUpper_, tickUpper);
 
         // The caller settled by transferring spoke tokens to the (mock) PoolManager.
         uint256 pmBalance = MockToken(SPOKE_TOKEN_ADDR).balanceOf(address(pm));

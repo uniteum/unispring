@@ -7,6 +7,7 @@ import {IERC20} from "ierc20/IERC20.sol";
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
+import {TickMath} from "v4-core/libraries/TickMath.sol";
 import {Currency} from "v4-core/types/Currency.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
 import {Script, console2} from "forge-std/Script.sol";
@@ -94,7 +95,7 @@ contract UnispringDeploy is Script {
             }
 
             vm.startBroadcast();
-            unispring.seedHub(-hubTickFloor);
+            unispring.seedHub(TickMath.MIN_TICK + 1, -hubTickFloor);
             vm.stopBroadcast();
             console2.log("hub pool seeded");
         } else {

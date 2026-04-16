@@ -88,10 +88,17 @@ contract Unispring is IUnlockCallback {
      * @param token     The spoke token (or the hub, for {seedHub}).
      * @param poolId    The Uniswap V4 pool id.
      * @param supply    The fixed supply seeded into the pool.
-     * @param tickFloor The price floor in token-priced-in-counterparty
-     *                  semantics.
+     * @param tickLower Lower tick of the seeded position.
+     * @param tickUpper Upper tick of the seeded position.
      */
-    event Seeded(address indexed seeder, IERC20 indexed token, PoolId indexed poolId, uint256 supply, int24 tickFloor);
+    event Seeded(
+        address indexed seeder,
+        IERC20 indexed token,
+        PoolId indexed poolId,
+        uint256 supply,
+        int24 tickLower,
+        int24 tickUpper
+    );
 
     /**
      * @notice Thrown when `tickFloor` is not a multiple of {TICK_SPACING}.
@@ -151,19 +158,22 @@ contract Unispring is IUnlockCallback {
      *         boundary downward). A bootstrap swap is expected right after
      *         this call so the pool shows as active to quoters and hosted
      *         front-ends.
+     * @param  tickLower Lower tick of the hub position. Must be a multiple of
+     *                   {TICK_SPACING} and strictly inside
+     *                   `(MIN_TICK, MAX_TICK)`.
      * @param  tickUpper Upper tick of the hub position, equal to the negated
-     *                      hub-priced-in-ETH price floor. Must be a multiple of
-     *                      {TICK_SPACING} and strictly inside
-     *                      `(MIN_TICK, MAX_TICK)`.
+     *                   hub-priced-in-ETH price floor. Must be a multiple of
+     *                   {TICK_SPACING} and strictly inside
+     *                   `(MIN_TICK, MAX_TICK)`.
      * @return poolId The pool id of the newly seeded hub pool.
      */
-    function seedHub(int24 tickUpper) external returns (PoolId poolId) {
+    function seedHub(int24 tickLower, int24 tickUpper) external returns (PoolId poolId) {
+        _requireValidTick(tickLower);
         _requireValidTick(tickUpper);
 
         uint256 supply = IERC20(HUB).balanceOf(address(this));
 
         PoolKey memory key = _poolKey(address(0));
-        int24 tickLower = TickMath.minUsableTick(TICK_SPACING);
         uint160 sqrtPriceX96 = TickMath.getSqrtPriceAtTick(tickUpper);
 
         poolId = key.toId();
@@ -181,7 +191,7 @@ contract Unispring is IUnlockCallback {
             )
         );
 
-        emit Seeded(msg.sender, IERC20(HUB), poolId, supply, -tickUpper);
+        emit Seeded(msg.sender, IERC20(HUB), poolId, supply, tickLower, tickUpper);
     }
 
     /**
@@ -211,13 +221,17 @@ contract Unispring is IUnlockCallback {
      * @param  token     The spoke token to pair against the hub.
      * @param  supply    Amount of `token` to pull from the caller and seed into
      *                   the position.
-     * @param  tickFloor Price floor expressed in spoke-in-hub semantics. Must be
-     *                   a multiple of {TICK_SPACING} and strictly inside
+     * @param  tickLower Lower tick (price floor in spoke-in-hub semantics).
+     *                   Must be a multiple of {TICK_SPACING} and strictly inside
+     *                   `(MIN_TICK, MAX_TICK)`.
+     * @param  tickUpper Upper tick of the spoke position. Must be a multiple of
+     *                   {TICK_SPACING} and strictly inside
      *                   `(MIN_TICK, MAX_TICK)`.
      * @return poolId    The Uniswap V4 pool id.
      */
-    function addSpoke(IERC20 token, uint256 supply, int24 tickFloor) external returns (PoolId poolId) {
-        _requireValidTick(tickFloor);
+    function addSpoke(IERC20 token, uint256 supply, int24 tickLower, int24 tickUpper) external returns (PoolId poolId) {
+        _requireValidTick(tickLower);
+        _requireValidTick(tickUpper);
 
         // 1. Enforce currency0 ordering: spoke must sort strictly below the hub.
         if (address(token) >= HUB) revert SpokeMustSortBelowHub(address(token));
@@ -227,11 +241,9 @@ contract Unispring is IUnlockCallback {
         token.transferFrom(msg.sender, address(this), supply);
 
         // 3. Build the pool key. Spoke is currency0; floor on token-in-hub price
-        //    equals floor on pool tick. Range [tickFloor, MAX]; pool price seeded at
-        //    the lower bound; the position is single-sided in currency0 and active.
+        //    equals floor on pool tick. Pool price seeded at the lower bound;
+        //    the position is single-sided in currency0 and active.
         PoolKey memory key = _poolKey(address(token));
-        int24 tickLower = tickFloor;
-        int24 tickUpper = TickMath.maxUsableTick(TICK_SPACING);
         uint160 sqrtPriceX96 = TickMath.getSqrtPriceAtTick(tickLower);
 
         poolId = key.toId();
@@ -250,7 +262,7 @@ contract Unispring is IUnlockCallback {
             )
         );
 
-        emit Seeded(msg.sender, token, poolId, supply, tickFloor);
+        emit Seeded(msg.sender, token, poolId, supply, tickLower, tickUpper);
     }
 
     /**
