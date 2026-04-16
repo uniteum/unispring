@@ -5,7 +5,6 @@ import {Unispring} from "../src/Unispring.sol";
 import {IAddressLookup} from "ilookup/IAddressLookup.sol";
 import {IERC20} from "ierc20/IERC20.sol";
 import {Test} from "forge-std/Test.sol";
-import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {IUnlockCallback} from "v4-core/interfaces/callback/IUnlockCallback.sol";
 import {TickMath} from "v4-core/libraries/TickMath.sol";
 import {BalanceDelta, toBalanceDelta} from "v4-core/types/BalanceDelta.sol";
@@ -58,8 +57,7 @@ contract MockToken {
 /**
  * @notice Minimal stand-in for the Uniswap V4 PoolManager. Implements just the
  *         subset of selectors that Unispring touches: `initialize`, `unlock`,
- *         `modifyLiquidity`, `sync`, `settle`, `take`, and extsload (for
- *         `StateLibrary.getSlot0` during {plow}).
+ *         `modifyLiquidity`, `sync`, `settle`, `take`, `swap`.
  *
  *         Records the last init/modify args so the test can assert on them, and
  *         performs minimal settlement bookkeeping for the single-sided seeds
@@ -86,7 +84,7 @@ contract MockPoolManager {
     Initialize public lastInit;
     Modify public lastModify;
 
-    // Slot0 snapshots keyed by poolId, used by StateLibrary.getSlot0 via extsload.
+    // Slot0 snapshots keyed by poolId, used to decide single-sided seed direction.
     mapping(PoolId => uint160) public sqrtPriceOf;
 
     Currency internal _synced;
@@ -123,11 +121,6 @@ contract MockPoolManager {
             seen: true
         });
 
-        if (params.liquidityDelta == 0) {
-            // Fee collection path for {plow}: no fees in this mock, so return zeros.
-            return (toBalanceDelta(int128(0), int128(0)), toBalanceDelta(int128(0), int128(0)));
-        }
-
         // Seeding path. Decide which side the position is single-sided in by
         // inspecting the initialization tick. If the pool's price tick sits at
         // the lower bound the position is in currency0; otherwise currency1.
@@ -154,8 +147,8 @@ contract MockPoolManager {
     }
 
     function take(Currency, address, uint256) external pure {
-        // No-op: this mock does not track fee accrual, so {plow} will attempt to
-        // take zero amounts anyway. The real PoolManager transfers the amounts.
+        // No-op: `_buyHub` calls this to forward HUB to the recipient; the test
+        // does not assert on recipient balance so a no-op is sufficient.
     }
 
     function swap(PoolKey memory, SwapParams memory params, bytes calldata)
@@ -168,35 +161,6 @@ contract MockPoolManager {
         // buyHub flow without real pool math.
         int128 amount = int128(params.amountSpecified);
         delta = toBalanceDelta(amount, -amount);
-    }
-
-    /// @dev Implements `extsload(bytes32)` so StateLibrary.getSlot0 can read
-    ///      back the sqrtPrice we stored during {initialize}. Only the slot
-    ///      shape and sqrtPrice bits matter to Unispring.
-    function extsload(
-        bytes32 /* slot */
-    )
-        external
-        pure
-        returns (bytes32)
-    {
-        return bytes32(0);
-    }
-
-    /// @dev Implements the multi-slot `extsload(bytes32, uint256)` so
-    ///      `StateLibrary.getPositionInfo` sees a non-zero liquidity word
-    ///      for any position query. Returns an `nSlots`-length array whose
-    ///      first word is `1` (liquidity) and remaining words are zero.
-    function extsload(
-        bytes32, /* startSlot */
-        uint256 nSlots
-    )
-        external
-        pure
-        returns (bytes32[] memory data)
-    {
-        data = new bytes32[](nSlots);
-        if (nSlots > 0) data[0] = bytes32(uint256(1));
     }
 }
 
@@ -281,39 +245,6 @@ contract UnispringTest is Test {
         uint256 leftover = MockToken(SPOKE_TOKEN_ADDR).balanceOf(address(unispring));
         assertEq(pmBalance + leftover, supply, "supply must be conserved");
         assertGt(pmBalance, 0, "PoolManager received zero tokens");
-    }
-
-    function test_PlowDoesNotRevert() public {
-        uint256 supply = 1_000_000 ether;
-        int24 tickFloor = -120_000;
-
-        MockToken(SPOKE_TOKEN_ADDR).mint(address(this), supply);
-        MockToken(SPOKE_TOKEN_ADDR).approve(address(unispring), supply);
-        unispring.addSpoke(IERC20(SPOKE_TOKEN_ADDR), supply, tickFloor);
-
-        int24 tickUpper = TickMath.maxUsableTick(unispring.TICK_SPACING());
-
-        PoolKey memory key = PoolKey({
-            currency0: Currency.wrap(SPOKE_TOKEN_ADDR),
-            currency1: Currency.wrap(unispring.HUB()),
-            fee: unispring.FEE(),
-            tickSpacing: unispring.TICK_SPACING(),
-            hooks: IHooks(address(0))
-        });
-
-        // No fees accrue in this mock, but Unispring holds leftover spoke tokens
-        // from the initial seed. The plow function should collect (zero) fees and
-        // then deposit the leftover as additional liquidity — without reverting.
-        unispring.plow(key, tickFloor, tickUpper);
-
-        // The most recent modifyLiquidity call recorded by the mock was the
-        // additive deposit. A positive delta confirms the plow reached the
-        // add-liquidity step rather than bailing out at the collect.
-        (, int24 lo, int24 up, int256 delta, bool seen) = pm.lastModify();
-        assertTrue(seen, "modifyLiquidity not called");
-        assertEq(lo, tickFloor);
-        assertEq(up, tickUpper);
-        assertGt(delta, 0, "plow should have added liquidity from leftover supply");
     }
 
     function test_BuyHubSwapsEthForHub() public {

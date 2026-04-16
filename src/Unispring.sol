@@ -8,7 +8,6 @@ import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 import {IUnlockCallback} from "v4-core/interfaces/callback/IUnlockCallback.sol";
 import {FixedPoint96} from "v4-core/libraries/FixedPoint96.sol";
 import {FullMath} from "v4-core/libraries/FullMath.sol";
-import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
 import {TickMath} from "v4-core/libraries/TickMath.sol";
 import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
 import {Currency} from "v4-core/types/Currency.sol";
@@ -19,22 +18,18 @@ import {ModifyLiquidityParams, SwapParams} from "v4-core/types/PoolOperation.sol
 /**
  * @title Unispring
  * @notice Fair-launch pool seeder on Uniswap V4 — permanent liquidity, built-in
- *         price floor, hub-paired spokes, compounding via fee plowback.
+ *         price floor, hub-paired spokes. Zero-fee pools.
  * @dev    See README.md for the full design rationale. The hub token is supplied
  *         externally at construction; its ETH pool is seeded single-sided by
  *         {seedHub}. Additional tokens are paired against the hub by {addSpoke}.
- *         Per-token state is keyed by V4 `PoolId`.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
 contract Unispring is IUnlockCallback {
-    using StateLibrary for IPoolManager;
-
     /**
      * @dev Discriminator for the unlock callback payload.
      */
     enum Action {
         SEED,
-        PLOW,
         BUY_HUB
     }
 
@@ -52,16 +47,6 @@ contract Unispring is IUnlockCallback {
     }
 
     /**
-     * @dev Internal payload used to compound fees into an existing position.
-     */
-    struct PlowData {
-        PoolKey key;
-        int24 tickLower;
-        int24 tickUpper;
-        address caller;
-    }
-
-    /**
      * @dev Internal payload for the hub bootstrap swap.
      */
     struct BuyHubData {
@@ -76,25 +61,14 @@ contract Unispring is IUnlockCallback {
     IPoolManager public immutable POOL_MANAGER;
 
     /**
-     * @notice Pool fee, in hundredths of a bip. Uniswap's LOWEST canonical tier
-     *         (0.01%) so that `smart-order-router`'s fallback enumeration
-     *         discovers every pool. Fees accrue to the single-sided position and
-     *         are periodically plowed back into liquidity via {plow}.
-     * @dev    This is a deliberate choice, not an oversight. The tier optimizes
-     *         for discoverability and routing — it is one of the canonical tiers
-     *         every aggregator enumerates, and it keeps routed `ETH→HUB→spoke`
-     *         trades competitive at 0.02% round-trip — at the cost of slow moat
-     *         growth via {plow}. Unispring is opinionated: one recipe, one tier.
-     *         Projects that want a different fee/tickSpacing, multiple fee
-     *         tiers per token, or different liquidity geometry can bypass
-     *         Unispring and call the PoolManager directly. V4 is the substrate;
-     *         Unispring is one recipe on top of it.
+     * @notice Pool fee, in hundredths of a bip. Set to zero: Unispring creates
+     *         zero-fee pools. No fees accrue to the position and there is no
+     *         compounding mechanism.
      */
-    uint24 public constant FEE = 100;
+    uint24 public constant FEE = 0;
 
     /**
-     * @notice Tick spacing — canonical pairing for the LOWEST fee tier and
-     *         maximum granularity at the floor.
+     * @notice Tick spacing — maximum granularity at the floor.
      */
     int24 public constant TICK_SPACING = 1;
 
@@ -126,14 +100,6 @@ contract Unispring is IUnlockCallback {
     event Seeded(address indexed seeder, IERC20 indexed token, PoolId indexed poolId, uint256 supply, int24 tickFloor);
 
     /**
-     * @notice Emitted when {plow} compounds fees back into a position.
-     * @param caller       Permissionless caller who triggered the compounding.
-     * @param poolId       The pool whose position was plowed.
-     * @param liquidityAdded Additional liquidity deposited into the existing position.
-     */
-    event Plowed(address indexed caller, PoolId indexed poolId, uint128 liquidityAdded);
-
-    /**
      * @notice Thrown when `tickFloor` is not a multiple of {TICK_SPACING}.
      */
     error TickFloorMisaligned(int24 tickFloor);
@@ -153,12 +119,6 @@ contract Unispring is IUnlockCallback {
      *         {HUB}.
      */
     error SpokeMustSortBelowHub(address token);
-
-    /**
-     * @notice Thrown when {plow} is called with a tick range for which this
-     *         contract holds no position (liquidity is zero).
-     */
-    error UnknownPosition();
 
     /**
      * @notice Thrown when {unlockCallback} is invoked by anyone other than the PoolManager.
@@ -195,12 +155,6 @@ contract Unispring is IUnlockCallback {
         HUB = address(hub);
         HUB_TICK_FLOOR = hubTickFloor;
     }
-
-    /**
-     * @notice Allow Unispring to receive native ETH from the PoolManager's `take`
-     *         during {plow}.
-     */
-    receive() external payable {}
 
     /**
      * @notice Initialize the hub's ETH pool and seed it single-sided with the
@@ -256,28 +210,16 @@ contract Unispring is IUnlockCallback {
      *         can only damage its own pool, never the hub or other spokes:
      *
      *           1. Per-pool isolation. Unispring only runs a spoke's code
-     *              during operations on that spoke's own pool. {addSpoke} and
-     *              {plow} for pool A never touch pool B's token.
+     *              during operations on that spoke's own pool.
      *           2. Reentrancy via transfer hooks is blocked by Uniswap V4's
-     *              single-locker model. A hook cannot re-enter {plow} /
-     *              {addSpoke} / {seedHub} / {buyHub} (each calls
-     *              `POOL_MANAGER.unlock`, which reverts on nested entry), and
-     *              it cannot call the PoolManager directly because
-     *              `take` / `swap` / `modifyLiquidity` require the caller to
-     *              be the active locker.
-     *           3. The hub balance held by this contract (carryover from prior
-     *              plows across all pools) is safe: during a plow we only
-     *              transfer the exact `owed` amount the PoolManager computes
-     *              for the current add. A foreign spoke's transfer hook has
-     *              no path to move HUB.
-     *           4. Fee-on-transfer or revert-on-transfer causes {_plow}'s
+     *              single-locker model. A hook cannot re-enter {addSpoke} /
+     *              {seedHub} / {buyHub} (each calls `POOL_MANAGER.unlock`,
+     *              which reverts on nested entry), and it cannot call the
+     *              PoolManager directly because `swap` / `modifyLiquidity`
+     *              require the caller to be the active locker.
+     *           3. Fee-on-transfer or revert-on-transfer causes {_seed}'s
      *              `settle` step to underpay or revert, unwinding the whole
-     *              plow atomically. No partial state.
-     *
-     *         Residual consequence: a bad spoke may become permanently
-     *         un-plowable. Its fees accrue in the pool but cannot be
-     *         compounded. That is a cosmetic wart for that one pool, not a
-     *         compromise of the system.
+     *              seed atomically. No partial state.
      * @param  token     The spoke token to pair against the hub.
      * @param  supply    Amount of `token` to pull from the caller and seed into
      *                   the position.
@@ -327,42 +269,6 @@ contract Unispring is IUnlockCallback {
     }
 
     /**
-     * @notice Permissionlessly compound accrued fees back into a Unispring
-     *         position. Anyone can call. No operator role, no reward.
-     * @dev    Stateless: the caller supplies the pool key and tick range, and
-     *         Unispring verifies that it owns a non-empty position at that
-     *         range via `StateLibrary.getPositionInfo` before proceeding. The
-     *         PoolManager is the sole source of truth; Unispring keeps no
-     *         per-pool state. Fees are collected via a zero-delta
-     *         `modifyLiquidity`, withdrawn to this contract, and re-deposited
-     *         as additional liquidity. Any leftover of one side stays in the
-     *         contract's balance and is consumed on a future call once the
-     *         other side has caught up.
-     *
-     *         Range reconstruction for standard Unispring pools:
-     *         - Hub pool: `_poolKey(address(0))`, range
-     *           `[minUsableTick, -HUB_TICK_FLOOR]`.
-     *         - Spoke pool: `_poolKey(token)`, range `[tickFloor, maxUsableTick]`.
-     *         Off-chain callers can read `tickFloor` from the {Seeded} event.
-     * @param  key        The pool key. Must have `currency1 == HUB` and match
-     *                    Unispring's canonical fee/tickSpacing/hooks.
-     * @param  tickLower  Lower tick of the Unispring position in this pool.
-     * @param  tickUpper  Upper tick of the Unispring position in this pool.
-     */
-    function plow(PoolKey memory key, int24 tickLower, int24 tickUpper) external {
-        PoolId poolId = key.toId();
-        (uint128 liquidity,,) = POOL_MANAGER.getPositionInfo(poolId, address(this), tickLower, tickUpper, bytes32(0));
-        if (liquidity == 0) revert UnknownPosition();
-
-        POOL_MANAGER.unlock(
-            abi.encode(
-                Action.PLOW,
-                abi.encode(PlowData({key: key, tickLower: tickLower, tickUpper: tickUpper, caller: msg.sender}))
-            )
-        );
-    }
-
-    /**
      * @notice Buy hub tokens with native ETH via an exact-input swap on the hub
      *         pool. Intended as the bootstrap call immediately after {seedHub} to
      *         cross the upper tick downward and activate the pool for quoters.
@@ -384,8 +290,6 @@ contract Unispring is IUnlockCallback {
         (Action action, bytes memory inner) = abi.decode(data, (Action, bytes));
         if (action == Action.SEED) {
             _seed(pm, abi.decode(inner, (SeedData)));
-        } else if (action == Action.PLOW) {
-            _plow(pm, abi.decode(inner, (PlowData)));
         } else {
             _buyHub(pm, abi.decode(inner, (BuyHubData)));
         }
@@ -428,71 +332,6 @@ contract Unispring is IUnlockCallback {
     }
 
     /**
-     * @dev Compound accrued fees into an existing position. Collects fees via a
-     *      zero-delta `modifyLiquidity`, withdraws them to this contract, then
-     *      adds as much liquidity as the collected amounts (plus any carryover)
-     *      support at the current tick.
-     */
-    function _plow(IPoolManager pm, PlowData memory cb) private {
-        PoolId poolId = cb.key.toId();
-
-        // 1. Collect fees. With liquidityDelta == 0, the returned `callerDelta`
-        //    is exactly the accrued fees, owed TO us (non-negative on both sides).
-        (BalanceDelta collectDelta,) = pm.modifyLiquidity(
-            cb.key,
-            ModifyLiquidityParams({
-                tickLower: cb.tickLower, tickUpper: cb.tickUpper, liquidityDelta: int256(0), salt: bytes32(0)
-            }),
-            ""
-        );
-
-        int128 collected0 = collectDelta.amount0();
-        int128 collected1 = collectDelta.amount1();
-        // Non-negative by construction, but guard against any surprise.
-        if (collected0 > 0) {
-            // forge-lint: disable-next-line(unsafe-typecast)
-            pm.take(cb.key.currency0, address(this), uint256(uint128(collected0)));
-        }
-        if (collected1 > 0) {
-            // forge-lint: disable-next-line(unsafe-typecast)
-            pm.take(cb.key.currency1, address(this), uint256(uint128(collected1)));
-        }
-
-        // 2. Read current pool price to size the new liquidity deposit.
-        (uint160 sqrtCurrent,,,) = pm.getSlot0(poolId);
-        uint160 sqrtLower = TickMath.getSqrtPriceAtTick(cb.tickLower);
-        uint160 sqrtUpper = TickMath.getSqrtPriceAtTick(cb.tickUpper);
-
-        // 3. Max liquidity we can add given our current balances of both
-        //    currencies at this pool's current price.
-        uint256 balance0 = _balanceOf(cb.key.currency0);
-        uint256 balance1 = _balanceOf(cb.key.currency1);
-        uint128 liquidityToAdd = _liquidityForAmounts(sqrtCurrent, sqrtLower, sqrtUpper, balance0, balance1);
-        if (liquidityToAdd == 0) {
-            emit Plowed(cb.caller, poolId, 0);
-            return;
-        }
-
-        // 4. Add the liquidity. Protocol will tell us exactly how much of each
-        //    token it needs.
-        (BalanceDelta addDelta,) = pm.modifyLiquidity(
-            cb.key,
-            ModifyLiquidityParams({
-                tickLower: cb.tickLower,
-                tickUpper: cb.tickUpper,
-                liquidityDelta: int256(uint256(liquidityToAdd)),
-                salt: bytes32(0)
-            }),
-            ""
-        );
-
-        _settleOwed(pm, cb.key.currency0, addDelta.amount0());
-        _settleOwed(pm, cb.key.currency1, addDelta.amount1());
-
-        emit Plowed(cb.caller, poolId, liquidityToAdd);
-    }
-
-    /**
      * @dev Execute an exact-input ETH → HUB swap and forward received HUB to the
      *      recipient. Called inside `unlockCallback`.
      */
@@ -518,25 +357,6 @@ contract Unispring is IUnlockCallback {
     }
 
     /**
-     * @dev Settle a non-positive delta owed to the PoolManager, paying in either
-     *      native ETH or ERC-20 depending on the currency.
-     */
-    function _settleOwed(IPoolManager pm, Currency currency, int128 amount) private {
-        if (amount >= 0) return;
-        // forge-lint: disable-next-line(unsafe-typecast)
-        uint256 owed = uint256(uint128(-amount));
-        if (currency.isAddressZero()) {
-            pm.settle{value: owed}();
-        } else {
-            pm.sync(currency);
-            IERC20 erc = IERC20(Currency.unwrap(currency));
-            // forge-lint: disable-next-line(erc20-unchecked-transfer)
-            erc.transfer(address(pm), owed);
-            pm.settle();
-        }
-    }
-
-    /**
      * @dev Build a pool key with the given currency0 paired against HUB.
      *      Pass `address(0)` for the hub pool (ETH/HUB), or a spoke token
      *      address for a spoke pool. Caller must ensure `currency0 < HUB`.
@@ -549,14 +369,6 @@ contract Unispring is IUnlockCallback {
             tickSpacing: TICK_SPACING,
             hooks: IHooks(address(0))
         });
-    }
-
-    /**
-     * @dev Balance of `currency` held by this contract, for both ETH and ERC-20.
-     */
-    function _balanceOf(Currency currency) private view returns (uint256) {
-        if (currency.isAddressZero()) return address(this).balance;
-        return IERC20(Currency.unwrap(currency)).balanceOf(address(this));
     }
 
     /**
@@ -582,28 +394,6 @@ contract Unispring is IUnlockCallback {
         returns (uint128)
     {
         return _toUint128(FullMath.mulDiv(amount1, FixedPoint96.Q96, uint256(sqrtUpper - sqrtLower)));
-    }
-
-    /**
-     * @dev Maximum liquidity addable to `[lower, upper]` at the current sqrt price,
-     *      given available balances of `amount0` and `amount1`.
-     */
-    function _liquidityForAmounts(
-        uint160 sqrtCurrent,
-        uint160 sqrtLower,
-        uint160 sqrtUpper,
-        uint256 amount0,
-        uint256 amount1
-    ) private pure returns (uint128) {
-        if (sqrtCurrent <= sqrtLower) {
-            return _liquidityForAmount0(sqrtLower, sqrtUpper, amount0);
-        }
-        if (sqrtCurrent >= sqrtUpper) {
-            return _liquidityForAmount1(sqrtLower, sqrtUpper, amount1);
-        }
-        uint128 l0 = _liquidityForAmount0(sqrtCurrent, sqrtUpper, amount0);
-        uint128 l1 = _liquidityForAmount1(sqrtLower, sqrtCurrent, amount1);
-        return l0 < l1 ? l0 : l1;
     }
 
     function _toUint128(uint256 x) private pure returns (uint128) {
