@@ -14,6 +14,7 @@ import {Currency} from "v4-core/types/Currency.sol";
 import {PoolId} from "v4-core/types/PoolId.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
 import {ModifyLiquidityParams, SwapParams} from "v4-core/types/PoolOperation.sol";
+import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
 
 /**
  * @title Unispring
@@ -25,6 +26,8 @@ import {ModifyLiquidityParams, SwapParams} from "v4-core/types/PoolOperation.sol
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
 contract Unispring is IUnlockCallback {
+    using StateLibrary for IPoolManager;
+
     /**
      * @dev Discriminator for the unlock callback payload.
      */
@@ -178,12 +181,13 @@ contract Unispring is IUnlockCallback {
         uint256 supply = IERC20(HUB).balanceOf(address(this));
 
         PoolKey memory key = _poolKey(address(0));
-        uint160 sqrtPriceX96 = TickMath.getSqrtPriceAtTick(tickUpper);
-
         poolId = key.toId();
 
         IPoolManager pm = POOL_MANAGER;
-        pm.initialize(key, sqrtPriceX96);
+        (uint160 sqrtPriceX96,,,) = pm.getSlot0(poolId);
+        if (sqrtPriceX96 == 0) {
+            pm.initialize(key, TickMath.getSqrtPriceAtTick(tickUpper));
+        }
         pm.unlock(
             abi.encode(
                 Action.SEED,

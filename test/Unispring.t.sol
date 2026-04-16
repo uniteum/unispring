@@ -87,9 +87,20 @@ contract MockPoolManager {
     // Slot0 snapshots keyed by poolId, used to decide single-sided seed direction.
     mapping(PoolId => uint160) public sqrtPriceOf;
 
+    // Mock extsload storage for StateLibrary compatibility.
+    mapping(bytes32 => bytes32) internal _slots;
+
     Currency internal _synced;
 
     error PoolAlreadyInitialized();
+
+    function extsload(bytes32 slot) external view returns (bytes32) {
+        // Iterate over tracked pools to match the StateLibrary slot layout.
+        // StateLibrary.POOLS_SLOT = 6; slot0 is at offset 0 within the pool state.
+        // stateSlot = keccak256(abi.encodePacked(PoolId.unwrap(poolId), bytes32(uint256(6))))
+        // This is a test-only mock — production uses real storage via extsload.
+        return _slots[slot];
+    }
 
     function initialize(PoolKey memory key, uint160 sqrtPriceX96) external returns (int24 tick) {
         if (sqrtPriceOf[key.toId()] != 0) revert PoolAlreadyInitialized();
@@ -103,6 +114,10 @@ contract MockPoolManager {
         });
         sqrtPriceOf[key.toId()] = sqrtPriceX96;
         tick = TickMath.getTickAtSqrtPrice(sqrtPriceX96);
+
+        // Populate extsload slot so StateLibrary.getSlot0 works.
+        bytes32 stateSlot = keccak256(abi.encodePacked(PoolId.unwrap(key.toId()), bytes32(uint256(6))));
+        _slots[stateSlot] = bytes32(uint256(sqrtPriceX96) | (uint256(uint24(int24(tick))) << 160));
     }
 
     function unlock(bytes calldata data) external returns (bytes memory) {
@@ -200,12 +215,11 @@ contract UnispringTest is Test {
         assertEq(unispring.HUB(), HUB_ADDR, "HUB immutable");
     }
 
-    function test_SeedHubRevertsOnDoubleCall() public {
-        // Second seedHub attempts to re-initialize the pool, which the
-        // PoolManager rejects. We just assert it reverts; Unispring no
-        // longer tracks hub-seed state itself.
-        vm.expectRevert();
+    function test_SeedHubDoubleCallAddsLiquidity() public {
+        // Second seedHub skips initialization but still adds liquidity.
         unispring.seedHub(TickMath.MIN_TICK + 1, -HUB_TICK_FLOOR);
+        (,,,, bool seen) = pm.lastModify();
+        assertTrue(seen, "second seedHub should add liquidity");
     }
 
     function test_AddSpokeInitializesPoolAndAddsLiquidity() public {
