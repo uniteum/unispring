@@ -216,12 +216,14 @@ contract Unispring is IUnlockCallback {
     function zzInit(IERC20 hub_, int24 tickLower, int24 tickUpper) external {
         if (msg.sender != address(PROTO)) revert Unauthorized();
         hub = address(hub_);
-        _addLiquidity(hub_, hub_.balanceOf(address(this)), tickLower, tickUpper, false);
+        uint256 supply = hub_.balanceOf(address(this));
+        hub_.approve(address(this), supply);
+        this.fund(hub_, supply, tickLower, tickUpper);
     }
 
     /**
-     * @notice Pair an already-deployed token against the hub and lock `supply`
-     *         into a single-sided V4 position with a permanent floor.
+     * @notice Lock `supply` tokens into a single-sided V4 position with a
+     *         permanent floor, paired against the hub.
      * @dev    The spoke token must sort strictly below {hub} so that it becomes
      *         `currency0` of the pool. Caller must approve this contract to pull
      *         `supply` tokens; the pulled balance is then locked into the funded
@@ -243,20 +245,49 @@ contract Unispring is IUnlockCallback {
      *           3. Fee-on-transfer or revert-on-transfer causes {_fund}'s
      *              `settle` step to underpay or revert, unwinding the whole
      *              fund atomically. No partial state.
-     * @param  token     The spoke token to pair against the hub.
+     * @param  token     The token to pair against the hub.
      * @param  supply    Amount of `token` to pull from the caller and fund into
      *                   the position.
      * @param  tickLower Lower tick (price floor in spoke-in-hub semantics).
      *                   Must be a multiple of {TICK_SPACING} and strictly inside
      *                   `(MIN_TICK, MAX_TICK)`.
-     * @param  tickUpper Upper tick of the spoke position. Must be a multiple of
+     * @param  tickUpper Upper tick of the position. Must be a multiple of
      *                   {TICK_SPACING} and strictly inside
      *                   `(MIN_TICK, MAX_TICK)`.
      */
     function fund(IERC20 token, uint256 supply, int24 tickLower, int24 tickUpper) external {
         // forge-lint: disable-next-line(erc20-unchecked-transfer)
         token.transferFrom(msg.sender, address(this), supply);
-        _addLiquidity(token, supply, tickLower, tickUpper, true);
+        _requireValidTickRange(tickLower, tickUpper);
+
+        address tokenAddr = address(token);
+        bool currency0Sided = tokenAddr != hub;
+        if (currency0Sided && tokenAddr >= hub) revert SpokeMustSortBelowHub(tokenAddr);
+
+        PoolKey memory key = _poolKey(currency0Sided ? tokenAddr : address(0));
+        PoolId poolId = key.toId();
+
+        IPoolManager pm = POOL_MANAGER;
+        (uint160 sqrtPriceX96,,,) = pm.getSlot0(poolId);
+        if (sqrtPriceX96 == 0) {
+            pm.initialize(key, TickMath.getSqrtPriceAtTick(currency0Sided ? tickLower : tickUpper));
+        }
+        pm.unlock(
+            abi.encode(
+                Action.FUND,
+                abi.encode(
+                    FundData({
+                        key: key,
+                        supply: supply,
+                        tickLower: tickLower,
+                        tickUpper: tickUpper,
+                        currency0Sided: currency0Sided
+                    })
+                )
+            )
+        );
+
+        emit Funded(msg.sender, token, poolId, supply, tickLower, tickUpper);
     }
 
     /**
@@ -285,44 +316,6 @@ contract Unispring is IUnlockCallback {
             _buyHub(pm, abi.decode(inner, (BuyHubData)));
         }
         return "";
-    }
-
-    /**
-     * @dev Validate ticks, enforce currency ordering, initialize the pool (if
-     *      needed), fund a single-sided position, and emit {Funded}.
-     */
-    function _addLiquidity(IERC20 token, uint256 supply, int24 tickLower, int24 tickUpper, bool currency0Sided)
-        private
-    {
-        _requireValidTickRange(tickLower, tickUpper);
-
-        address tokenAddr = address(token);
-        if (currency0Sided && tokenAddr >= hub) revert SpokeMustSortBelowHub(tokenAddr);
-
-        PoolKey memory key = _poolKey(currency0Sided ? tokenAddr : address(0));
-        PoolId poolId = key.toId();
-
-        IPoolManager pm = POOL_MANAGER;
-        (uint160 sqrtPriceX96,,,) = pm.getSlot0(poolId);
-        if (sqrtPriceX96 == 0) {
-            pm.initialize(key, TickMath.getSqrtPriceAtTick(currency0Sided ? tickLower : tickUpper));
-        }
-        pm.unlock(
-            abi.encode(
-                Action.FUND,
-                abi.encode(
-                    FundData({
-                        key: key,
-                        supply: supply,
-                        tickLower: tickLower,
-                        tickUpper: tickUpper,
-                        currency0Sided: currency0Sided
-                    })
-                )
-            )
-        );
-
-        emit Funded(msg.sender, token, poolId, supply, tickLower, tickUpper);
     }
 
     /**
