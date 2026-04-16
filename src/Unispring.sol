@@ -111,6 +111,11 @@ contract Unispring is IUnlockCallback {
     error TickOutOfRange(int24 tick);
 
     /**
+     * @notice Thrown when `tickLower` is not strictly below `tickUpper`.
+     */
+    error TickLowerNotBelowUpper(int24 tickLower, int24 tickUpper);
+
+    /**
      * @notice Thrown when the spoke token does not sort strictly below {HUB}.
      * @dev    {addSpoke} requires `token < HUB` so the spoke becomes `currency0`
      *         of the pool. This is the only currency ordering under which a
@@ -168,8 +173,7 @@ contract Unispring is IUnlockCallback {
      * @return poolId The pool id of the newly seeded hub pool.
      */
     function seedHub(int24 tickLower, int24 tickUpper) external returns (PoolId poolId) {
-        _requireValidTick(tickLower);
-        _requireValidTick(tickUpper);
+        _requireValidTickRange(tickLower, tickUpper);
 
         uint256 supply = IERC20(HUB).balanceOf(address(this));
 
@@ -230,8 +234,7 @@ contract Unispring is IUnlockCallback {
      * @return poolId    The Uniswap V4 pool id.
      */
     function addSpoke(IERC20 token, uint256 supply, int24 tickLower, int24 tickUpper) external returns (PoolId poolId) {
-        _requireValidTick(tickLower);
-        _requireValidTick(tickUpper);
+        _requireValidTickRange(tickLower, tickUpper);
 
         // 1. Enforce currency0 ordering: spoke must sort strictly below the hub.
         if (address(token) >= HUB) revert SpokeMustSortBelowHub(address(token));
@@ -362,6 +365,12 @@ contract Unispring is IUnlockCallback {
         if (tick <= TickMath.MIN_TICK || tick >= TickMath.MAX_TICK) {
             revert TickOutOfRange(tick);
         }
+    }
+
+    function _requireValidTickRange(int24 tickLower, int24 tickUpper) private pure {
+        _requireValidTick(tickLower);
+        _requireValidTick(tickUpper);
+        if (tickLower >= tickUpper) revert TickLowerNotBelowUpper(tickLower, tickUpper);
     }
 
     /**
