@@ -215,13 +215,8 @@ contract Unispring is IUnlockCallback {
      */
     function zzInit(IERC20 hub_, int24 tickLower, int24 tickUpper) external {
         if (msg.sender != address(PROTO)) revert Unauthorized();
-        _requireValidTickRange(tickLower, tickUpper);
         hub = address(hub_);
-
-        uint256 supply = hub_.balanceOf(address(this));
-
-        PoolId poolId = _addLiquidity(address(0), supply, tickLower, tickUpper, false);
-        emit Seeded(msg.sender, hub_, poolId, supply, tickLower, tickUpper);
+        _addLiquidity(hub_, hub_.balanceOf(address(this)), tickLower, tickUpper, false);
     }
 
     /**
@@ -260,18 +255,9 @@ contract Unispring is IUnlockCallback {
      * @return poolId    The Uniswap V4 pool id.
      */
     function addSpoke(IERC20 token, uint256 supply, int24 tickLower, int24 tickUpper) external returns (PoolId poolId) {
-        _requireValidTickRange(tickLower, tickUpper);
-
-        // 1. Enforce currency0 ordering: spoke must sort strictly below the hub.
-        if (address(token) >= hub) revert SpokeMustSortBelowHub(address(token));
-
-        // 2. Pull the seed supply from the caller.
         // forge-lint: disable-next-line(erc20-unchecked-transfer)
         token.transferFrom(msg.sender, address(this), supply);
-
-        // 3. Initialize the pool and seed the position via the unlock callback.
-        poolId = _addLiquidity(address(token), supply, tickLower, tickUpper, true);
-        emit Seeded(msg.sender, token, poolId, supply, tickLower, tickUpper);
+        poolId = _addLiquidity(token, supply, tickLower, tickUpper, true);
     }
 
     /**
@@ -303,14 +289,19 @@ contract Unispring is IUnlockCallback {
     }
 
     /**
-     * @dev Initialize (if needed) and seed a pool with `supply` tokens in a
-     *      single-sided position. Returns the pool id.
+     * @dev Validate ticks, enforce currency ordering, initialize the pool (if
+     *      needed), seed a single-sided position, and emit {Seeded}.
      */
-    function _addLiquidity(address token, uint256 supply, int24 tickLower, int24 tickUpper, bool currency0Sided)
+    function _addLiquidity(IERC20 token, uint256 supply, int24 tickLower, int24 tickUpper, bool currency0Sided)
         private
         returns (PoolId poolId)
     {
-        PoolKey memory key = _poolKey(token);
+        _requireValidTickRange(tickLower, tickUpper);
+
+        address tokenAddr = address(token);
+        if (currency0Sided && tokenAddr >= hub) revert SpokeMustSortBelowHub(tokenAddr);
+
+        PoolKey memory key = _poolKey(currency0Sided ? tokenAddr : address(0));
         poolId = key.toId();
 
         IPoolManager pm = POOL_MANAGER;
@@ -332,6 +323,8 @@ contract Unispring is IUnlockCallback {
                 )
             )
         );
+
+        emit Seeded(msg.sender, token, poolId, supply, tickLower, tickUpper);
     }
 
     /**
