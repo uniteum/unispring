@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
+import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 import {IAddressLookup} from "ilookup/IAddressLookup.sol";
 import {IERC20} from "ierc20/IERC20.sol";
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
@@ -70,20 +71,32 @@ contract Unispring is IUnlockCallback {
     int24 public constant TICK_SPACING = 1;
 
     /**
+     * @notice The prototype instance that acts as the Bitsy factory.
+     */
+    // forge-lint: disable-next-line(screaming-snake-case-immutable)
+    Unispring public immutable PROTO;
+
+    /**
      * @notice The Uniswap V4 PoolManager, resolved from the `IAddressLookup`
      *         supplied at construction.
      */
     IPoolManager public immutable POOL_MANAGER;
 
     /**
-     * @notice The hub token, supplied at construction.
-     * @dev    Must have its full intended pool supply transferred to this contract
-     *         before {seedHub} is called; {seedHub} reads `HUB.balanceOf(this)` as
-     *         the amount to seed. Deploy scripts salt-mine the hub's address so
-     *         it has many leading `f` bytes, which makes future {addSpoke} calls
-     *         succeed with spoke tokens whose addresses sort strictly below `HUB`.
+     * @notice The hub token, set during {zzInit} for each clone.
+     * @dev    The full hub supply must be transferred to the clone's deterministic
+     *         address (obtainable via {made}) before {make} is called. {zzInit}
+     *         reads `hub.balanceOf(this)` as the amount to seed. Deploy scripts
+     *         salt-mine the hub's address so it has many leading `f` bytes, which
+     *         makes future {addSpoke} calls succeed with spoke tokens whose
+     *         addresses sort strictly below the hub.
      */
-    address public immutable HUB;
+    address public hub;
+
+    /**
+     * @notice Emitted when a new clone is created via {make}.
+     */
+    event Make(Unispring indexed clone, IERC20 indexed hub, int24 tickLower, int24 tickUpper);
 
     /**
      * @notice Emitted when a pool is initialized, paired against the hub, and seeded.
@@ -119,13 +132,13 @@ contract Unispring is IUnlockCallback {
     error TickLowerNotBelowUpper(int24 tickLower, int24 tickUpper);
 
     /**
-     * @notice Thrown when the spoke token does not sort strictly below {HUB}.
-     * @dev    {addSpoke} requires `token < HUB` so the spoke becomes `currency0`
+     * @notice Thrown when the spoke token does not sort strictly below {hub}.
+     * @dev    {addSpoke} requires `token < hub` so the spoke becomes `currency0`
      *         of the pool. This is the only currency ordering under which a
      *         single-sided seed position is both active at spot and requires
      *         zero hub capital; see README.md for the full derivation. Mine a
      *         different spoke salt until the deterministic address sorts below
-     *         {HUB}.
+     *         {hub}.
      */
     error SpokeMustSortBelowHub(address token);
 
@@ -135,53 +148,80 @@ contract Unispring is IUnlockCallback {
     error InvalidUnlockCaller();
 
     /**
+     * @notice Thrown when {zzInit} is called by anyone other than {PROTO}.
+     */
+    error Unauthorized();
+
+    /**
      * @notice Thrown if liquidity computed from supply exceeds `uint128`.
      */
     error LiquidityOverflow();
 
     /**
-     * @notice Construct the Unispring seeder bound to an externally-supplied hub.
-     * @dev    The hub pool is NOT seeded here. A contract cannot receive callbacks
-     *         during its own construction (its runtime code isn't deployed yet),
-     *         so pool seeding is deferred to {seedHub}.
+     * @notice Construct the prototype. Clones are created via {make}.
      * @param  poolManagerLookup `IAddressLookup` resolving the chain-local
-     *                       Uniswap V4 PoolManager. Dereferenced once in the
-     *                       constructor and stored as {POOL_MANAGER}.
-     * @param  hub           The hub token. Stored as {HUB}.
+     *                           Uniswap V4 PoolManager.
      */
-    constructor(IAddressLookup poolManagerLookup, IERC20 hub) {
+    constructor(IAddressLookup poolManagerLookup) {
+        PROTO = this;
         POOL_MANAGER = IPoolManager(poolManagerLookup.value());
-        HUB = address(hub);
+    }
+
+    // ---- Bitsy factory ----
+
+    /**
+     * @notice Predict the deterministic address of a clone.
+     * @return exists True if the clone is already deployed.
+     * @return home   The deterministic clone address.
+     * @return salt   The CREATE2 salt.
+     */
+    function made(IERC20 hub_, int24 tickLower, int24 tickUpper)
+        public
+        view
+        returns (bool exists, address home, bytes32 salt)
+    {
+        salt = keccak256(abi.encode(hub_, tickLower, tickUpper));
+        home = Clones.predictDeterministicAddress(address(PROTO), salt, address(PROTO));
+        exists = home.code.length > 0;
     }
 
     /**
-     * @notice Initialize the hub's ETH pool and seed it single-sided with the
-     *         hub balance currently held by this contract. Callable exactly once.
-     * @dev    Permissionless — any caller may trigger it. The deploy script
-     *         transfers the full hub supply to this contract and then calls
-     *         this immediately. Subsequent calls revert via the PoolManager's
-     *         `PoolAlreadyInitialized` error. The seed is the fencepost
-     *         "mirror" case (single-sided currency1 at the upper boundary,
-     *         inactive at spot until the first ETH→HUB swap crosses the
-     *         boundary downward). A bootstrap swap is expected right after
-     *         this call so the pool shows as active to quoters and hosted
-     *         front-ends.
-     * @param  tickLower Lower tick of the hub position. Must be a multiple of
-     *                   {TICK_SPACING} and strictly inside
-     *                   `(MIN_TICK, MAX_TICK)`.
-     * @param  tickUpper Upper tick of the hub position, equal to the negated
-     *                   hub-priced-in-ETH price floor. Must be a multiple of
-     *                   {TICK_SPACING} and strictly inside
-     *                   `(MIN_TICK, MAX_TICK)`.
-     * @return poolId The pool id of the newly seeded hub pool.
+     * @notice Deploy a deterministic clone for the given hub and tick range.
+     *         Idempotent — returns the existing clone if already deployed.
+     * @return clone The deployed (or existing) clone.
      */
-    function seedHub(int24 tickLower, int24 tickUpper) external returns (PoolId poolId) {
-        _requireValidTickRange(tickLower, tickUpper);
+    function make(IERC20 hub_, int24 tickLower, int24 tickUpper) external returns (Unispring clone) {
+        if (this != PROTO) {
+            clone = PROTO.make(hub_, tickLower, tickUpper);
+        } else {
+            (bool exists, address home, bytes32 salt) = made(hub_, tickLower, tickUpper);
+            clone = Unispring(payable(home));
+            if (!exists) {
+                Clones.cloneDeterministic(address(PROTO), salt);
+                Unispring(payable(home)).zzInit(hub_, tickLower, tickUpper);
+                emit Make(clone, hub_, tickLower, tickUpper);
+            }
+        }
+    }
 
-        uint256 supply = IERC20(HUB).balanceOf(address(this));
+    /**
+     * @notice Initializer called by PROTO on a freshly deployed clone. Sets the
+     *         hub token, initializes the hub's ETH pool, and seeds it single-sided
+     *         with the hub balance already held by this clone.
+     * @dev    The clone's deterministic address (from {made}) must hold the hub
+     *         supply before {make} is called. The seed is single-sided currency1
+     *         at the upper boundary, inactive at spot until the first ETH→HUB swap
+     *         crosses the boundary downward.
+     */
+    function zzInit(IERC20 hub_, int24 tickLower, int24 tickUpper) external {
+        if (msg.sender != address(PROTO)) revert Unauthorized();
+        _requireValidTickRange(tickLower, tickUpper);
+        hub = address(hub_);
+
+        uint256 supply = hub_.balanceOf(address(this));
 
         PoolKey memory key = _poolKey(address(0));
-        poolId = key.toId();
+        PoolId poolId = key.toId();
 
         IPoolManager pm = POOL_MANAGER;
         (uint160 sqrtPriceX96,,,) = pm.getSlot0(poolId);
@@ -199,13 +239,13 @@ contract Unispring is IUnlockCallback {
             )
         );
 
-        emit Seeded(msg.sender, IERC20(HUB), poolId, supply, tickLower, tickUpper);
+        emit Seeded(msg.sender, hub_, poolId, supply, tickLower, tickUpper);
     }
 
     /**
      * @notice Pair an already-deployed token against the hub and lock `supply`
      *         into a single-sided V4 position with a permanent floor.
-     * @dev    The spoke token must sort strictly below {HUB} so that it becomes
+     * @dev    The spoke token must sort strictly below {hub} so that it becomes
      *         `currency0` of the pool. Caller must approve this contract to pull
      *         `supply` tokens; the pulled balance is then locked into the seed
      *         position.
@@ -241,7 +281,7 @@ contract Unispring is IUnlockCallback {
         _requireValidTickRange(tickLower, tickUpper);
 
         // 1. Enforce currency0 ordering: spoke must sort strictly below the hub.
-        if (address(token) >= HUB) revert SpokeMustSortBelowHub(address(token));
+        if (address(token) >= hub) revert SpokeMustSortBelowHub(address(token));
 
         // 2. Pull the seed supply from the caller.
         // forge-lint: disable-next-line(erc20-unchecked-transfer)
@@ -379,14 +419,14 @@ contract Unispring is IUnlockCallback {
     }
 
     /**
-     * @dev Build a pool key with the given currency0 paired against HUB.
-     *      Pass `address(0)` for the hub pool (ETH/HUB), or a spoke token
-     *      address for a spoke pool. Caller must ensure `currency0 < HUB`.
+     * @dev Build a pool key with the given currency0 paired against {hub}.
+     *      Pass `address(0)` for the hub pool (ETH/hub), or a spoke token
+     *      address for a spoke pool. Caller must ensure `currency0 < hub`.
      */
     function _poolKey(address currency0) private view returns (PoolKey memory) {
         return PoolKey({
             currency0: Currency.wrap(currency0),
-            currency1: Currency.wrap(HUB),
+            currency1: Currency.wrap(hub),
             fee: FEE,
             tickSpacing: TICK_SPACING,
             hooks: IHooks(address(0))

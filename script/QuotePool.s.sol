@@ -39,7 +39,7 @@ contract QuotePool is Script {
     function run() external {
         Unispring unispring = Unispring(payable(vm.envAddress("Unispring")));
         address newToken = vm.envAddress("HelloWorld");
-        address hub = unispring.HUB();
+        address hub = unispring.hub();
         uint128 hubAmount = uint128(vm.envUint("HubAmount"));
 
         // Case-1 invariant: new token is currency0, HUB is currency1.

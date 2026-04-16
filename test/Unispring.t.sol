@@ -117,6 +117,7 @@ contract MockPoolManager {
 
         // Populate extsload slot so StateLibrary.getSlot0 works.
         bytes32 stateSlot = keccak256(abi.encodePacked(PoolId.unwrap(key.toId()), bytes32(uint256(6))));
+        // forge-lint: disable-next-line(unsafe-typecast)
         _slots[stateSlot] = bytes32(uint256(sqrtPriceX96) | (uint256(uint24(int24(tick))) << 160));
     }
 
@@ -199,12 +200,13 @@ contract UnispringTest is Test {
         MockToken template = new MockToken("", "");
         vm.etch(HUB_ADDR, address(template).code);
 
-        // 3. Construct Unispring bound to the hub at HUB_ADDR.
-        unispring = new Unispring(IAddressLookup(LOOKUP_ADDR), IERC20(HUB_ADDR));
-
-        // 4. Fund Unispring with the hub supply, then seed the hub pool.
-        MockToken(HUB_ADDR).mint(address(unispring), HUB_SUPPLY);
-        unispring.seedHub(TickMath.MIN_TICK + 1, -HUB_TICK_FLOOR);
+        // 3. Construct the prototype, pre-fund the clone, then make (seeds hub in zzInit).
+        Unispring proto = new Unispring(IAddressLookup(LOOKUP_ADDR));
+        int24 tickLower = TickMath.MIN_TICK + 1;
+        int24 tickUpper = -HUB_TICK_FLOOR;
+        (, address home,) = proto.made(IERC20(HUB_ADDR), tickLower, tickUpper);
+        MockToken(HUB_ADDR).mint(home, HUB_SUPPLY);
+        unispring = proto.make(IERC20(HUB_ADDR), tickLower, tickUpper);
 
         // 5. Etch a second MockToken at the fixed spoke-token address, below HUB_ADDR,
         //    ready for upcoming `addSpoke` calls.
@@ -212,14 +214,7 @@ contract UnispringTest is Test {
     }
 
     function test_ConstructorRegistersImmutables() public view {
-        assertEq(unispring.HUB(), HUB_ADDR, "HUB immutable");
-    }
-
-    function test_SeedHubDoubleCallAddsLiquidity() public {
-        // Second seedHub skips initialization but still adds liquidity.
-        unispring.seedHub(TickMath.MIN_TICK + 1, -HUB_TICK_FLOOR);
-        (,,,, bool seen) = pm.lastModify();
-        assertTrue(seen, "second seedHub should add liquidity");
+        assertEq(unispring.hub(), HUB_ADDR, "HUB immutable");
     }
 
     function test_AddSpokeInitializesPoolAndAddsLiquidity() public {
@@ -241,9 +236,9 @@ contract UnispringTest is Test {
         assertEq(tickSpacing, unispring.TICK_SPACING(), "tickSpacing constant mismatch");
 
         // Spoke token must sort strictly below HUB so it lands as currency0.
-        assertLt(uint160(SPOKE_TOKEN_ADDR), uint160(unispring.HUB()), "spoke must sort below HUB");
+        assertLt(uint160(SPOKE_TOKEN_ADDR), uint160(unispring.hub()), "spoke must sort below HUB");
         assertEq(Currency.unwrap(currency0), SPOKE_TOKEN_ADDR);
-        assertEq(Currency.unwrap(currency1), unispring.HUB());
+        assertEq(Currency.unwrap(currency1), unispring.hub());
         // Single-sided in currency0 → pool price sits at the lower bound (tickFloor).
         assertEq(sqrtPriceX96, TickMath.getSqrtPriceAtTick(tickFloor));
 

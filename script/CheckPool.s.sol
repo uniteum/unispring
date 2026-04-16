@@ -20,7 +20,7 @@ contract CheckPool is Script {
     function run() external view {
         Unispring spring = Unispring(payable(vm.envAddress("Unispring")));
         address newToken = vm.envAddress("HelloWorld");
-        address hub = spring.HUB();
+        address hub = spring.hub();
         bool newIsCurrency0 = newToken < hub;
 
         PoolKey memory key = PoolKey({

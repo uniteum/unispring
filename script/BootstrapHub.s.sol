@@ -27,7 +27,7 @@ contract BootstrapHub is Script {
 
         PoolKey memory hubKey = PoolKey({
             currency0: Currency.wrap(address(0)),
-            currency1: Currency.wrap(unispring.HUB()),
+            currency1: Currency.wrap(unispring.hub()),
             fee: unispring.FEE(),
             tickSpacing: unispring.TICK_SPACING(),
             hooks: IHooks(address(0))
