@@ -251,13 +251,14 @@ contract Unispring is IUnlockCallback {
         //    equals floor on pool tick. Pool price seeded at the lower bound;
         //    the position is single-sided in currency0 and active.
         PoolKey memory key = _poolKey(address(token));
-        uint160 sqrtPriceX96 = TickMath.getSqrtPriceAtTick(tickLower);
-
         poolId = key.toId();
 
         // 4. Initialize the pool and seed the position via the unlock callback.
         IPoolManager pm = POOL_MANAGER;
-        pm.initialize(key, sqrtPriceX96);
+        (uint160 sqrtPriceX96,,,) = pm.getSlot0(poolId);
+        if (sqrtPriceX96 == 0) {
+            pm.initialize(key, TickMath.getSqrtPriceAtTick(tickLower));
+        }
         pm.unlock(
             abi.encode(
                 Action.SEED,
