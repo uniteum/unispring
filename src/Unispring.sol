@@ -23,7 +23,7 @@ import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
  *         price floor, hub-paired spokes. Zero-fee pools.
  * @dev    See README.md for the full design rationale. The hub token is supplied
  *         externally at construction; its ETH pool is funded single-sided by
- *         {zzInit}. Additional tokens are paired against the hub by {addSpoke}.
+ *         {zzInit}. Additional tokens are paired against the hub by {fund}.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
 contract Unispring is IUnlockCallback {
@@ -40,7 +40,7 @@ contract Unispring is IUnlockCallback {
     /**
      * @dev Internal payload used to fund a single-sided position. `currency0Sided`
      *      selects which side of the pair the supply funds: `true` for every
-     *      {addSpoke}-created pool, `false` for the {zzInit}-created hub pool.
+     *      {fund}-created pool, `false` for the {zzInit}-created hub pool.
      */
     struct FundData {
         PoolKey key;
@@ -88,7 +88,7 @@ contract Unispring is IUnlockCallback {
      *         address (obtainable via {made}) before {make} is called. {zzInit}
      *         reads `hub.balanceOf(this)` as the amount to fund. Deploy scripts
      *         salt-mine the hub's address so it has many leading `f` bytes, which
-     *         makes future {addSpoke} calls succeed with spoke tokens whose
+     *         makes future {fund} calls succeed with spoke tokens whose
      *         addresses sort strictly below the hub.
      */
     address public hub;
@@ -100,7 +100,7 @@ contract Unispring is IUnlockCallback {
 
     /**
      * @notice Emitted when a pool is initialized, paired against the hub, and funded.
-     * @param funder    The address that called {addSpoke} (or PROTO for {zzInit}).
+     * @param funder    The address that called {fund} (or PROTO for {zzInit}).
      * @param token     The spoke token (or the hub, for {zzInit}).
      * @param poolId    The Uniswap V4 pool id.
      * @param supply    The fixed supply funded into the pool.
@@ -133,7 +133,7 @@ contract Unispring is IUnlockCallback {
 
     /**
      * @notice Thrown when the spoke token does not sort strictly below {hub}.
-     * @dev    {addSpoke} requires `token < hub` so the spoke becomes `currency0`
+     * @dev    {fund} requires `token < hub` so the spoke becomes `currency0`
      *         of the pool. This is the only currency ordering under which a
      *         single-sided funded position is both active at spot and requires
      *         zero hub capital; see README.md for the full derivation. Mine a
@@ -235,7 +235,7 @@ contract Unispring is IUnlockCallback {
      *           1. Per-pool isolation. Unispring only runs a spoke's code
      *              during operations on that spoke's own pool.
      *           2. Reentrancy via transfer hooks is blocked by Uniswap V4's
-     *              single-locker model. A hook cannot re-enter {addSpoke} /
+     *              single-locker model. A hook cannot re-enter {fund} /
      *              {zzInit} / {buyHub} (each calls `POOL_MANAGER.unlock`,
      *              which reverts on nested entry), and it cannot call the
      *              PoolManager directly because `swap` / `modifyLiquidity`
@@ -254,7 +254,7 @@ contract Unispring is IUnlockCallback {
      *                   `(MIN_TICK, MAX_TICK)`.
      * @return poolId    The Uniswap V4 pool id.
      */
-    function addSpoke(IERC20 token, uint256 supply, int24 tickLower, int24 tickUpper) external returns (PoolId poolId) {
+    function fund(IERC20 token, uint256 supply, int24 tickLower, int24 tickUpper) external returns (PoolId poolId) {
         // forge-lint: disable-next-line(erc20-unchecked-transfer)
         token.transferFrom(msg.sender, address(this), supply);
         poolId = _addLiquidity(token, supply, tickLower, tickUpper, true);

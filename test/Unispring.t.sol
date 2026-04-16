@@ -209,7 +209,7 @@ contract UnispringTest is Test {
         unispring = proto.make(IERC20(HUB_ADDR), tickLower, tickUpper);
 
         // 5. Etch a second MockToken at the fixed spoke-token address, below HUB_ADDR,
-        //    ready for upcoming `addSpoke` calls.
+        //    ready for upcoming `fund` calls.
         vm.etch(SPOKE_TOKEN_ADDR, address(template).code);
     }
 
@@ -217,7 +217,7 @@ contract UnispringTest is Test {
         assertEq(unispring.hub(), HUB_ADDR, "HUB immutable");
     }
 
-    function test_AddSpokeInitializesPoolAndAddsLiquidity() public {
+    function test_FundInitializesPoolAndAddsLiquidity() public {
         uint256 supply = 1_000_000 ether;
         int24 tickFloor = -120_000;
 
@@ -226,7 +226,7 @@ contract UnispringTest is Test {
         MockToken(SPOKE_TOKEN_ADDR).approve(address(unispring), supply);
 
         int24 tickUpper = TickMath.MAX_TICK - 1;
-        unispring.addSpoke(IERC20(SPOKE_TOKEN_ADDR), supply, tickFloor, tickUpper);
+        unispring.fund(IERC20(SPOKE_TOKEN_ADDR), supply, tickFloor, tickUpper);
 
         // Pool was initialized with the right key shape.
         (Currency currency0, Currency currency1, uint24 fee, int24 tickSpacing, uint160 sqrtPriceX96, bool seenInit) =

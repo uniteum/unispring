@@ -30,7 +30,7 @@ numbered so we can refer to them in commits and PRs.
 
 ## Concerns (address these)
 
-1. **Unispring membership is a weak trust signal on its own.** `addSpoke` is
+1. **Unispring membership is a weak trust signal on its own.** `fund` is
    permissionless, so "this token is in Unispring" only tells you its
    supply is floor-locked — it says nothing about the token's bytecode
    (could be fee-on-transfer, rebasing, blacklisting, upgradeable, or
@@ -38,7 +38,7 @@ numbered so we can refer to them in commits and PRs.
 
    **Proposed fix:** a launcher contract that, in a single transaction,
    (a) calls [Lepton](../lepton/src/Lepton.sol) to mint a fresh fixed-supply
-   clone, and (b) seeds the entire supply into Unispring via `addSpoke`.
+   clone, and (b) seeds the entire supply into Unispring via `fund`.
    Tokens that emerge from this launcher carry a strong composite guarantee:
    vanilla Lepton bytecode (no mint, no blacklist, no fee-on-transfer, no
    upgrade) + entire supply locked behind a Unispring floor + nobody holds
@@ -72,11 +72,11 @@ numbered so we can refer to them in commits and PRs.
 
    **Isolation properties that hold:**
 
-   - Per-pool operations never run another spoke's code. `addSpoke` and
+   - Per-pool operations never run another spoke's code. `fund` and
      `_plow` only touch the token for the pool they operate on.
    - v4's `PoolManager` enforces a single active locker via transient
      storage. A malicious token's transfer hook cannot re-enter
-     `plow` / `addSpoke` / `seedHub` / `buyHub` (each calls `unlock`,
+     `plow` / `fund` / `seedHub` / `buyHub` (each calls `unlock`,
      which reverts on nested entry), and it cannot call the PoolManager
      directly because `take` / `swap` / `modifyLiquidity` require
      `msg.sender == locker`.
@@ -93,7 +93,7 @@ numbered so we can refer to them in commits and PRs.
    not a compromise.
 
    **Proposed fixes (pick any):**
-   - Add a NatSpec block on `addSpoke` spelling out the isolation
+   - Add a NatSpec block on `fund` spelling out the isolation
      argument, so future readers don't have to re-derive it.
    - Prefer pairing Unispring with the Lepton launcher (concern 1) so
      the supported-token-shape question never arises in practice.

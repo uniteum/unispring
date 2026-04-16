@@ -125,7 +125,7 @@ the bootstrap swap crosses it).
    transfer into Unispring becomes permanent liquidity that anyone can buy.
 
 **Cost.** The spoke token must sort strictly below HUB (it must become
-`currency0`), which is enforced at `addSpoke` via the `SpokeMustSortBelowHub`
+`currency0`), which is enforced at `fund` via the `SpokeMustSortBelowHub`
 check. See choice 7 below.
 
 ---
@@ -168,7 +168,7 @@ hub address. A hub starting with `f...` means almost every possible spoke
 address sorts below it without needing to mine the spoke address at all.
 
 This also stabilizes the single-sided seed formula. If spoke/hub sides were
-swapped case-by-case, `addSpoke` would need branching logic to figure out
+swapped case-by-case, `fund` would need branching logic to figure out
 which side to fund and which tick boundary to seed at. With enforced
 ordering, there's exactly one formula for spokes and it lives in `_seed`
 without any currency-side branch.
@@ -243,7 +243,7 @@ observable if someone is watching mempool.
 
 **Choice.** `unlockCallback` decodes a `(Action, bytes)` tuple and
 dispatches to `_seed`, `_plow`, or `_buyHub`. Each caller (`seedHub`,
-`addSpoke`, `plow`, `buyHub`) encodes its own action and payload before
+`fund`, `plow`, `buyHub`) encodes its own action and payload before
 calling `POOL_MANAGER.unlock`.
 
 **Why.** V4 gives you exactly one `unlockCallback` per contract. Unispring
