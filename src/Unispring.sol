@@ -252,12 +252,11 @@ contract Unispring is IUnlockCallback {
      * @param  tickUpper Upper tick of the spoke position. Must be a multiple of
      *                   {TICK_SPACING} and strictly inside
      *                   `(MIN_TICK, MAX_TICK)`.
-     * @return poolId    The Uniswap V4 pool id.
      */
-    function fund(IERC20 token, uint256 supply, int24 tickLower, int24 tickUpper) external returns (PoolId poolId) {
+    function fund(IERC20 token, uint256 supply, int24 tickLower, int24 tickUpper) external {
         // forge-lint: disable-next-line(erc20-unchecked-transfer)
         token.transferFrom(msg.sender, address(this), supply);
-        poolId = _addLiquidity(token, supply, tickLower, tickUpper, true);
+        _addLiquidity(token, supply, tickLower, tickUpper, true);
     }
 
     /**
@@ -294,7 +293,6 @@ contract Unispring is IUnlockCallback {
      */
     function _addLiquidity(IERC20 token, uint256 supply, int24 tickLower, int24 tickUpper, bool currency0Sided)
         private
-        returns (PoolId poolId)
     {
         _requireValidTickRange(tickLower, tickUpper);
 
@@ -302,7 +300,7 @@ contract Unispring is IUnlockCallback {
         if (currency0Sided && tokenAddr >= hub) revert SpokeMustSortBelowHub(tokenAddr);
 
         PoolKey memory key = _poolKey(currency0Sided ? tokenAddr : address(0));
-        poolId = key.toId();
+        PoolId poolId = key.toId();
 
         IPoolManager pm = POOL_MANAGER;
         (uint160 sqrtPriceX96,,,) = pm.getSlot0(poolId);
