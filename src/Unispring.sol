@@ -304,8 +304,8 @@ contract Unispring is IUnlockCallback {
         uint160 sqrtLower = TickMath.getSqrtPriceAtTick(cb.tickLower);
         uint160 sqrtUpper = TickMath.getSqrtPriceAtTick(cb.tickUpper);
         uint128 liquidity = cb.currency0Sided
-            ? _liquidityForAmount0(sqrtLower, sqrtUpper, cb.supply)
-            : _liquidityForAmount1(sqrtLower, sqrtUpper, cb.supply);
+            ? _liquidity0(sqrtLower, sqrtUpper, cb.supply)
+            : _liquidity1(sqrtLower, sqrtUpper, cb.supply);
 
         (BalanceDelta delta,) = pm.modifyLiquidity(
             cb.key,
@@ -375,11 +375,7 @@ contract Unispring is IUnlockCallback {
      * @dev Liquidity for a single-sided position in currency0.
      *      L = amount0 * (sqrtLower * sqrtUpper / Q96) / (sqrtUpper - sqrtLower)
      */
-    function _liquidityForAmount0(uint160 sqrtLower, uint160 sqrtUpper, uint256 amount0)
-        private
-        pure
-        returns (uint128)
-    {
+    function _liquidity0(uint160 sqrtLower, uint160 sqrtUpper, uint256 amount0) private pure returns (uint128) {
         uint256 intermediate = FullMath.mulDiv(uint256(sqrtLower), uint256(sqrtUpper), FixedPoint96.Q96);
         return _toUint128(FullMath.mulDiv(amount0, intermediate, uint256(sqrtUpper - sqrtLower)));
     }
@@ -388,11 +384,7 @@ contract Unispring is IUnlockCallback {
      * @dev Liquidity for a single-sided position in currency1.
      *      L = amount1 * Q96 / (sqrtUpper - sqrtLower)
      */
-    function _liquidityForAmount1(uint160 sqrtLower, uint160 sqrtUpper, uint256 amount1)
-        private
-        pure
-        returns (uint128)
-    {
+    function _liquidity1(uint160 sqrtLower, uint160 sqrtUpper, uint256 amount1) private pure returns (uint128) {
         return _toUint128(FullMath.mulDiv(amount1, FixedPoint96.Q96, uint256(sqrtUpper - sqrtLower)));
     }
 
