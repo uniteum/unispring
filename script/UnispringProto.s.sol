@@ -1,0 +1,42 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.30;
+
+import {Unispring} from "../src/Unispring.sol";
+import {IAddressLookup} from "ilookup/IAddressLookup.sol";
+import {Script, console2} from "forge-std/Script.sol";
+
+/**
+ * @notice Deploy the Unispring prototype via Nick's CREATE2 deployer.
+ * @dev    Configuration comes from environment variables:
+ *           PoolManagerLookup — per-chain `IAddressLookup` resolving the V4
+ *                               PoolManager
+ *
+ * Usage:
+ * forge script script/UnispringProto.s.sol -f $chain --private-key $tx_key --broadcast --verify --delay 10 --retries 10
+ */
+contract UnispringProto is Script {
+    address constant NICK = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
+
+    function run() external {
+        address poolManagerLookupAddr = vm.envAddress("PoolManagerLookup");
+
+        console2.log("pmLookup:", poolManagerLookupAddr);
+
+        // Compute the deterministic prototype CREATE2 address.
+        bytes memory initCode =
+            abi.encodePacked(type(Unispring).creationCode, abi.encode(IAddressLookup(poolManagerLookupAddr)));
+        address predictedProto = vm.computeCreate2Address(bytes32(0), keccak256(initCode), NICK);
+        console2.log("predicted proto:", predictedProto);
+
+        // Deploy the prototype via Nick's CREATE2 factory (once).
+        if (predictedProto.code.length == 0) {
+            vm.startBroadcast();
+            (bool ok,) = NICK.call(abi.encodePacked(bytes32(0), initCode));
+            vm.stopBroadcast();
+            require(ok, "create2 deploy failed");
+            console2.log("deployed proto:", predictedProto);
+        } else {
+            console2.log("proto already deployed");
+        }
+    }
+}
