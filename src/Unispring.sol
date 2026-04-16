@@ -102,12 +102,12 @@ contract Unispring is IUnlockCallback {
     /**
      * @notice Thrown when `tickFloor` is not a multiple of {TICK_SPACING}.
      */
-    error TickFloorMisaligned(int24 tickFloor);
+    error TickMisaligned(int24 tickFloor);
 
     /**
      * @notice Thrown when `tickFloor` is not strictly inside `(MIN_TICK, MAX_TICK)`.
      */
-    error TickFloorOutOfRange(int24 tickFloor);
+    error TickOutOfRange(int24 tickFloor);
 
     /**
      * @notice Thrown when the spoke token does not sort strictly below {HUB}.
@@ -146,10 +146,7 @@ contract Unispring is IUnlockCallback {
      *                       strictly inside `(MIN_TICK, MAX_TICK)`.
      */
     constructor(IAddressLookup poolManagerLookup, IERC20 hub, int24 hubTickFloor) {
-        if (hubTickFloor % TICK_SPACING != 0) revert TickFloorMisaligned(hubTickFloor);
-        if (hubTickFloor <= TickMath.MIN_TICK || hubTickFloor >= TickMath.MAX_TICK) {
-            revert TickFloorOutOfRange(hubTickFloor);
-        }
+        _requireValidTick(hubTickFloor);
 
         POOL_MANAGER = IPoolManager(poolManagerLookup.value());
         HUB = address(hub);
@@ -229,10 +226,7 @@ contract Unispring is IUnlockCallback {
      * @return poolId    The Uniswap V4 pool id.
      */
     function addSpoke(IERC20 token, uint256 supply, int24 tickFloor) external returns (PoolId poolId) {
-        if (tickFloor % TICK_SPACING != 0) revert TickFloorMisaligned(tickFloor);
-        if (tickFloor <= TickMath.MIN_TICK || tickFloor >= TickMath.MAX_TICK) {
-            revert TickFloorOutOfRange(tickFloor);
-        }
+        _requireValidTick(tickFloor);
 
         // 1. Enforce currency0 ordering: spoke must sort strictly below the hub.
         if (address(token) >= HUB) revert SpokeMustSortBelowHub(address(token));
@@ -354,6 +348,17 @@ contract Unispring is IUnlockCallback {
         // forge-lint: disable-next-line(unsafe-typecast)
         uint256 received = uint256(uint128(delta.amount1()));
         pm.take(key.currency1, cb.recipient, received);
+    }
+
+    /**
+     * @dev Revert unless `tickFloor` is a multiple of {TICK_SPACING} and
+     *      strictly inside `(MIN_TICK, MAX_TICK)`.
+     */
+    function _requireValidTick(int24 tickFloor) private pure {
+        if (tickFloor % TICK_SPACING != 0) revert TickMisaligned(tickFloor);
+        if (tickFloor <= TickMath.MIN_TICK || tickFloor >= TickMath.MAX_TICK) {
+            revert TickOutOfRange(tickFloor);
+        }
     }
 
     /**
