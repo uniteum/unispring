@@ -60,8 +60,8 @@ contract MockToken {
  *         `modifyLiquidity`, `sync`, `settle`, `take`, `swap`.
  *
  *         Records the last init/modify args so the test can assert on them, and
- *         performs minimal settlement bookkeeping for the single-sided seeds
- *         that Unispring creates.
+ *         performs minimal settlement bookkeeping for the single-sided positions
+ *         that Unispring funds.
  */
 contract MockPoolManager {
     struct Initialize {
@@ -84,7 +84,7 @@ contract MockPoolManager {
     Initialize public lastInit;
     Modify public lastModify;
 
-    // Slot0 snapshots keyed by poolId, used to decide single-sided seed direction.
+    // Slot0 snapshots keyed by poolId, used to decide single-sided fund direction.
     mapping(PoolId => uint160) public sqrtPriceOf;
 
     // Mock extsload storage for StateLibrary compatibility.
@@ -137,7 +137,7 @@ contract MockPoolManager {
             seen: true
         });
 
-        // Seeding path. Decide which side the position is single-sided in by
+        // Funding path. Decide which side the position is single-sided in by
         // inspecting the initialization tick. If the pool's price tick sits at
         // the lower bound the position is in currency0; otherwise currency1.
         bool isLowerBound = sqrtPriceOf[key.toId()] == TickMath.getSqrtPriceAtTick(params.tickLower);
@@ -200,7 +200,7 @@ contract UnispringTest is Test {
         MockToken template = new MockToken("", "");
         vm.etch(HUB_ADDR, address(template).code);
 
-        // 3. Construct the prototype, pre-fund the clone, then make (seeds hub in zzInit).
+        // 3. Construct the prototype, pre-fund the clone, then make (funds hub in zzInit).
         Unispring proto = new Unispring(IAddressLookup(LOOKUP_ADDR));
         int24 tickLower = TickMath.MIN_TICK + 1;
         int24 tickUpper = -HUB_TICK_FLOOR;

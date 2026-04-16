@@ -19,11 +19,11 @@ import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
 
 /**
  * @title Unispring
- * @notice Fair-launch pool seeder on Uniswap V4 — permanent liquidity, built-in
+ * @notice Fair-launch pool funder on Uniswap V4 — permanent liquidity, built-in
  *         price floor, hub-paired spokes. Zero-fee pools.
  * @dev    See README.md for the full design rationale. The hub token is supplied
- *         externally at construction; its ETH pool is seeded single-sided by
- *         {seedHub}. Additional tokens are paired against the hub by {addSpoke}.
+ *         externally at construction; its ETH pool is funded single-sided by
+ *         {zzInit}. Additional tokens are paired against the hub by {addSpoke}.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
 contract Unispring is IUnlockCallback {
@@ -33,16 +33,16 @@ contract Unispring is IUnlockCallback {
      * @dev Discriminator for the unlock callback payload.
      */
     enum Action {
-        SEED,
+        FUND,
         BUY_HUB
     }
 
     /**
-     * @dev Internal payload used to seed a single-sided position. `currency0Sided`
+     * @dev Internal payload used to fund a single-sided position. `currency0Sided`
      *      selects which side of the pair the supply funds: `true` for every
-     *      {addSpoke}-created pool, `false` for the {seedHub}-created hub pool.
+     *      {addSpoke}-created pool, `false` for the {zzInit}-created hub pool.
      */
-    struct SeedData {
+    struct FundData {
         PoolKey key;
         uint256 supply;
         int24 tickLower;
@@ -86,7 +86,7 @@ contract Unispring is IUnlockCallback {
      * @notice The hub token, set during {zzInit} for each clone.
      * @dev    The full hub supply must be transferred to the clone's deterministic
      *         address (obtainable via {made}) before {make} is called. {zzInit}
-     *         reads `hub.balanceOf(this)` as the amount to seed. Deploy scripts
+     *         reads `hub.balanceOf(this)` as the amount to fund. Deploy scripts
      *         salt-mine the hub's address so it has many leading `f` bytes, which
      *         makes future {addSpoke} calls succeed with spoke tokens whose
      *         addresses sort strictly below the hub.
@@ -99,16 +99,16 @@ contract Unispring is IUnlockCallback {
     event Make(Unispring indexed clone, IERC20 indexed hub, int24 tickLower, int24 tickUpper);
 
     /**
-     * @notice Emitted when a pool is initialized, paired against the hub, and seeded.
-     * @param seeder    The address that called {addSpoke} or {seedHub}.
-     * @param token     The spoke token (or the hub, for {seedHub}).
+     * @notice Emitted when a pool is initialized, paired against the hub, and funded.
+     * @param funder    The address that called {addSpoke} (or PROTO for {zzInit}).
+     * @param token     The spoke token (or the hub, for {zzInit}).
      * @param poolId    The Uniswap V4 pool id.
-     * @param supply    The fixed supply seeded into the pool.
-     * @param tickLower Lower tick of the seeded position.
-     * @param tickUpper Upper tick of the seeded position.
+     * @param supply    The fixed supply funded into the pool.
+     * @param tickLower Lower tick of the funded position.
+     * @param tickUpper Upper tick of the funded position.
      */
-    event Seeded(
-        address indexed seeder,
+    event Funded(
+        address indexed funder,
         IERC20 indexed token,
         PoolId indexed poolId,
         uint256 supply,
@@ -135,7 +135,7 @@ contract Unispring is IUnlockCallback {
      * @notice Thrown when the spoke token does not sort strictly below {hub}.
      * @dev    {addSpoke} requires `token < hub` so the spoke becomes `currency0`
      *         of the pool. This is the only currency ordering under which a
-     *         single-sided seed position is both active at spot and requires
+     *         single-sided funded position is both active at spot and requires
      *         zero hub capital; see README.md for the full derivation. Mine a
      *         different spoke salt until the deterministic address sorts below
      *         {hub}.
@@ -206,10 +206,10 @@ contract Unispring is IUnlockCallback {
 
     /**
      * @notice Initializer called by PROTO on a freshly deployed clone. Sets the
-     *         hub token, initializes the hub's ETH pool, and seeds it single-sided
+     *         hub token, initializes the hub's ETH pool, and funds it single-sided
      *         with the hub balance already held by this clone.
      * @dev    The clone's deterministic address (from {made}) must hold the hub
-     *         supply before {make} is called. The seed is single-sided currency1
+     *         supply before {make} is called. The position is single-sided currency1
      *         at the upper boundary, inactive at spot until the first ETH→HUB swap
      *         crosses the boundary downward.
      */
@@ -224,7 +224,7 @@ contract Unispring is IUnlockCallback {
      *         into a single-sided V4 position with a permanent floor.
      * @dev    The spoke token must sort strictly below {hub} so that it becomes
      *         `currency0` of the pool. Caller must approve this contract to pull
-     *         `supply` tokens; the pulled balance is then locked into the seed
+     *         `supply` tokens; the pulled balance is then locked into the funded
      *         position.
      *
      *         Permissionless by design: anyone can pair any ERC-20 against the
@@ -236,15 +236,15 @@ contract Unispring is IUnlockCallback {
      *              during operations on that spoke's own pool.
      *           2. Reentrancy via transfer hooks is blocked by Uniswap V4's
      *              single-locker model. A hook cannot re-enter {addSpoke} /
-     *              {seedHub} / {buyHub} (each calls `POOL_MANAGER.unlock`,
+     *              {zzInit} / {buyHub} (each calls `POOL_MANAGER.unlock`,
      *              which reverts on nested entry), and it cannot call the
      *              PoolManager directly because `swap` / `modifyLiquidity`
      *              require the caller to be the active locker.
-     *           3. Fee-on-transfer or revert-on-transfer causes {_seed}'s
+     *           3. Fee-on-transfer or revert-on-transfer causes {_fund}'s
      *              `settle` step to underpay or revert, unwinding the whole
-     *              seed atomically. No partial state.
+     *              fund atomically. No partial state.
      * @param  token     The spoke token to pair against the hub.
-     * @param  supply    Amount of `token` to pull from the caller and seed into
+     * @param  supply    Amount of `token` to pull from the caller and fund into
      *                   the position.
      * @param  tickLower Lower tick (price floor in spoke-in-hub semantics).
      *                   Must be a multiple of {TICK_SPACING} and strictly inside
@@ -262,7 +262,7 @@ contract Unispring is IUnlockCallback {
 
     /**
      * @notice Buy hub tokens with native ETH via an exact-input swap on the hub
-     *         pool. Intended as the bootstrap call immediately after {seedHub} to
+     *         pool. Intended as the bootstrap call immediately after {zzInit} to
      *         cross the upper tick downward and activate the pool for quoters.
      * @dev    Permissionless. The received HUB tokens are forwarded to `msg.sender`.
      */
@@ -280,8 +280,8 @@ contract Unispring is IUnlockCallback {
         IPoolManager pm = POOL_MANAGER;
 
         (Action action, bytes memory inner) = abi.decode(data, (Action, bytes));
-        if (action == Action.SEED) {
-            _seed(pm, abi.decode(inner, (SeedData)));
+        if (action == Action.FUND) {
+            _fund(pm, abi.decode(inner, (FundData)));
         } else {
             _buyHub(pm, abi.decode(inner, (BuyHubData)));
         }
@@ -290,7 +290,7 @@ contract Unispring is IUnlockCallback {
 
     /**
      * @dev Validate ticks, enforce currency ordering, initialize the pool (if
-     *      needed), seed a single-sided position, and emit {Seeded}.
+     *      needed), fund a single-sided position, and emit {Funded}.
      */
     function _addLiquidity(IERC20 token, uint256 supply, int24 tickLower, int24 tickUpper, bool currency0Sided)
         private
@@ -311,9 +311,9 @@ contract Unispring is IUnlockCallback {
         }
         pm.unlock(
             abi.encode(
-                Action.SEED,
+                Action.FUND,
                 abi.encode(
-                    SeedData({
+                    FundData({
                         key: key,
                         supply: supply,
                         tickLower: tickLower,
@@ -324,14 +324,14 @@ contract Unispring is IUnlockCallback {
             )
         );
 
-        emit Seeded(msg.sender, token, poolId, supply, tickLower, tickUpper);
+        emit Funded(msg.sender, token, poolId, supply, tickLower, tickUpper);
     }
 
     /**
-     * @dev Seed a single-sided position with `supply` tokens. `currency0Sided`
+     * @dev Fund a single-sided position with `supply` tokens. `currency0Sided`
      *      selects which side of the pair the supply funds.
      */
-    function _seed(IPoolManager pm, SeedData memory cb) private {
+    function _fund(IPoolManager pm, FundData memory cb) private {
         uint160 sqrtLower = TickMath.getSqrtPriceAtTick(cb.tickLower);
         uint160 sqrtUpper = TickMath.getSqrtPriceAtTick(cb.tickUpper);
         uint128 liquidity = cb.currency0Sided
