@@ -49,11 +49,9 @@ contract UnispringDeploy is Script {
         console2.log("hubAmount   :", hubAmount);
 
         // 1. Compute the deterministic Unispring CREATE2 address. No salt mining:
-        //    the init code is fixed by (lookup, hub, hubTickFloor) and the salt
-        //    is always zero.
+        //    the init code is fixed by (lookup, hub) and the salt is always zero.
         bytes memory initCode = abi.encodePacked(
-            type(Unispring).creationCode,
-            abi.encode(IAddressLookup(poolManagerLookupAddr), IERC20(hubAddr), hubTickFloor)
+            type(Unispring).creationCode, abi.encode(IAddressLookup(poolManagerLookupAddr), IERC20(hubAddr))
         );
         address predictedUnispring = vm.computeCreate2Address(bytes32(0), keccak256(initCode), NICK);
         console2.log("predicted Unispring:", predictedUnispring);
@@ -96,7 +94,7 @@ contract UnispringDeploy is Script {
             }
 
             vm.startBroadcast();
-            unispring.seedHub();
+            unispring.seedHub(-hubTickFloor);
             vm.stopBroadcast();
             console2.log("hub pool seeded");
         } else {

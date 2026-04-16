@@ -185,11 +185,11 @@ contract UnispringTest is Test {
         vm.etch(HUB_ADDR, address(template).code);
 
         // 3. Construct Unispring bound to the hub at HUB_ADDR.
-        unispring = new Unispring(IAddressLookup(LOOKUP_ADDR), IERC20(HUB_ADDR), HUB_TICK_FLOOR);
+        unispring = new Unispring(IAddressLookup(LOOKUP_ADDR), IERC20(HUB_ADDR));
 
         // 4. Fund Unispring with the hub supply, then seed the hub pool.
         MockToken(HUB_ADDR).mint(address(unispring), HUB_SUPPLY);
-        unispring.seedHub();
+        unispring.seedHub(-HUB_TICK_FLOOR);
 
         // 5. Etch a second MockToken at the fixed spoke-token address, below HUB_ADDR,
         //    ready for upcoming `addSpoke` calls.
@@ -198,7 +198,6 @@ contract UnispringTest is Test {
 
     function test_ConstructorRegistersImmutables() public view {
         assertEq(unispring.HUB(), HUB_ADDR, "HUB immutable");
-        assertEq(unispring.HUB_TICK_FLOOR(), HUB_TICK_FLOOR, "HUB_TICK_FLOOR immutable");
     }
 
     function test_SeedHubRevertsOnDoubleCall() public {
@@ -206,7 +205,7 @@ contract UnispringTest is Test {
         // PoolManager rejects. We just assert it reverts; Unispring no
         // longer tracks hub-seed state itself.
         vm.expectRevert();
-        unispring.seedHub();
+        unispring.seedHub(-HUB_TICK_FLOOR);
     }
 
     function test_AddSpokeInitializesPoolAndAddsLiquidity() public {

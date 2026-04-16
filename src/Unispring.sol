@@ -83,12 +83,6 @@ contract Unispring is IUnlockCallback {
     address public immutable HUB;
 
     /**
-     * @notice Price floor the hub pool is seeded at, in hub-priced-in-ETH
-     *         semantics. Frozen at construction; consumed by {seedHub}.
-     */
-    int24 public immutable HUB_TICK_FLOOR;
-
-    /**
      * @notice Emitted when a pool is initialized, paired against the hub, and seeded.
      * @param seeder    The address that called {addSpoke} or {seedHub}.
      * @param token     The spoke token (or the hub, for {seedHub}).
@@ -134,23 +128,15 @@ contract Unispring is IUnlockCallback {
      * @notice Construct the Unispring seeder bound to an externally-supplied hub.
      * @dev    The hub pool is NOT seeded here. A contract cannot receive callbacks
      *         during its own construction (its runtime code isn't deployed yet),
-     *         so pool seeding is deferred to {seedHub}, which must be called once
-     *         after the hub's full intended pool supply has been transferred to
-     *         this contract.
+     *         so pool seeding is deferred to {seedHub}.
      * @param  poolManagerLookup `IAddressLookup` resolving the chain-local
      *                       Uniswap V4 PoolManager. Dereferenced once in the
      *                       constructor and stored as {POOL_MANAGER}.
      * @param  hub           The hub token. Stored as {HUB}.
-     * @param  hubTickFloor  Price floor for the hub, expressed in hub-priced-in-ETH
-     *                       semantics. Must be a multiple of {TICK_SPACING} and
-     *                       strictly inside `(MIN_TICK, MAX_TICK)`.
      */
-    constructor(IAddressLookup poolManagerLookup, IERC20 hub, int24 hubTickFloor) {
-        _requireValidTick(hubTickFloor);
-
+    constructor(IAddressLookup poolManagerLookup, IERC20 hub) {
         POOL_MANAGER = IPoolManager(poolManagerLookup.value());
         HUB = address(hub);
-        HUB_TICK_FLOOR = hubTickFloor;
     }
 
     /**
@@ -165,15 +151,20 @@ contract Unispring is IUnlockCallback {
      *         boundary downward). A bootstrap swap is expected right after
      *         this call so the pool shows as active to quoters and hosted
      *         front-ends.
+     * @param  hubTickUpper Upper tick of the hub position, equal to the negated
+     *                      hub-priced-in-ETH price floor. Must be a multiple of
+     *                      {TICK_SPACING} and strictly inside
+     *                      `(MIN_TICK, MAX_TICK)`.
      * @return poolId The pool id of the newly seeded hub pool.
      */
-    function seedHub() external returns (PoolId poolId) {
+    function seedHub(int24 hubTickUpper) external returns (PoolId poolId) {
+        _requireValidTick(hubTickUpper);
+
         uint256 supply = IERC20(HUB).balanceOf(address(this));
 
         PoolKey memory key = _poolKey(address(0));
         int24 tickLower = TickMath.minUsableTick(TICK_SPACING);
-        int24 tickUpper = -HUB_TICK_FLOOR;
-        uint160 sqrtPriceX96 = TickMath.getSqrtPriceAtTick(tickUpper);
+        uint160 sqrtPriceX96 = TickMath.getSqrtPriceAtTick(hubTickUpper);
 
         poolId = key.toId();
 
@@ -184,13 +175,13 @@ contract Unispring is IUnlockCallback {
                 Action.SEED,
                 abi.encode(
                     SeedData({
-                        key: key, supply: supply, tickLower: tickLower, tickUpper: tickUpper, currency0Sided: false
+                        key: key, supply: supply, tickLower: tickLower, tickUpper: hubTickUpper, currency0Sided: false
                     })
                 )
             )
         );
 
-        emit Seeded(msg.sender, IERC20(HUB), poolId, supply, HUB_TICK_FLOOR);
+        emit Seeded(msg.sender, IERC20(HUB), poolId, supply, -hubTickUpper);
     }
 
     /**
