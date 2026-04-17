@@ -130,12 +130,12 @@ contract Neutrino {
         if (this != PROTO) {
             clone = PROTO.make(name, symbol, supply, tickLower, tickUpper, leptonSalt);
         } else {
-            NeutrinoMaker maker = MAKER.make(tickLower, tickUpper);
-            ICoinage hubToken = maker.mint(LEPTON, name, symbol, supply, leptonSalt);
-
             (bool exists, address home, bytes32 salt,) = made(name, symbol, supply, tickLower, tickUpper, leptonSalt);
             clone = Neutrino(home);
             if (!exists) {
+                NeutrinoMaker maker = MAKER.make(tickLower, tickUpper);
+                ICoinage hubToken = maker.mint(LEPTON, name, symbol, supply, leptonSalt);
+
                 (, address springHome,) = UNISPRING.made(IERC20(address(hubToken)), tickLower, tickUpper);
                 // forge-lint: disable-next-line(erc20-unchecked-transfer)
                 IERC20(address(hubToken)).transfer(springHome, supply);
