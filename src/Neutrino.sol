@@ -17,7 +17,7 @@ import {Unispring} from "./Unispring.sol";
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
 contract Neutrino {
-    string public VERSION = "0.1.0";
+    string public constant VERSION = "0.1.0";
 
     /**
      * @notice The prototype instance that acts as the Bitsy factory.

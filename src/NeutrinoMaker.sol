@@ -13,7 +13,7 @@ import {IERC20} from "ierc20/IERC20.sol";
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
 contract NeutrinoMaker {
-    string public VERSION = "0.1.0";
+    string public constant VERSION = "0.1.0";
 
     /**
      * @notice The prototype instance that acts as the Bitsy factory.
