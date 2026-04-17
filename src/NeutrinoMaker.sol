@@ -19,6 +19,13 @@ contract NeutrinoMaker {
     // forge-lint: disable-next-line(screaming-snake-case-immutable)
     NeutrinoMaker public immutable PROTO;
 
+    address public maker;
+
+    /**
+     * @notice Thrown when {zzInit} is called by anyone other than {PROTO}.
+     */
+    error Unauthorized();
+
     constructor() {
         PROTO = this;
     }
@@ -55,7 +62,13 @@ contract NeutrinoMaker {
         clone = NeutrinoMaker(home);
         if (!exists) {
             Clones.cloneDeterministic(address(PROTO), salt);
+            clone.zzInit(msg.sender);
         }
+    }
+
+    function zzInit(address maker_) external {
+        if (msg.sender != address(PROTO)) revert Unauthorized();
+        maker = maker_;
     }
 
     // ---- Relay ----
@@ -75,6 +88,7 @@ contract NeutrinoMaker {
         external
         returns (ICoinage token)
     {
+        if (msg.sender != maker) revert Unauthorized();
         token = lepton.make(name, symbol, supply, salt);
         // forge-lint: disable-next-line(erc20-unchecked-transfer)
         IERC20(address(token)).transfer(msg.sender, supply);

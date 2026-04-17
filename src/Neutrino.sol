@@ -99,7 +99,7 @@ contract Neutrino {
         int24 tickUpper,
         bytes32 leptonSalt
     ) public view returns (bool exists, address home, bytes32 salt, address hubHome) {
-        (,address maker,) = MAKER.made(address(PROTO), tickLower, tickUpper);
+        (, address maker,) = MAKER.made(address(PROTO), tickLower, tickUpper);
         (, hubHome,) = LEPTON.made(maker, name, symbol, supply, leptonSalt);
         salt = bytes32(uint256(uint160(hubHome)));
         home = Clones.predictDeterministicAddress(address(PROTO), salt, address(PROTO));
@@ -166,7 +166,7 @@ contract Neutrino {
         bytes32 leptonSalt
     ) external {
         if (msg.sender != address(PROTO)) revert Unauthorized();
-        (,address maker,) = MAKER.made(address(PROTO), tickLower, tickUpper);
+        (, address maker,) = MAKER.made(address(PROTO), tickLower, tickUpper);
         (, address hubHome,) = LEPTON.made(maker, name, symbol, supply, leptonSalt);
         hub = ICoinage(hubHome);
         (, address springHome,) = UNISPRING.made(IERC20(hubHome), tickLower, tickUpper);
