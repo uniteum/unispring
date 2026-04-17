@@ -26,31 +26,32 @@ contract NeutrinoMaker {
     // ---- Bitsy factory ----
 
     /**
-     * @notice Predict the deterministic address of a clone for a tick range.
+     * @notice Predict the deterministic address of a clone for a sender and tick range.
+     * @param sender    The address that will call {make}.
      * @param tickLower Lower tick.
      * @param tickUpper Upper tick.
      * @return exists True if the clone is already deployed.
      * @return home   The deterministic clone address.
-     * @return salt   The CREATE2 salt (derived from the tick range).
+     * @return salt   The CREATE2 salt (derived from sender and tick range).
      */
-    function made(int24 tickLower, int24 tickUpper)
+    function made(address sender, int24 tickLower, int24 tickUpper)
         public
         view
         returns (bool exists, address home, bytes32 salt)
     {
-        salt = keccak256(abi.encode(tickLower, tickUpper));
+        salt = keccak256(abi.encode(sender, tickLower, tickUpper));
         home = Clones.predictDeterministicAddress(address(PROTO), salt, address(PROTO));
         exists = home.code.length > 0;
     }
 
     /**
-     * @notice Deploy a clone for the given tick range. Idempotent.
+     * @notice Deploy a clone for the caller's tick range. Idempotent.
      * @param tickLower Lower tick.
      * @param tickUpper Upper tick.
      * @return clone The deployed (or existing) clone.
      */
     function make(int24 tickLower, int24 tickUpper) external returns (NeutrinoMaker clone) {
-        (bool exists, address home, bytes32 salt) = made(tickLower, tickUpper);
+        (bool exists, address home, bytes32 salt) = made(msg.sender, tickLower, tickUpper);
         clone = NeutrinoMaker(home);
         if (!exists) {
             Clones.cloneDeterministic(address(PROTO), salt);
