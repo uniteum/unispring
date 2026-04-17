@@ -90,7 +90,7 @@ contract Neutrino {
      * @param leptonSalt Salt for the Lepton hub token.
      * @return exists  True if the clone is already deployed.
      * @return home    The deterministic clone address.
-     * @return salt    The CREATE2 salt (derived from the hub token address).
+     * @return salt    The CREATE2 salt (derived from the input parameters).
      * @return hubHome The deterministic hub token address.
      */
     function made(
@@ -101,11 +101,11 @@ contract Neutrino {
         int24 tickUpper,
         bytes32 leptonSalt
     ) public view returns (bool exists, address home, bytes32 salt, address hubHome) {
-        (, address maker,) = MAKER.made(address(PROTO), tickLower, tickUpper);
-        (, hubHome,) = LEPTON.made(maker, name, symbol, supply, leptonSalt);
-        salt = bytes32(uint256(uint160(hubHome)));
+        salt = keccak256(abi.encode(name, symbol, supply, tickLower, tickUpper, leptonSalt));
         home = Clones.predictDeterministicAddress(address(PROTO), salt, address(PROTO));
         exists = home.code.length > 0;
+        (, address maker,) = MAKER.made(home, tickLower, tickUpper);
+        (, hubHome,) = LEPTON.made(maker, name, symbol, supply, leptonSalt);
     }
 
     /**
@@ -133,25 +133,17 @@ contract Neutrino {
             (bool exists, address home, bytes32 salt,) = made(name, symbol, supply, tickLower, tickUpper, leptonSalt);
             clone = Neutrino(home);
             if (!exists) {
-                NeutrinoMaker maker = MAKER.make(tickLower, tickUpper);
-                ICoinage hubToken = maker.mint(LEPTON, name, symbol, supply, leptonSalt);
-
-                (, address springHome,) = UNISPRING.made(IERC20(address(hubToken)), tickLower, tickUpper);
-                // forge-lint: disable-next-line(erc20-unchecked-transfer)
-                IERC20(address(hubToken)).transfer(springHome, supply);
-
-                Unispring springClone = UNISPRING.make(IERC20(address(hubToken)), tickLower, tickUpper);
-
                 Clones.cloneDeterministic(address(PROTO), salt, 0);
                 Neutrino(home).zzInit(name, symbol, supply, tickLower, tickUpper, leptonSalt);
-                emit Make(clone, hubToken, springClone);
+                emit Make(clone, Neutrino(home).hub(), Neutrino(home).spring());
             }
         }
     }
 
     /**
-     * @notice Initializer called by PROTO on a freshly deployed clone. Derives
-     *         the hub and spring addresses from the same parameters as {make}.
+     * @notice Initializer called by PROTO on a freshly deployed clone. Creates
+     *         the hub token via the pre-deployed NeutrinoMaker relay, deposits
+     *         the entire supply into a new Unispring clone.
      * @param name       Hub token name.
      * @param symbol     Hub token symbol.
      * @param supply     Hub token supply.
@@ -168,11 +160,14 @@ contract Neutrino {
         bytes32 leptonSalt
     ) external {
         if (msg.sender != address(PROTO)) revert Unauthorized();
-        (, address maker,) = MAKER.made(address(PROTO), tickLower, tickUpper);
-        (, address hubHome,) = LEPTON.made(maker, name, symbol, supply, leptonSalt);
-        hub = ICoinage(hubHome);
-        (, address springHome,) = UNISPRING.made(IERC20(hubHome), tickLower, tickUpper);
-        spring = Unispring(payable(springHome));
+        NeutrinoMaker maker = MAKER.make(tickLower, tickUpper);
+        hub = maker.mint(LEPTON, name, symbol, supply, leptonSalt);
+
+        (, address springHome,) = UNISPRING.made(IERC20(address(hub)), tickLower, tickUpper);
+        // forge-lint: disable-next-line(erc20-unchecked-transfer)
+        IERC20(address(hub)).transfer(springHome, supply);
+
+        spring = UNISPRING.make(IERC20(address(hub)), tickLower, tickUpper);
     }
 
     // ---- Fair launch ----
