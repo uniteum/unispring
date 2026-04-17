@@ -15,7 +15,7 @@ import {Script, console2} from "forge-std/Script.sol";
  *         Uniswap front-ends will quote against.
  * @dev    Env vars:
  *           Unispring       — deployed Unispring address (required)
- *           BootstrapValue  — wei of ETH to swap, default 1 gwei (1e9).
+ *           BootstrapWei  — wei of ETH to swap, default 1 gwei (1e9).
  *
  *         Usage:
  * forge script script/BootstrapHub.s.sol:BootstrapHub -f $chain --private-key $tx_key --broadcast
@@ -23,7 +23,7 @@ import {Script, console2} from "forge-std/Script.sol";
 contract BootstrapHub is Script {
     function run() external {
         Unispring unispring = Unispring(payable(vm.envAddress("Unispring")));
-        uint256 amountIn = vm.envOr("BootstrapValue", uint256(1 gwei));
+        uint256 amountIn = vm.envOr("BootstrapWei", uint256(1 gwei));
 
         PoolKey memory hubKey = PoolKey({
             currency0: Currency.wrap(address(0)),
