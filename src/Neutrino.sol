@@ -5,6 +5,7 @@ import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 import {ICoinage} from "ierc20/ICoinage.sol";
 import {IERC20} from "ierc20/IERC20.sol";
 
+import {NeutrinoMaker} from "./NeutrinoMaker.sol";
 import {Unispring} from "./Unispring.sol";
 
 /**
@@ -26,6 +27,12 @@ contract Neutrino {
      * @notice The Lepton prototype used to create hub and spoke tokens.
      */
     ICoinage public immutable LEPTON;
+
+    /**
+     * @notice The NeutrinoMaker prototype cloned per tick range so each range
+     *         produces a distinct Lepton deployer (and therefore hub) address.
+     */
+    NeutrinoMaker public immutable MAKER;
 
     /**
      * @notice The Unispring prototype used to create fair-launch pools.
@@ -60,12 +67,13 @@ contract Neutrino {
 
     /**
      * @notice Construct the prototype.
-     * @param lepton    The Lepton prototype (ICoinage).
+     * @param maker     The NeutrinoMaker prototype.
      * @param unispring The Unispring prototype.
      */
-    constructor(ICoinage lepton, Unispring unispring) {
+    constructor(NeutrinoMaker maker, Unispring unispring) {
         PROTO = this;
-        LEPTON = lepton;
+        LEPTON = maker.LEPTON();
+        MAKER = maker;
         UNISPRING = unispring;
     }
 
@@ -90,8 +98,10 @@ contract Neutrino {
         int24 tickUpper,
         bytes32 leptonSalt
     ) public view returns (bool exists, address home, bytes32 salt, address hubHome) {
-        (, hubHome,) = LEPTON.made(address(PROTO), name, symbol, supply, leptonSalt);
-        salt = keccak256(abi.encode(hubHome, tickLower, tickUpper));
+        bytes32 makerSalt = keccak256(abi.encode(tickLower, tickUpper));
+        address maker = Clones.predictDeterministicAddress(address(MAKER), makerSalt, address(PROTO));
+        (, hubHome,) = LEPTON.made(maker, name, symbol, supply, leptonSalt);
+        salt = bytes32(uint256(uint160(hubHome)));
         home = Clones.predictDeterministicAddress(address(PROTO), salt, address(PROTO));
         exists = home.code.length > 0;
     }
@@ -118,7 +128,13 @@ contract Neutrino {
         if (this != PROTO) {
             clone = PROTO.make(name, symbol, supply, tickLower, tickUpper, leptonSalt);
         } else {
-            ICoinage hubToken = LEPTON.make(name, symbol, supply, leptonSalt);
+            // Clone a per-tick-range maker so Lepton sees a tick-dependent deployer.
+            bytes32 makerSalt = keccak256(abi.encode(tickLower, tickUpper));
+            address makerHome = Clones.predictDeterministicAddress(address(MAKER), makerSalt, address(PROTO));
+            if (makerHome.code.length == 0) {
+                Clones.cloneDeterministic(address(MAKER), makerSalt);
+            }
+            ICoinage hubToken = NeutrinoMaker(makerHome).mint(name, symbol, supply, leptonSalt);
 
             (bool exists, address home, bytes32 salt,) = made(name, symbol, supply, tickLower, tickUpper, leptonSalt);
             clone = Neutrino(home);
@@ -155,7 +171,9 @@ contract Neutrino {
         bytes32 leptonSalt
     ) external {
         if (msg.sender != address(PROTO)) revert Unauthorized();
-        (, address hubHome,) = LEPTON.made(address(PROTO), name, symbol, supply, leptonSalt);
+        bytes32 makerSalt = keccak256(abi.encode(tickLower, tickUpper));
+        address maker = Clones.predictDeterministicAddress(address(MAKER), makerSalt, address(PROTO));
+        (, address hubHome,) = LEPTON.made(maker, name, symbol, supply, leptonSalt);
         hub = ICoinage(hubHome);
         (, address springHome,) = UNISPRING.made(IERC20(hubHome), tickLower, tickUpper);
         spring = Unispring(payable(springHome));
