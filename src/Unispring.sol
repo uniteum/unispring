@@ -27,6 +27,8 @@ import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
 contract Unispring is IUnlockCallback {
+    string public VERSION = "0.1.0";
+
     using StateLibrary for IPoolManager;
 
     /**
