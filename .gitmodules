@@ -16,3 +16,6 @@
 [submodule "lib/v4-core"]
 	path = lib/v4-core
 	url = https://github.com/Uniswap/v4-core.git
+[submodule "lib/clones"]
+	path = lib/clones
+	url = git@github.com:uniteum/clones.git

@@ -4,4 +4,5 @@ ierc20/=lib/ierc20/
 ilookup/=lib/ilookup/
 v4-core/=lib/v4-core/src/
 solmate/=lib/v4-core/lib/solmate/
+clones/=lib/clones/
 @openzeppelin/=lib/v4-core/lib/openzeppelin-contracts/

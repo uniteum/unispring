@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
+import {Clones} from "clones/Clones.sol";
 import {ICoinage} from "ierc20/ICoinage.sol";
 import {IERC20} from "ierc20/IERC20.sol";
 
@@ -61,7 +61,7 @@ contract NeutrinoMaker {
         (bool exists, address home, bytes32 salt) = made(msg.sender, tickLower, tickUpper);
         clone = NeutrinoMaker(home);
         if (!exists) {
-            Clones.cloneDeterministic(address(PROTO), salt);
+            Clones.cloneDeterministic(address(PROTO), salt, 0);
             clone.zzInit(msg.sender);
         }
     }

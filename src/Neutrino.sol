@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
+import {Clones} from "clones/Clones.sol";
 import {ICoinage} from "ierc20/ICoinage.sol";
 import {IERC20} from "ierc20/IERC20.sol";
 
@@ -140,7 +140,7 @@ contract Neutrino {
 
                 Unispring springClone = UNISPRING.make(IERC20(address(hubToken)), tickLower, tickUpper);
 
-                Clones.cloneDeterministic(address(PROTO), salt);
+                Clones.cloneDeterministic(address(PROTO), salt, 0);
                 Neutrino(home).zzInit(name, symbol, supply, tickLower, tickUpper, leptonSalt);
                 emit Make(clone, hubToken, springClone);
             }
