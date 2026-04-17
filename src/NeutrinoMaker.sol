@@ -19,17 +19,8 @@ contract NeutrinoMaker {
     // forge-lint: disable-next-line(screaming-snake-case-immutable)
     NeutrinoMaker public immutable PROTO;
 
-    /**
-     * @notice The Lepton prototype used to mint hub tokens.
-     */
-    ICoinage public immutable LEPTON;
-
-    /**
-     * @param lepton The Lepton prototype (ICoinage).
-     */
-    constructor(ICoinage lepton) {
+    constructor() {
         PROTO = this;
-        LEPTON = lepton;
     }
 
     // ---- Bitsy factory ----
@@ -72,17 +63,18 @@ contract NeutrinoMaker {
      * @notice Mint a hub token via Lepton and transfer the entire supply to the
      *         caller. Because each clone has a tick-dependent address, Lepton
      *         sees a different deployer per tick range.
+     * @param lepton Lepton prototype to mint through.
      * @param name   Token name.
      * @param symbol Token symbol.
      * @param supply Token supply.
      * @param salt   Lepton salt (free for vanity grinding).
      * @return token The minted hub token.
      */
-    function mint(string calldata name, string calldata symbol, uint256 supply, bytes32 salt)
+    function mint(ICoinage lepton, string calldata name, string calldata symbol, uint256 supply, bytes32 salt)
         external
         returns (ICoinage token)
     {
-        token = LEPTON.make(name, symbol, supply, salt);
+        token = lepton.make(name, symbol, supply, salt);
         // forge-lint: disable-next-line(erc20-unchecked-transfer)
         IERC20(address(token)).transfer(msg.sender, supply);
     }

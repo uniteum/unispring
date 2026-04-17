@@ -67,12 +67,13 @@ contract Neutrino {
 
     /**
      * @notice Construct the prototype.
+     * @param lepton    The Lepton prototype (ICoinage).
      * @param maker     The NeutrinoMaker prototype.
      * @param unispring The Unispring prototype.
      */
-    constructor(NeutrinoMaker maker, Unispring unispring) {
+    constructor(ICoinage lepton, NeutrinoMaker maker, Unispring unispring) {
         PROTO = this;
-        LEPTON = maker.LEPTON();
+        LEPTON = lepton;
         MAKER = maker;
         UNISPRING = unispring;
     }
@@ -128,7 +129,7 @@ contract Neutrino {
             clone = PROTO.make(name, symbol, supply, tickLower, tickUpper, leptonSalt);
         } else {
             NeutrinoMaker maker = MAKER.make(tickLower, tickUpper);
-            ICoinage hubToken = maker.mint(name, symbol, supply, leptonSalt);
+            ICoinage hubToken = maker.mint(LEPTON, name, symbol, supply, leptonSalt);
 
             (bool exists, address home, bytes32 salt,) = made(name, symbol, supply, tickLower, tickUpper, leptonSalt);
             clone = Neutrino(home);
