@@ -276,6 +276,34 @@ semantics means one indexer formula works for both hub and spokes.
 
 ---
 
+## 13. Spoke token address must depend on tick range
+
+**Choice.** Spoke tokens launched via `Neutrino.launch` are minted through
+the same `NeutrinoMaker` relay used for the hub token, so that the spoke's
+CREATE2 address is a function of `(NeutrinoMaker clone address, name,
+symbol, supply, leptonSalt)` — and the clone address itself encodes
+`(Neutrino clone, tickLower, tickUpper)`.
+
+**Why.** Without this, two unrelated makers could independently call
+`launch` with the same token name/symbol/supply but different tick ranges.
+Lepton's CREATE2 address depends only on `(deployer, name, symbol, supply,
+salt)` — if the deployer is the same Neutrino clone for both callers, both
+tick ranges resolve to the **same** token address. The first maker's
+`launch` succeeds; the second's fails because the token already exists with
+zero remaining supply, or worse, funds at an unintended tick range.
+
+Routing the mint through a tick-range-keyed `NeutrinoMaker` clone gives
+each `(tickLower, tickUpper)` pair a distinct deployer address, so
+different tick ranges produce different token addresses. Combined with the
+fact that `launch` is atomic (mint + approve + fund in one call), there is
+no window for a conflicting transaction to intervene.
+
+**Cost.** One extra clone deployment per unique tick range (amortized — the
+same clone is reused for every spoke at that range). The pattern is
+identical to the hub's existing flow, so no new trust surface is introduced.
+
+---
+
 ## Non-goals
 
 Things Unispring deliberately does **not** try to do:

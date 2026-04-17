@@ -194,7 +194,8 @@ contract Neutrino {
         int24 tickLower,
         int24 tickUpper
     ) external returns (ICoinage token) {
-        token = LEPTON.make(name, symbol, supply, salt);
+        NeutrinoMaker maker = MAKER.make(tickLower, tickUpper);
+        token = maker.mint(LEPTON, name, symbol, supply, salt);
         IERC20(address(token)).approve(address(spring), supply);
         spring.fund(IERC20(address(token)), supply, tickLower, tickUpper);
         emit Launch(token, supply, tickLower, tickUpper);
