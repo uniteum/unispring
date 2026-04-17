@@ -3,7 +3,7 @@
 # Usage: source .env && chain=bitsy ./script/mine-hub-salt.sh --mask 0x... --match 0x...
 #
 # Required env (from .env):
-#   ICoinage, NeutrinoMaker, Neutrino, HubName, HubSymbol, HubTickLower, HubTickUpper, HubSupply
+#   ICoinage, NeutrinoMaker, NeutrinoProto, HubName, HubSymbol, HubTickLower, HubTickUpper, HubSupply
 #
 # Required env (from .env):
 #   HubSaltMask, HubSaltMatch
@@ -14,7 +14,7 @@ set -euo pipefail
 
 : "${ICoinage:?}"
 : "${NeutrinoMaker:?}"
-: "${Neutrino:?}"
+: "${NeutrinoProto:?}"
 : "${HubTickLower:?}"
 : "${HubTickUpper:?}"
 : "${HubName:?}"
@@ -37,7 +37,7 @@ initcode_hash=$(cast keccak \
 # --- maker (NeutrinoMaker clone for this tick range) ---
 maker=$(cast call "$NeutrinoMaker" \
   "made(address,int24,int24)(bool,address,bytes32)" \
-  "$Neutrino" "$HubTickLower" "$HubTickUpper" \
+  "$NeutrinoProto" "$HubTickLower" "$HubTickUpper" \
   --rpc-url "$chain" | sed -n '2p')
 
 # --- args-hash ---

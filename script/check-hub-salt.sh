@@ -3,14 +3,14 @@
 # Usage: source .env && chain=bitsy ./script/check-hub-salt.sh
 #
 # Required env (from .env):
-#   ICoinage, NeutrinoMaker, Neutrino, HubName, HubSymbol,
+#   ICoinage, NeutrinoMaker, NeutrinoProto, HubName, HubSymbol,
 #   HubTickLower, HubTickUpper, HubSupply, HubSaltMask, HubSaltMatch, HubSalt
 
 set -euo pipefail
 
 : "${ICoinage:?}"
 : "${NeutrinoMaker:?}"
-: "${Neutrino:?}"
+: "${NeutrinoProto:?}"
 : "${HubTickLower:?}"
 : "${HubTickUpper:?}"
 : "${HubName:?}"
@@ -27,7 +27,7 @@ symbol="$HubSymbol"
 # Ask the NeutrinoMaker prototype for the maker clone address.
 maker=$(cast call "$NeutrinoMaker" \
   "made(address,int24,int24)(bool,address,bytes32)" \
-  "$Neutrino" "$HubTickLower" "$HubTickUpper" \
+  "$NeutrinoProto" "$HubTickLower" "$HubTickUpper" \
   --rpc-url "$chain" | sed -n '2p')
 
 # Ask Lepton for the hub address this salt would produce.
