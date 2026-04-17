@@ -15,9 +15,9 @@ import {Unispring} from "../src/Unispring.sol";
  *           UnispringProto — the Unispring prototype
  *
  * Usage:
- * forge script script/NeutrinoDeploy.s.sol -f $chain --private-key $tx_key --broadcast --verify --delay 10 --retries 10
+ * forge script script/NeutrinoProto.s.sol -f $chain --private-key $tx_key --broadcast --verify --delay 10 --retries 10
  */
-contract NeutrinoDeploy is Script {
+contract NeutrinoProto is Script {
     address constant NICK = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
 
     function run() external {
