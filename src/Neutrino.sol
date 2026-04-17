@@ -43,19 +43,21 @@ contract Neutrino {
     Unispring public immutable UNISPRING;
 
     /**
-     * @notice The hub token for this clone, set by {zzInit}.
-     */
-    ICoinage public hub;
-
-    /**
      * @notice The Unispring clone for this clone's hub token, set by {zzInit}.
      */
     Unispring public spring;
 
     /**
+     * @notice The hub token for this clone, derived from {spring}.
+     */
+    function hub() public view returns (IERC20) {
+        return IERC20(spring.hub());
+    }
+
+    /**
      * @notice Emitted when a new clone is created via {make}.
      */
-    event Make(Neutrino indexed clone, ICoinage indexed hub, Unispring indexed spring);
+    event Make(Neutrino indexed clone, IERC20 indexed hub, Unispring indexed spring);
 
     /**
      * @notice Emitted when a spoke token is launched via {launch}.
@@ -161,13 +163,13 @@ contract Neutrino {
     ) external {
         if (msg.sender != address(PROTO)) revert Unauthorized();
         NeutrinoMaker maker = MAKER.make(tickLower, tickUpper);
-        hub = maker.mint(LEPTON, name, symbol, supply, leptonSalt);
+        ICoinage hubToken = maker.mint(LEPTON, name, symbol, supply, leptonSalt);
 
-        (, address springHome,) = UNISPRING.made(IERC20(address(hub)), tickLower, tickUpper);
+        (, address springHome,) = UNISPRING.made(IERC20(address(hubToken)), tickLower, tickUpper);
         // forge-lint: disable-next-line(erc20-unchecked-transfer)
-        IERC20(address(hub)).transfer(springHome, supply);
+        IERC20(address(hubToken)).transfer(springHome, supply);
 
-        spring = UNISPRING.make(IERC20(address(hub)), tickLower, tickUpper);
+        spring = UNISPRING.make(IERC20(address(hubToken)), tickLower, tickUpper);
     }
 
     // ---- Fair launch ----
