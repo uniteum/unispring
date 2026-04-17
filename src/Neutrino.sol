@@ -98,8 +98,7 @@ contract Neutrino {
         int24 tickUpper,
         bytes32 leptonSalt
     ) public view returns (bool exists, address home, bytes32 salt, address hubHome) {
-        bytes32 makerSalt = keccak256(abi.encode(tickLower, tickUpper));
-        address maker = Clones.predictDeterministicAddress(address(MAKER), makerSalt, address(PROTO));
+        (,address maker,) = MAKER.made(tickLower, tickUpper);
         (, hubHome,) = LEPTON.made(maker, name, symbol, supply, leptonSalt);
         salt = bytes32(uint256(uint160(hubHome)));
         home = Clones.predictDeterministicAddress(address(PROTO), salt, address(PROTO));
@@ -128,13 +127,8 @@ contract Neutrino {
         if (this != PROTO) {
             clone = PROTO.make(name, symbol, supply, tickLower, tickUpper, leptonSalt);
         } else {
-            // Clone a per-tick-range maker so Lepton sees a tick-dependent deployer.
-            bytes32 makerSalt = keccak256(abi.encode(tickLower, tickUpper));
-            address makerHome = Clones.predictDeterministicAddress(address(MAKER), makerSalt, address(PROTO));
-            if (makerHome.code.length == 0) {
-                Clones.cloneDeterministic(address(MAKER), makerSalt);
-            }
-            ICoinage hubToken = NeutrinoMaker(makerHome).mint(name, symbol, supply, leptonSalt);
+            NeutrinoMaker maker = MAKER.make(tickLower, tickUpper);
+            ICoinage hubToken = maker.mint(name, symbol, supply, leptonSalt);
 
             (bool exists, address home, bytes32 salt,) = made(name, symbol, supply, tickLower, tickUpper, leptonSalt);
             clone = Neutrino(home);
@@ -171,8 +165,7 @@ contract Neutrino {
         bytes32 leptonSalt
     ) external {
         if (msg.sender != address(PROTO)) revert Unauthorized();
-        bytes32 makerSalt = keccak256(abi.encode(tickLower, tickUpper));
-        address maker = Clones.predictDeterministicAddress(address(MAKER), makerSalt, address(PROTO));
+        (,address maker,) = MAKER.made(tickLower, tickUpper);
         (, address hubHome,) = LEPTON.made(maker, name, symbol, supply, leptonSalt);
         hub = ICoinage(hubHome);
         (, address springHome,) = UNISPRING.made(IERC20(hubHome), tickLower, tickUpper);
