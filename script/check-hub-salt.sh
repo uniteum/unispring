@@ -3,8 +3,8 @@
 # Usage: source .env && chain=bitsy ./script/check-hub-salt.sh
 #
 # Required env (from .env):
-#   ICoinage, NeutrinoMaker, Neutrino, HubTickLower, HubTickUpper, HubSupply
-#   HubSaltMask, HubSaltMatch, HubSalt
+#   ICoinage, NeutrinoMaker, Neutrino, HubName, HubSymbol,
+#   HubTickLower, HubTickUpper, HubSupply, HubSaltMask, HubSaltMatch, HubSalt
 
 set -euo pipefail
 
@@ -13,14 +13,16 @@ set -euo pipefail
 : "${Neutrino:?}"
 : "${HubTickLower:?}"
 : "${HubTickUpper:?}"
+: "${HubName:?}"
+: "${HubSymbol:?}"
 : "${HubSupply:?}"
 : "${HubSaltMask:?}"
 : "${HubSaltMatch:?}"
 : "${HubSalt:?}"
 : "${chain:?set chain to a foundry.toml rpc_endpoints key}"
 
-name="Hub"
-symbol="HUB"
+name="$HubName"
+symbol="$HubSymbol"
 
 # Ask the NeutrinoMaker prototype for the maker clone address.
 maker=$(cast call "$NeutrinoMaker" \

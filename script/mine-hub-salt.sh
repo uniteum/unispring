@@ -3,7 +3,7 @@
 # Usage: source .env && chain=bitsy ./script/mine-hub-salt.sh --mask 0x... --match 0x...
 #
 # Required env (from .env):
-#   ICoinage, NeutrinoMaker, Neutrino, HubTickLower, HubTickUpper, HubSupply
+#   ICoinage, NeutrinoMaker, Neutrino, HubName, HubSymbol, HubTickLower, HubTickUpper, HubSupply
 #
 # Required env (from .env):
 #   HubSaltMask, HubSaltMatch
@@ -17,13 +17,15 @@ set -euo pipefail
 : "${Neutrino:?}"
 : "${HubTickLower:?}"
 : "${HubTickUpper:?}"
+: "${HubName:?}"
+: "${HubSymbol:?}"
 : "${HubSupply:?}"
 : "${HubSaltMask:?}"
 : "${HubSaltMatch:?}"
 : "${chain:?set chain to a foundry.toml rpc_endpoints key}"
 
-name="Hub"
-symbol="HUB"
+name="$HubName"
+symbol="$HubSymbol"
 
 # --- deployer ---
 deployer=$ICoinage
