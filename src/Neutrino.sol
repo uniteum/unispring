@@ -86,12 +86,12 @@ contract Neutrino {
         string calldata name,
         string calldata symbol,
         uint256 supply,
-        int24, /* tickLower */
-        int24, /* tickUpper */
+        int24 tickLower,
+        int24 tickUpper,
         bytes32 leptonSalt
     ) public view returns (bool exists, address home, bytes32 salt, address hubHome) {
         (, hubHome,) = LEPTON.made(address(PROTO), name, symbol, supply, leptonSalt);
-        salt = bytes32(uint256(uint160(hubHome)));
+        salt = keccak256(abi.encode(hubHome, tickLower, tickUpper));
         home = Clones.predictDeterministicAddress(address(PROTO), salt, address(PROTO));
         exists = home.code.length > 0;
     }
