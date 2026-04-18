@@ -241,15 +241,15 @@ observable if someone is watching mempool.
 
 ## 11. Unlock callback has a single code path
 
-**Choice.** `unlockCallback` decodes a `FundData` payload directly and
-calls `_fund`. There is no action enum, no tagged union — just one
-operation in the callback.
+**Choice.** `unlockCallback` decodes the payload as a plain tuple and
+funds the position inline. There is no action enum, no tagged union —
+just one operation in the callback.
 
 **Why.** Unispring has exactly one operation that needs the unlock
 context: funding a single-sided position. Both entry points (`fund` and
-the internal `zzInit` → `fund` re-entry) end up calling `_fund` with
-the same shape of payload, so there is nothing to multiplex. Carrying
-an `Action` discriminator for a degenerate one-value enum is just dead
+the internal `zzInit` → `fund` re-entry) reach the callback with the
+same shape of payload, so there is nothing to multiplex. Carrying an
+`Action` discriminator for a degenerate one-value enum is just dead
 code.
 
 ---

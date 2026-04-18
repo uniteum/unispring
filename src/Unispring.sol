@@ -32,19 +32,6 @@ contract Unispring is IUnlockCallback {
     using StateLibrary for IPoolManager;
 
     /**
-     * @dev Internal payload used to fund a single-sided position. `currency0Sided`
-     *      selects which side of the pair the supply funds: `true` for every
-     *      {fund}-created pool, `false` for the {zzInit}-created hub pool.
-     */
-    struct FundData {
-        PoolKey key;
-        uint256 supply;
-        int24 tickLower;
-        int24 tickUpper;
-        bool currency0Sided;
-    }
-
-    /**
      * @notice Pool fee, in hundredths of a bip. Set to zero: Unispring creates
      *         zero-fee pools. No fees accrue to the position and there is no
      *         compounding mechanism.
@@ -218,9 +205,9 @@ contract Unispring is IUnlockCallback {
      *              on nested entry), and it cannot call the PoolManager
      *              directly because `modifyLiquidity` requires the caller to
      *              be the active locker.
-     *           3. Fee-on-transfer or revert-on-transfer causes {_fund}'s
-     *              `settle` step to underpay or revert, unwinding the whole
-     *              fund atomically. No partial state.
+     *           3. Fee-on-transfer or revert-on-transfer causes the
+     *              {unlockCallback} `settle` step to underpay or revert,
+     *              unwinding the whole fund atomically. No partial state.
      * @param  token     The token to pair against the hub.
      * @param  supply    Amount of `token` to pull from the caller and fund into
      *                   the position.
@@ -248,52 +235,39 @@ contract Unispring is IUnlockCallback {
         if (sqrtPriceX96 == 0) {
             POOL_MANAGER.initialize(key, TickMath.getSqrtPriceAtTick(currency0Sided ? tickLower : tickUpper));
         }
-        POOL_MANAGER.unlock(
-            abi.encode(
-                FundData({
-                    key: key, supply: supply, tickLower: tickLower, tickUpper: tickUpper, currency0Sided: currency0Sided
-                })
-            )
-        );
+        POOL_MANAGER.unlock(abi.encode(key, supply, tickLower, tickUpper, currency0Sided));
 
         emit Funded(msg.sender, token, poolId, supply, tickLower, tickUpper);
     }
 
     /**
      * @inheritdoc IUnlockCallback
+     * @dev Funds a single-sided position with `supply` tokens. `currency0Sided`
+     *      selects which side of the pair the supply funds: `true` for every
+     *      {fund}-created pool, `false` for the {zzInit}-created hub pool.
      */
     function unlockCallback(bytes calldata data) external returns (bytes memory) {
         if (msg.sender != address(POOL_MANAGER)) revert InvalidUnlockCaller();
-        _fund(abi.decode(data, (FundData)));
-        return "";
-    }
+        (PoolKey memory key, uint256 supply, int24 tickLower, int24 tickUpper, bool currency0Sided) =
+            abi.decode(data, (PoolKey, uint256, int24, int24, bool));
 
-    /**
-     * @dev Fund a single-sided position with `supply` tokens. `currency0Sided`
-     *      selects which side of the pair the supply funds.
-     */
-    function _fund(FundData memory cb) private {
-        uint160 sqrtLower = TickMath.getSqrtPriceAtTick(cb.tickLower);
-        uint160 sqrtUpper = TickMath.getSqrtPriceAtTick(cb.tickUpper);
-        uint128 liquidity = cb.currency0Sided
-            ? _liquidity0(sqrtLower, sqrtUpper, cb.supply)
-            : _liquidity1(sqrtLower, sqrtUpper, cb.supply);
+        uint160 sqrtLower = TickMath.getSqrtPriceAtTick(tickLower);
+        uint160 sqrtUpper = TickMath.getSqrtPriceAtTick(tickUpper);
+        uint128 liquidity =
+            currency0Sided ? _liquidity0(sqrtLower, sqrtUpper, supply) : _liquidity1(sqrtLower, sqrtUpper, supply);
 
         (BalanceDelta delta,) = POOL_MANAGER.modifyLiquidity(
-            cb.key,
+            key,
             ModifyLiquidityParams({
-                tickLower: cb.tickLower,
-                tickUpper: cb.tickUpper,
-                liquidityDelta: int256(uint256(liquidity)),
-                salt: bytes32(0)
+                tickLower: tickLower, tickUpper: tickUpper, liquidityDelta: int256(uint256(liquidity)), salt: bytes32(0)
             }),
             ""
         );
 
         // The position is single-sided, so only the funded side is owed.
         // That amount is non-positive (a debit owed by the caller); negation fits in uint128.
-        Currency currency = cb.currency0Sided ? cb.key.currency0 : cb.key.currency1;
-        int128 amount = cb.currency0Sided ? delta.amount0() : delta.amount1();
+        Currency currency = currency0Sided ? key.currency0 : key.currency1;
+        int128 amount = currency0Sided ? delta.amount0() : delta.amount1();
         // forge-lint: disable-next-line(unsafe-typecast)
         uint256 owed = uint256(uint128(-amount));
 
@@ -301,6 +275,8 @@ contract Unispring is IUnlockCallback {
         // forge-lint: disable-next-line(erc20-unchecked-transfer)
         IERC20(Currency.unwrap(currency)).transfer(address(POOL_MANAGER), owed);
         POOL_MANAGER.settle();
+
+        return "";
     }
 
     /**
