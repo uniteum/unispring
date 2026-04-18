@@ -230,9 +230,12 @@ contract Unispring is IUnlockCallback {
      *                   `[MIN_TICK, MAX_TICK]` and strictly above `tickLower`.
      */
     function fund(IERC20 token, uint256 supply, int24 tickLower, int24 tickUpper) external {
+        if (tickLower < TickMath.MIN_TICK) revert TickOutOfRange(tickLower);
+        if (tickLower >= tickUpper) revert TickLowerNotBelowUpper(tickLower, tickUpper);
+        if (tickUpper > TickMath.MAX_TICK) revert TickOutOfRange(tickUpper);
+
         // forge-lint: disable-next-line(erc20-unchecked-transfer)
         token.transferFrom(msg.sender, address(this), supply);
-        _requireValidTickRange(tickLower, tickUpper);
 
         address tokenAddr = address(token);
         bool currency0Sided = tokenAddr != hub;
@@ -298,15 +301,6 @@ contract Unispring is IUnlockCallback {
         // forge-lint: disable-next-line(erc20-unchecked-transfer)
         IERC20(Currency.unwrap(currency)).transfer(address(POOL_MANAGER), owed);
         POOL_MANAGER.settle();
-    }
-
-    /**
-     * @dev Revert unless `MIN_TICK <= tickLower < tickUpper <= MAX_TICK`.
-     */
-    function _requireValidTickRange(int24 tickLower, int24 tickUpper) private pure {
-        if (tickLower < TickMath.MIN_TICK) revert TickOutOfRange(tickLower);
-        if (tickLower >= tickUpper) revert TickLowerNotBelowUpper(tickLower, tickUpper);
-        if (tickUpper > TickMath.MAX_TICK) revert TickOutOfRange(tickUpper);
     }
 
     /**
