@@ -51,13 +51,11 @@ contract Unispring is IUnlockCallback {
     IPoolManager public immutable POOL_MANAGER;
 
     /**
-     * @notice The hub token, set during {zzInit} for each clone.
-     * @dev    The full hub supply must be transferred to the clone's deterministic
-     *         address (obtainable via {made}) before {make} is called. {zzInit}
-     *         reads `hub.balanceOf(this)` as the amount to fund. Deploy scripts
-     *         salt-mine the hub's address so it has many leading `f` bytes, which
-     *         makes future {fund} calls succeed with spoke tokens whose
-     *         addresses sort strictly below the hub.
+     * @notice The hub token, set by {zzInit} on each clone.
+     * @dev    The full hub supply must be transferred to the clone's
+     *         deterministic address (from {made}) before {make} is called;
+     *         {zzInit} reads `hub.balanceOf(this)` as the amount to fund.
+     *         See DESIGN.md §8 for the salt-mining rationale.
      */
     address public hub;
 
@@ -96,12 +94,9 @@ contract Unispring is IUnlockCallback {
 
     /**
      * @notice Thrown when the spoke token does not sort strictly below {hub}.
-     * @dev    {fund} requires `token < hub` so the spoke becomes `currency0`
-     *         of the pool. This is the only currency ordering under which a
-     *         single-sided funded position is both active at spot and requires
-     *         zero hub capital; see README.md for the full derivation. Mine a
-     *         different spoke salt until the deterministic address sorts below
-     *         {hub}.
+     * @dev    Mine a different spoke salt until the deterministic address
+     *         sorts below {hub}. See DESIGN.md §6 for why the ordering is
+     *         required.
      */
     error SpokeMustSortBelowHub(address token);
 
@@ -168,13 +163,12 @@ contract Unispring is IUnlockCallback {
     }
 
     /**
-     * @notice Initializer called by PROTO on a freshly deployed clone. Sets the
-     *         hub token, initializes the hub's ETH pool, and funds it single-sided
-     *         with the hub balance already held by this clone.
-     * @dev    The clone's deterministic address (from {made}) must hold the hub
-     *         supply before {make} is called. The position is single-sided currency1
-     *         at the upper boundary, inactive at spot until the first ETH→HUB swap
-     *         crosses the boundary downward.
+     * @notice Initializer for a freshly deployed clone. Sets {hub}, initializes
+     *         the hub's ETH pool, and funds it single-sided with the hub
+     *         balance held at this address. Callable only by {PROTO}.
+     * @dev    See DESIGN.md §7 for the mirror-geometry rationale (the position
+     *         is inactive at spot until a bootstrap ETH→hub swap crosses
+     *         `tickUpper` downward) and §11 for the `this.fund` idiom.
      */
     function zzInit(IERC20 hub_, int24 tickLower, int24 tickUpper) external {
         if (msg.sender != address(PROTO)) revert Unauthorized();
@@ -185,36 +179,20 @@ contract Unispring is IUnlockCallback {
     }
 
     /**
-     * @notice Lock `supply` tokens into a single-sided V4 position with a
-     *         permanent floor, paired against the hub.
-     * @dev    The spoke token must sort strictly below {hub} so that it becomes
-     *         `currency0` of the pool. Caller must approve this contract to pull
-     *         `supply` tokens; the pulled balance is then locked into the funded
-     *         position.
-     *
-     *         Permissionless by design: anyone can pair any ERC-20 against the
-     *         hub. A misbehaving or malicious spoke (fee-on-transfer, rebasing,
-     *         blacklisting, revert-on-transfer, ERC777-style transfer hooks)
-     *         can only damage its own pool, never the hub or other spokes:
-     *
-     *           1. Per-pool isolation. Unispring only runs a spoke's code
-     *              during operations on that spoke's own pool.
-     *           2. Reentrancy via transfer hooks is blocked by Uniswap V4's
-     *              single-locker model. A hook cannot re-enter {fund} /
-     *              {zzInit} (each calls `POOL_MANAGER.unlock`, which reverts
-     *              on nested entry), and it cannot call the PoolManager
-     *              directly because `modifyLiquidity` requires the caller to
-     *              be the active locker.
-     *           3. Fee-on-transfer or revert-on-transfer causes the
-     *              {unlockCallback} `settle` step to underpay or revert,
-     *              unwinding the whole fund atomically. No partial state.
+     * @notice Lock `supply` tokens into a single-sided V4 position paired
+     *         against {hub}. Permissionless — anyone can pair any ERC-20, any
+     *         number of times.
+     * @dev    Spokes must sort strictly below {hub} (become `currency0`).
+     *         Caller must approve this contract for `supply` tokens. See
+     *         DESIGN.md §9 for the permissionless + re-call semantics, §10
+     *         for the spoke-isolation argument, and README §Patterns for
+     *         common re-funding use cases.
      * @param  token     The token to pair against the hub.
-     * @param  supply    Amount of `token` to pull from the caller and fund into
-     *                   the position.
-     * @param  tickLower Lower tick (price floor in spoke-in-hub semantics).
-     *                   Must be inside `[MIN_TICK, MAX_TICK]`.
-     * @param  tickUpper Upper tick of the position. Must be inside
-     *                   `[MIN_TICK, MAX_TICK]` and strictly above `tickLower`.
+     * @param  supply    Amount of `token` to pull from the caller and lock.
+     * @param  tickLower Lower tick; must be ≥ `MIN_TICK` and strictly below
+     *                   `tickUpper`. For spokes, this is the price floor in
+     *                   spoke-in-hub semantics.
+     * @param  tickUpper Upper tick; must be ≤ `MAX_TICK`.
      */
     function fund(IERC20 token, uint256 supply, int24 tickLower, int24 tickUpper) external {
         if (tickLower < TickMath.MIN_TICK) revert TickOutOfRange(tickLower);

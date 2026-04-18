@@ -291,11 +291,11 @@ permanent. A few useful patterns fall out of that:
   A fresh `fund` at a new range restarts distribution at the new
   market price.
 
-The `token == hub` branch routes to the existing ETH/hub pool as a
-hub-sided (currency1) deposit, so hub re-funding only succeeds for
-ranges strictly above current spot; anything in-range or below reverts
-at settle. Spoke re-funding is symmetric: currency0-sided, so the
-range must sit strictly above current spot in spoke-in-hub terms.
+Re-funds only settle when the new range sits entirely on the
+single-sided side being added. For the hub (currency1-sided), `tickUpper`
+must be at or below the current pool tick. For a spoke (currency0-sided),
+`tickLower` must be at or above the current tick. In-range or wrong-side
+re-funds revert at `settle`. See DESIGN.md §9 for the full argument.
 
 ## Comparison
 
