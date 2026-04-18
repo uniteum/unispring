@@ -26,7 +26,7 @@ with no NFT, no transfer path, and no collect function that anyone else can
 reach. The permanence is enforced at the lowest level.
 
 **Cost.** Unispring has to do the unlock / sync / settle choreography itself.
-That's what `_seed`, `_plow`, `_buyHub`, and `_settleOwed` are. It also
+That's what `_seed`, `_plow`, and `_settleOwed` are. It also
 reimplements the three standard concentrated-liquidity formulas
 (`_liquidityForAmount0`, `_liquidityForAmount1`, `_liquidityForAmounts`)
 instead of importing `LiquidityAmounts` from periphery. The math is short
@@ -145,14 +145,14 @@ only the asset they have.
 
 The side effect is that immediately after `seedHub`, the pool's displayed
 price is the upper tick boundary and the position is inactive — quoters
-see "no liquidity at spot" and refuse to route. A bootstrap swap (via
-`buyHub`) crosses the tick downward and flips the pool into a normal
-active state.
+see "no liquidity at spot" and refuse to route. A bootstrap ETH → HUB
+swap through any Uniswap router crosses the tick downward and flips the
+pool into a normal active state.
 
-**Cost.** The hub bootstrap is a two-step dance: `seedHub` then `buyHub`.
-Between those two transactions, the pool exists but looks dead. A single
-deploy script handles both calls back-to-back, but anyone racing in sees
-a confusing state. See CRITIQUE concern 2.
+**Cost.** Between `seedHub` and the first bootstrap swap, the pool exists
+but looks dead. Deploy pipelines can fire the bootstrap swap back-to-back
+with seeding; anyone racing in before that swap lands sees a confusing
+state. See CRITIQUE concern 2.
 
 ---
 
@@ -239,25 +239,18 @@ observable if someone is watching mempool.
 
 ---
 
-## 11. Unlock callback dispatches on an `Action` enum
+## 11. Unlock callback has a single code path
 
-**Choice.** `unlockCallback` decodes a `(Action, bytes)` tuple and
-dispatches to `_seed`, `_plow`, or `_buyHub`. Each caller (`seedHub`,
-`fund`, `plow`, `buyHub`) encodes its own action and payload before
-calling `POOL_MANAGER.unlock`.
+**Choice.** `unlockCallback` decodes a `FundData` payload directly and
+calls `_fund`. There is no action enum, no tagged union — just one
+operation in the callback.
 
-**Why.** V4 gives you exactly one `unlockCallback` per contract. Unispring
-has three operations that need the unlock context (seed a position,
-compound an existing position, execute the bootstrap swap). The cleanest
-way to multiplex them is a tagged union in the callback payload. The enum
-makes the dispatch explicit and the ABI-encoded inner payload keeps each
-operation's data isolated.
-
-**Cost.** One extra layer of `abi.encode` / `abi.decode` per operation,
-and the reader has to follow the indirection from the external entry
-point through `unlock` → `unlockCallback` → `_seed`/`_plow`/`_buyHub`.
-The alternative (separate callback contracts per operation) would be more
-code and more deployment artifacts.
+**Why.** Unispring has exactly one operation that needs the unlock
+context: funding a single-sided position. Both entry points (`fund` and
+the internal `zzInit` → `fund` re-entry) end up calling `_fund` with
+the same shape of payload, so there is nothing to multiplex. Carrying
+an `Action` discriminator for a degenerate one-value enum is just dead
+code.
 
 ---
 

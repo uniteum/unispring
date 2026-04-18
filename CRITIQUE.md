@@ -49,10 +49,11 @@ numbered so we can refer to them in commits and PRs.
    up, in the launcher.
 
 2. **Hub bootstrap is a two-step dance.** `seedHub` leaves the pool inactive
-   at spot until someone calls `buyHub`; between those two txs the pool
-   exists but quoters see it as dead. A deploy script handles this, but any
-   external caller racing in sees a confusing state. Consider fusing the
-   two, or documenting the race.
+   at spot until someone does an ETH → HUB swap through any Uniswap router;
+   between those two txs the pool exists but quoters see it as dead. A
+   deploy pipeline can fire the bootstrap swap back-to-back with seeding,
+   but any external caller racing in sees a confusing state. Consider
+   fusing the two, or documenting the race.
 
 3. **0.01% fee tier — deliberate, not accidental.** The tier optimizes
    for discoverability and routing (it is one of the canonical tiers
@@ -76,9 +77,9 @@ numbered so we can refer to them in commits and PRs.
      `_plow` only touch the token for the pool they operate on.
    - v4's `PoolManager` enforces a single active locker via transient
      storage. A malicious token's transfer hook cannot re-enter
-     `plow` / `fund` / `seedHub` / `buyHub` (each calls `unlock`,
-     which reverts on nested entry), and it cannot call the PoolManager
-     directly because `take` / `swap` / `modifyLiquidity` require
+     `plow` / `fund` / `seedHub` (each calls `unlock`, which reverts
+     on nested entry), and it cannot call the PoolManager directly
+     because `take` / `swap` / `modifyLiquidity` require
      `msg.sender == locker`.
    - Unispring's HUB balance (carryover from prior plows across all
      pools) is safe: during a plow, `HUB.transfer` is only called for

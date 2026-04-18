@@ -11,7 +11,7 @@ import {BalanceDelta, toBalanceDelta} from "v4-core/types/BalanceDelta.sol";
 import {Currency} from "v4-core/types/Currency.sol";
 import {PoolId} from "v4-core/types/PoolId.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
-import {ModifyLiquidityParams, SwapParams} from "v4-core/types/PoolOperation.sol";
+import {ModifyLiquidityParams} from "v4-core/types/PoolOperation.sol";
 
 /**
  * @notice Minimal mintable ERC-20 used in place of a real Lepton clone.
@@ -57,7 +57,7 @@ contract MockToken {
 /**
  * @notice Minimal stand-in for the Uniswap V4 PoolManager. Implements just the
  *         subset of selectors that Unispring touches: `initialize`, `unlock`,
- *         `modifyLiquidity`, `sync`, `settle`, `take`, `swap`.
+ *         `modifyLiquidity`, `sync`, `settle`.
  *
  *         Records the last init/modify args so the test can assert on them, and
  *         performs minimal settlement bookkeeping for the single-sided positions
@@ -161,23 +161,6 @@ contract MockPoolManager {
             paid = MockToken(tok).balanceOf(address(this));
         }
     }
-
-    function take(Currency, address, uint256) external pure {
-        // No-op: `_buyHub` calls this to forward HUB to the recipient; the test
-        // does not assert on recipient balance so a no-op is sufficient.
-    }
-
-    function swap(PoolKey memory, SwapParams memory params, bytes calldata)
-        external
-        payable
-        returns (BalanceDelta delta)
-    {
-        // Return a synthetic delta: caller owes |amountSpecified| of currency0,
-        // receives the same amount of currency1. Sufficient for testing the
-        // buyHub flow without real pool math.
-        int128 amount = int128(params.amountSpecified);
-        delta = toBalanceDelta(amount, -amount);
-    }
 }
 
 contract UnispringTest is Test {
@@ -254,16 +237,5 @@ contract UnispringTest is Test {
         uint256 leftover = MockToken(SPOKE_TOKEN_ADDR).balanceOf(address(unispring));
         assertEq(pmBalance + leftover, supply, "supply must be conserved");
         assertGt(pmBalance, 0, "PoolManager received zero tokens");
-    }
-
-    function test_BuyHubSwapsEthForHub() public {
-        uint256 amountIn = 1 gwei;
-        vm.deal(address(this), amountIn);
-
-        // buyHub should not revert and should forward ETH to the PoolManager.
-        unispring.buyHub{value: amountIn}();
-
-        // The mock PoolManager received the ETH via settle.
-        assertEq(address(pm).balance, amountIn, "PoolManager should hold the ETH");
     }
 }

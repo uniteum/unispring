@@ -14,7 +14,7 @@ import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
 import {Currency} from "v4-core/types/Currency.sol";
 import {PoolId} from "v4-core/types/PoolId.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
-import {ModifyLiquidityParams, SwapParams} from "v4-core/types/PoolOperation.sol";
+import {ModifyLiquidityParams} from "v4-core/types/PoolOperation.sol";
 import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
 
 /**
@@ -32,14 +32,6 @@ contract Unispring is IUnlockCallback {
     using StateLibrary for IPoolManager;
 
     /**
-     * @dev Discriminator for the unlock callback payload.
-     */
-    enum Action {
-        FUND,
-        BUY_HUB
-    }
-
-    /**
      * @dev Internal payload used to fund a single-sided position. `currency0Sided`
      *      selects which side of the pair the supply funds: `true` for every
      *      {fund}-created pool, `false` for the {zzInit}-created hub pool.
@@ -50,14 +42,6 @@ contract Unispring is IUnlockCallback {
         int24 tickLower;
         int24 tickUpper;
         bool currency0Sided;
-    }
-
-    /**
-     * @dev Internal payload for the hub bootstrap swap.
-     */
-    struct BuyHubData {
-        address recipient;
-        uint256 amountIn;
     }
 
     /**
@@ -240,10 +224,10 @@ contract Unispring is IUnlockCallback {
      *              during operations on that spoke's own pool.
      *           2. Reentrancy via transfer hooks is blocked by Uniswap V4's
      *              single-locker model. A hook cannot re-enter {fund} /
-     *              {zzInit} / {buyHub} (each calls `POOL_MANAGER.unlock`,
-     *              which reverts on nested entry), and it cannot call the
-     *              PoolManager directly because `swap` / `modifyLiquidity`
-     *              require the caller to be the active locker.
+     *              {zzInit} (each calls `POOL_MANAGER.unlock`, which reverts
+     *              on nested entry), and it cannot call the PoolManager
+     *              directly because `modifyLiquidity` requires the caller to
+     *              be the active locker.
      *           3. Fee-on-transfer or revert-on-transfer causes {_fund}'s
      *              `settle` step to underpay or revert, unwinding the whole
      *              fund atomically. No partial state.
@@ -276,16 +260,9 @@ contract Unispring is IUnlockCallback {
         }
         pm.unlock(
             abi.encode(
-                Action.FUND,
-                abi.encode(
-                    FundData({
-                        key: key,
-                        supply: supply,
-                        tickLower: tickLower,
-                        tickUpper: tickUpper,
-                        currency0Sided: currency0Sided
-                    })
-                )
+                FundData({
+                    key: key, supply: supply, tickLower: tickLower, tickUpper: tickUpper, currency0Sided: currency0Sided
+                })
             )
         );
 
@@ -293,30 +270,11 @@ contract Unispring is IUnlockCallback {
     }
 
     /**
-     * @notice Buy hub tokens with native ETH via an exact-input swap on the hub
-     *         pool. Intended as the bootstrap call immediately after {zzInit} to
-     *         cross the upper tick downward and activate the pool for quoters.
-     * @dev    Permissionless. The received HUB tokens are forwarded to `msg.sender`.
-     */
-    function buyHub() external payable {
-        POOL_MANAGER.unlock(
-            abi.encode(Action.BUY_HUB, abi.encode(BuyHubData({recipient: msg.sender, amountIn: msg.value})))
-        );
-    }
-
-    /**
      * @inheritdoc IUnlockCallback
      */
     function unlockCallback(bytes calldata data) external returns (bytes memory) {
         if (msg.sender != address(POOL_MANAGER)) revert InvalidUnlockCaller();
-        IPoolManager pm = POOL_MANAGER;
-
-        (Action action, bytes memory inner) = abi.decode(data, (Action, bytes));
-        if (action == Action.FUND) {
-            _fund(pm, abi.decode(inner, (FundData)));
-        } else {
-            _buyHub(pm, abi.decode(inner, (BuyHubData)));
-        }
+        _fund(POOL_MANAGER, abi.decode(data, (FundData)));
         return "";
     }
 
@@ -353,31 +311,6 @@ contract Unispring is IUnlockCallback {
         // forge-lint: disable-next-line(erc20-unchecked-transfer)
         IERC20(Currency.unwrap(currency)).transfer(address(pm), owed);
         pm.settle();
-    }
-
-    /**
-     * @dev Execute an exact-input ETH → HUB swap and forward received HUB to the
-     *      recipient. Called inside `unlockCallback`.
-     */
-    function _buyHub(IPoolManager pm, BuyHubData memory cb) private {
-        PoolKey memory key = _poolKey(address(0));
-
-        BalanceDelta delta = pm.swap(
-            key,
-            SwapParams({
-                zeroForOne: true, amountSpecified: -int256(cb.amountIn), sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
-            }),
-            ""
-        );
-
-        // We owe currency0 (ETH) and are owed currency1 (HUB).
-        // forge-lint: disable-next-line(unsafe-typecast)
-        uint256 paid = uint256(uint128(-delta.amount0()));
-        pm.settle{value: paid}();
-
-        // forge-lint: disable-next-line(unsafe-typecast)
-        uint256 received = uint256(uint128(delta.amount1()));
-        pm.take(key.currency1, cb.recipient, received);
     }
 
     /**

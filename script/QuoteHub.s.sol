@@ -26,8 +26,8 @@ interface IV4Quoter {
 /**
  * @notice Read-only: simulate an ETH → HUB swap against V4Quoter on Sepolia.
  *         Returns 0 / reverts while the hub pool is still in the mirror-case
- *         inactive-at-spot state; returns a real quote once BootstrapHub has
- *         crossed the upper tick.
+ *         inactive-at-spot state; returns a real quote once the first
+ *         ETH → HUB swap has crossed the upper tick.
  * @dev    Usage: forge script script/QuoteHub.s.sol -f $chain
  *
  *         Env vars required:
