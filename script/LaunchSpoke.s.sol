@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
+import {ICoinage} from "ierc20/ICoinage.sol";
 import {Neutrino} from "../src/Neutrino.sol";
 import {Script, console2} from "forge-std/Script.sol";
 
@@ -37,7 +38,9 @@ contract LaunchSpoke is Script {
         console2.log("tickUpper     :", int256(tickUpper));
 
         vm.startBroadcast();
-        neutrino.launch(name, symbol, supply, salt, tickLower, tickUpper);
+        ICoinage spoke = neutrino.launch(name, symbol, supply, salt, tickLower, tickUpper);
         vm.stopBroadcast();
+
+        console2.log("Spoke         :", address(spoke));
     }
 }
