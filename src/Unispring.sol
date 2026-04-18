@@ -98,7 +98,7 @@ contract Unispring is IUnlockCallback {
     );
 
     /**
-     * @notice Thrown when `tick` is not strictly inside `(MIN_TICK, MAX_TICK)`.
+     * @notice Thrown when `tick` is outside `[MIN_TICK, MAX_TICK]`.
      */
     error TickOutOfRange(int24 tick);
 
@@ -225,9 +225,9 @@ contract Unispring is IUnlockCallback {
      * @param  supply    Amount of `token` to pull from the caller and fund into
      *                   the position.
      * @param  tickLower Lower tick (price floor in spoke-in-hub semantics).
-     *                   Must be strictly inside `(MIN_TICK, MAX_TICK)`.
-     * @param  tickUpper Upper tick of the position. Must be strictly inside
-     *                   `(MIN_TICK, MAX_TICK)`.
+     *                   Must be inside `[MIN_TICK, MAX_TICK]`.
+     * @param  tickUpper Upper tick of the position. Must be inside
+     *                   `[MIN_TICK, MAX_TICK]` and strictly above `tickLower`.
      */
     function fund(IERC20 token, uint256 supply, int24 tickLower, int24 tickUpper) external {
         // forge-lint: disable-next-line(erc20-unchecked-transfer)
@@ -301,18 +301,12 @@ contract Unispring is IUnlockCallback {
     }
 
     /**
-     * @dev Revert unless `tick` is strictly inside `(MIN_TICK, MAX_TICK)`.
+     * @dev Revert unless `MIN_TICK <= tickLower < tickUpper <= MAX_TICK`.
      */
-    function _requireValidTick(int24 tick) private pure {
-        if (tick <= TickMath.MIN_TICK || tick >= TickMath.MAX_TICK) {
-            revert TickOutOfRange(tick);
-        }
-    }
-
     function _requireValidTickRange(int24 tickLower, int24 tickUpper) private pure {
-        _requireValidTick(tickLower);
-        _requireValidTick(tickUpper);
+        if (tickLower < TickMath.MIN_TICK) revert TickOutOfRange(tickLower);
         if (tickLower >= tickUpper) revert TickLowerNotBelowUpper(tickLower, tickUpper);
+        if (tickUpper > TickMath.MAX_TICK) revert TickOutOfRange(tickUpper);
     }
 
     /**
