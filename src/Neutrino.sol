@@ -106,7 +106,7 @@ contract Neutrino {
         salt = keccak256(abi.encode(name, symbol, supply, tickLower, tickUpper, leptonSalt));
         home = Clones.predictDeterministicAddress(address(PROTO), salt, address(PROTO));
         exists = home.code.length > 0;
-        (, address maker,) = MAKER.made(home, tickLower, tickUpper);
+        (, address maker,) = MAKER.made(address(PROTO), tickLower, tickUpper);
         (, hubHome,) = LEPTON.made(maker, name, symbol, supply, leptonSalt);
     }
 
@@ -135,41 +135,28 @@ contract Neutrino {
             (bool exists, address home, bytes32 salt,) = made(name, symbol, supply, tickLower, tickUpper, leptonSalt);
             clone = Neutrino(home);
             if (!exists) {
+                NeutrinoMaker hubMaker = MAKER.make(tickLower, tickUpper);
+                ICoinage hubToken = hubMaker.mint(LEPTON, name, symbol, supply, leptonSalt);
+
+                (, address springHome,) = UNISPRING.made(IERC20(address(hubToken)), tickLower, tickUpper);
+                // forge-lint: disable-next-line(erc20-unchecked-transfer)
+                IERC20(address(hubToken)).transfer(springHome, supply);
+                Unispring unispring = UNISPRING.make(IERC20(address(hubToken)), tickLower, tickUpper);
+
                 Clones.cloneDeterministic(address(PROTO), salt, 0);
-                Neutrino(home).zzInit(name, symbol, supply, tickLower, tickUpper, leptonSalt);
-                emit Make(clone, Neutrino(home).hub(), Neutrino(home).spring());
+                Neutrino(home).zzInit(unispring);
+                emit Make(clone, IERC20(address(hubToken)), unispring);
             }
         }
     }
 
     /**
-     * @notice Initializer called by PROTO on a freshly deployed clone. Creates
-     *         the hub token via the pre-deployed NeutrinoMaker relay, deposits
-     *         the entire supply into a new Unispring clone.
-     * @param name       Hub token name.
-     * @param symbol     Hub token symbol.
-     * @param supply     Hub token supply.
-     * @param tickLower  Lower tick for the hub's ETH pool.
-     * @param tickUpper  Upper tick for the hub's ETH pool.
-     * @param leptonSalt Salt for the Lepton hub token.
+     * @notice Initializer called by PROTO on a freshly deployed clone.
+     * @param spring_ The Unispring clone for this Neutrino's hub token.
      */
-    function zzInit(
-        string calldata name,
-        string calldata symbol,
-        uint256 supply,
-        int24 tickLower,
-        int24 tickUpper,
-        bytes32 leptonSalt
-    ) external {
+    function zzInit(Unispring spring_) external {
         if (msg.sender != address(PROTO)) revert Unauthorized();
-        NeutrinoMaker maker = MAKER.make(tickLower, tickUpper);
-        ICoinage hubToken = maker.mint(LEPTON, name, symbol, supply, leptonSalt);
-
-        (, address springHome,) = UNISPRING.made(IERC20(address(hubToken)), tickLower, tickUpper);
-        // forge-lint: disable-next-line(erc20-unchecked-transfer)
-        IERC20(address(hubToken)).transfer(springHome, supply);
-
-        spring = UNISPRING.make(IERC20(address(hubToken)), tickLower, tickUpper);
+        spring = spring_;
     }
 
     // ---- Fair launch ----
