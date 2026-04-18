@@ -43,7 +43,7 @@ contract QuoteHub is Script {
             currency0: Currency.wrap(address(0)),
             currency1: Currency.wrap(unispring.hub()),
             fee: unispring.FEE(),
-            tickSpacing: unispring.TICK_SPACING(),
+            tickSpacing: 1,
             hooks: IHooks(address(0))
         });
 

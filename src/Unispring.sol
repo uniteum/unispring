@@ -52,11 +52,6 @@ contract Unispring is IUnlockCallback {
     uint24 public constant FEE = 0;
 
     /**
-     * @notice Tick spacing — maximum granularity at the floor.
-     */
-    int24 public constant TICK_SPACING = 1;
-
-    /**
      * @notice The prototype instance that acts as the Bitsy factory.
      */
     // forge-lint: disable-next-line(screaming-snake-case-immutable)
@@ -101,11 +96,6 @@ contract Unispring is IUnlockCallback {
         int24 tickLower,
         int24 tickUpper
     );
-
-    /**
-     * @notice Thrown when `tick` is not a multiple of {TICK_SPACING}.
-     */
-    error TickMisaligned(int24 tick);
 
     /**
      * @notice Thrown when `tick` is not strictly inside `(MIN_TICK, MAX_TICK)`.
@@ -235,10 +225,8 @@ contract Unispring is IUnlockCallback {
      * @param  supply    Amount of `token` to pull from the caller and fund into
      *                   the position.
      * @param  tickLower Lower tick (price floor in spoke-in-hub semantics).
-     *                   Must be a multiple of {TICK_SPACING} and strictly inside
-     *                   `(MIN_TICK, MAX_TICK)`.
-     * @param  tickUpper Upper tick of the position. Must be a multiple of
-     *                   {TICK_SPACING} and strictly inside
+     *                   Must be strictly inside `(MIN_TICK, MAX_TICK)`.
+     * @param  tickUpper Upper tick of the position. Must be strictly inside
      *                   `(MIN_TICK, MAX_TICK)`.
      */
     function fund(IERC20 token, uint256 supply, int24 tickLower, int24 tickUpper) external {
@@ -313,11 +301,9 @@ contract Unispring is IUnlockCallback {
     }
 
     /**
-     * @dev Revert unless `tick` is a multiple of {TICK_SPACING} and
-     *      strictly inside `(MIN_TICK, MAX_TICK)`.
+     * @dev Revert unless `tick` is strictly inside `(MIN_TICK, MAX_TICK)`.
      */
     function _requireValidTick(int24 tick) private pure {
-        if (tick % TICK_SPACING != 0) revert TickMisaligned(tick);
         if (tick <= TickMath.MIN_TICK || tick >= TickMath.MAX_TICK) {
             revert TickOutOfRange(tick);
         }
@@ -339,7 +325,7 @@ contract Unispring is IUnlockCallback {
             currency0: Currency.wrap(currency0),
             currency1: Currency.wrap(hub),
             fee: FEE,
-            tickSpacing: TICK_SPACING,
+            tickSpacing: 1,
             hooks: IHooks(address(0))
         });
     }

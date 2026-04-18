@@ -216,7 +216,7 @@ contract UnispringTest is Test {
             pm.lastInit();
         assertTrue(seenInit, "initialize not called");
         assertEq(fee, unispring.FEE(), "fee constant mismatch");
-        assertEq(tickSpacing, unispring.TICK_SPACING(), "tickSpacing constant mismatch");
+        assertEq(tickSpacing, 1, "tickSpacing must be 1");
 
         // Spoke token must sort strictly below HUB so it lands as currency0.
         assertLt(uint160(SPOKE_TOKEN_ADDR), uint160(unispring.hub()), "spoke must sort below HUB");

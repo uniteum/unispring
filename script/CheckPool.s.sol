@@ -27,7 +27,7 @@ contract CheckPool is Script {
             currency0: Currency.wrap(newIsCurrency0 ? newToken : hub),
             currency1: Currency.wrap(newIsCurrency0 ? hub : newToken),
             fee: spring.FEE(),
-            tickSpacing: spring.TICK_SPACING(),
+            tickSpacing: 1,
             hooks: IHooks(address(0))
         });
         PoolId id = key.toId();

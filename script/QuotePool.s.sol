@@ -47,7 +47,7 @@ contract QuotePool is Script {
             currency0: Currency.wrap(newToken),
             currency1: Currency.wrap(hub),
             fee: unispring.FEE(),
-            tickSpacing: unispring.TICK_SPACING(),
+            tickSpacing: 1,
             hooks: IHooks(address(0))
         });
 
