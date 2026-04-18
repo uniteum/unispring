@@ -193,7 +193,7 @@ contract Unispring is IUnlockCallback {
      * @return clone The deployed (or existing) clone.
      */
     function make(IERC20 hub_, int24 tickLower, int24 tickUpper) external returns (Unispring clone) {
-        if (this != PROTO) {
+        if (address(this) != address(PROTO)) {
             clone = PROTO.make(hub_, tickLower, tickUpper);
         } else {
             (bool exists, address home, bytes32 salt) = made(hub_, tickLower, tickUpper);
