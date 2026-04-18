@@ -2,35 +2,36 @@
 pragma solidity ^0.8.30;
 
 import {ICoinage} from "ierc20/ICoinage.sol";
-import {Neutrino} from "../src/Neutrino.sol";
-import {NeutrinoMaker} from "../src/NeutrinoMaker.sol";
+import {NeutrinoChannel} from "../src/NeutrinoChannel.sol";
+import {NeutrinoSource} from "../src/NeutrinoSource.sol";
 import {Script, console2} from "forge-std/Script.sol";
 import {Unispring} from "../src/Unispring.sol";
 
 /**
- * @notice Deploy the Neutrino prototype via Nick's CREATE2 deployer.
+ * @notice Deploy the NeutrinoSource prototype via Nick's CREATE2 deployer.
  * @dev    Configuration comes from environment variables:
- *           ICoinage       — the Coinage prototype
- *           NeutrinoMaker  — the NeutrinoMaker prototype
- *           UnispringProto — the Unispring prototype
+ *           ICoinage        — the Coinage prototype
+ *           NeutrinoChannel — the NeutrinoChannel prototype
+ *           UnispringProto  — the Unispring prototype
  *
  * Usage:
- * forge script script/NeutrinoProto.s.sol -f $chain --private-key $tx_key --broadcast --verify --delay 10 --retries 10
+ * forge script script/NeutrinoSourceProto.s.sol -f $chain --private-key $tx_key --broadcast --verify --delay 10 --retries 10
  */
-contract NeutrinoProto is Script {
+contract NeutrinoSourceProto is Script {
     address constant NICK = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
 
     function run() external {
         ICoinage coinage = ICoinage(vm.envAddress("ICoinage"));
-        NeutrinoMaker maker = NeutrinoMaker(vm.envAddress("NeutrinoMaker"));
+        NeutrinoChannel channel = NeutrinoChannel(vm.envAddress("NeutrinoChannel"));
         Unispring unispring = Unispring(payable(vm.envAddress("UnispringProto")));
 
         console2.log("coinage:", address(coinage));
-        console2.log("maker:", address(maker));
+        console2.log("channel:", address(channel));
         console2.log("unispring:", address(unispring));
 
         // Compute the deterministic prototype CREATE2 address.
-        bytes memory initCode = abi.encodePacked(type(Neutrino).creationCode, abi.encode(coinage, maker, unispring));
+        bytes memory initCode =
+            abi.encodePacked(type(NeutrinoSource).creationCode, abi.encode(coinage, channel, unispring));
         address predictedProto = vm.computeCreate2Address(bytes32(0), keccak256(initCode), NICK);
         console2.log("predicted proto:", predictedProto);
 

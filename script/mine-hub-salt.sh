@@ -3,7 +3,7 @@
 # Usage: source .env && chain=bitsy ./script/mine-hub-salt.sh --mask 0x... --match 0x...
 #
 # Required env (from .env):
-#   ICoinage, NeutrinoMaker, NeutrinoProto, HubName, HubSymbol, HubTickLower, HubTickUpper, HubSupply
+#   ICoinage, NeutrinoChannel, NeutrinoSourceProto, HubName, HubSymbol, HubTickLower, HubTickUpper, HubSupply
 #
 # Required env (from .env):
 #   HubSaltMask, HubSaltMatch
@@ -13,8 +13,8 @@
 set -euo pipefail
 
 : "${ICoinage:?}"
-: "${NeutrinoMaker:?}"
-: "${NeutrinoProto:?}"
+: "${NeutrinoChannel:?}"
+: "${NeutrinoSourceProto:?}"
 : "${HubTickLower:?}"
 : "${HubTickUpper:?}"
 : "${HubName:?}"
@@ -34,20 +34,20 @@ deployer=$ICoinage
 initcode_hash=$(cast keccak \
   "0x3d602d80600a3d3981f3363d3d373d3d3d363d73${ICoinage#0x}5af43d82803e903d91602b57fd5bf3")
 
-# --- maker (NeutrinoMaker clone for this tick range) ---
-maker=$(cast call "$NeutrinoMaker" \
+# --- channel (NeutrinoChannel clone for this tick range) ---
+channel=$(cast call "$NeutrinoChannel" \
   "made(address,int24,int24)(bool,address,bytes32)" \
-  "$NeutrinoProto" "$HubTickLower" "$HubTickUpper" \
+  "$NeutrinoSourceProto" "$HubTickLower" "$HubTickUpper" \
   --rpc-url "$chain" | sed -n '2p')
 
 # --- args-hash ---
 args_hash=$(cast keccak "$(cast abi-encode \
   "f(address,string,string,uint256)" \
-  "$maker" "$name" "$symbol" "$HubSupply")")
+  "$channel" "$name" "$symbol" "$HubSupply")")
 
 echo "deployer      = $deployer"
 echo "initcode_hash = $initcode_hash"
-echo "maker         = $maker"
+echo "channel       = $channel"
 echo "args_hash     = $args_hash"
 echo
 

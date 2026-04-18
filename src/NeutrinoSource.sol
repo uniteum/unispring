@@ -5,24 +5,24 @@ import {Clones} from "clones/Clones.sol";
 import {ICoinage} from "ierc20/ICoinage.sol";
 import {IERC20Metadata} from "ierc20/IERC20Metadata.sol";
 
-import {NeutrinoMaker} from "./NeutrinoMaker.sol";
+import {NeutrinoChannel} from "./NeutrinoChannel.sol";
 import {Unispring} from "./Unispring.sol";
 
 /**
- * @title Neutrino
- * @notice One-click fair-launch factory. A Neutrino clone bundles a hub token
- *         minted via Coinage with a Unispring clone. Call {launch} on a clone to create a
- *         spoke token whose entire supply is deposited as permanent liquidity,
- *         paired against the hub.
+ * @title NeutrinoSource
+ * @notice One-click fair-launch factory. A NeutrinoSource clone bundles a hub
+ *         token minted via Coinage with a Unispring clone. Call {launch} on a
+ *         clone to create a spoke token whose entire supply is deposited as
+ *         permanent liquidity, paired against the hub.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
-contract Neutrino {
+contract NeutrinoSource {
     string public constant VERSION = "0.1.0";
 
     /**
      * @notice The prototype instance that acts as the Bitsy factory.
      */
-    Neutrino public immutable PROTO;
+    NeutrinoSource public immutable PROTO;
 
     /**
      * @notice The Coinage prototype used to create hub and spoke tokens.
@@ -30,10 +30,10 @@ contract Neutrino {
     ICoinage public immutable COINAGE;
 
     /**
-     * @notice The NeutrinoMaker prototype cloned per tick range so each range
+     * @notice The NeutrinoChannel prototype cloned per tick range so each range
      *         produces a distinct Coinage deployer (and therefore hub) address.
      */
-    NeutrinoMaker public immutable MAKER;
+    NeutrinoChannel public immutable CHANNEL;
 
     /**
      * @notice The Unispring prototype used to create fair-launch pools.
@@ -55,7 +55,7 @@ contract Neutrino {
     /**
      * @notice Emitted when a new clone is created via {make}.
      */
-    event Make(Neutrino indexed clone, IERC20Metadata indexed hub, Unispring indexed spring);
+    event Make(NeutrinoSource indexed clone, IERC20Metadata indexed hub, Unispring indexed spring);
 
     /**
      * @notice Emitted when a spoke token is launched via {launch}.
@@ -70,13 +70,13 @@ contract Neutrino {
     /**
      * @notice Construct the prototype.
      * @param coinage   The Coinage prototype.
-     * @param maker     The NeutrinoMaker prototype.
+     * @param channel   The NeutrinoChannel prototype.
      * @param unispring The Unispring prototype.
      */
-    constructor(ICoinage coinage, NeutrinoMaker maker, Unispring unispring) {
+    constructor(ICoinage coinage, NeutrinoChannel channel, Unispring unispring) {
         PROTO = this;
         COINAGE = coinage;
-        MAKER = maker;
+        CHANNEL = channel;
         UNISPRING = unispring;
     }
 
@@ -104,20 +104,20 @@ contract Neutrino {
         salt = keccak256(abi.encode(name, symbol, supply, tickLower, tickUpper, tokenSalt));
         home = Clones.predictDeterministicAddress(address(PROTO), salt, address(PROTO));
         exists = home.code.length > 0;
-        (, address maker,) = MAKER.made(address(PROTO), tickLower, tickUpper);
-        (, hubHome,) = COINAGE.made(maker, name, symbol, supply, tokenSalt);
+        (, address channel,) = CHANNEL.made(address(PROTO), tickLower, tickUpper);
+        (, hubHome,) = COINAGE.made(channel, name, symbol, supply, tokenSalt);
     }
 
     /**
-     * @notice Create a hub token, a Unispring clone for it, and a Neutrino
-     *         clone that bundles them together. Idempotent.
+     * @notice Create a hub token, a Unispring clone for it, and a
+     *         NeutrinoSource clone that bundles them together. Idempotent.
      * @param name       Hub token name.
      * @param symbol     Hub token symbol.
      * @param supply     Hub token supply (entire supply funds the ETH/hub pool).
      * @param tickLower  Lower tick for the hub's ETH pool.
      * @param tickUpper  Upper tick for the hub's ETH pool.
      * @param tokenSalt Salt for the Coinage hub token.
-     * @return clone The deployed (or existing) Neutrino clone.
+     * @return clone The deployed (or existing) NeutrinoSource clone.
      */
     function make(
         string calldata name,
@@ -126,15 +126,15 @@ contract Neutrino {
         int24 tickLower,
         int24 tickUpper,
         bytes32 tokenSalt
-    ) external returns (Neutrino clone) {
+    ) external returns (NeutrinoSource clone) {
         if (this != PROTO) {
             clone = PROTO.make(name, symbol, supply, tickLower, tickUpper, tokenSalt);
         } else {
             (bool exists, address home, bytes32 salt,) = made(name, symbol, supply, tickLower, tickUpper, tokenSalt);
-            clone = Neutrino(home);
+            clone = NeutrinoSource(home);
             if (!exists) {
-                NeutrinoMaker hubMaker = MAKER.make(tickLower, tickUpper);
-                IERC20Metadata hubToken = hubMaker.mint(COINAGE, name, symbol, supply, tokenSalt);
+                NeutrinoChannel hubChannel = CHANNEL.make(tickLower, tickUpper);
+                IERC20Metadata hubToken = hubChannel.mint(COINAGE, name, symbol, supply, tokenSalt);
 
                 (, address springHome,) = UNISPRING.made(hubToken, tickLower, tickUpper);
                 // forge-lint: disable-next-line(erc20-unchecked-transfer)
@@ -142,7 +142,7 @@ contract Neutrino {
                 Unispring unispring = UNISPRING.make(hubToken, tickLower, tickUpper);
 
                 Clones.cloneDeterministic(address(PROTO), salt, 0);
-                Neutrino(home).zzInit(unispring);
+                NeutrinoSource(home).zzInit(unispring);
                 emit Make(clone, IERC20Metadata(address(hubToken)), unispring);
             }
         }
@@ -150,7 +150,7 @@ contract Neutrino {
 
     /**
      * @notice Initializer called by PROTO on a freshly deployed clone.
-     * @param spring_ The Unispring clone for this Neutrino's hub token.
+     * @param spring_ The Unispring clone for this NeutrinoSource's hub token.
      */
     function zzInit(Unispring spring_) external {
         if (msg.sender != address(PROTO)) revert Unauthorized();
@@ -179,8 +179,8 @@ contract Neutrino {
         int24 tickLower,
         int24 tickUpper
     ) external returns (IERC20Metadata token) {
-        NeutrinoMaker maker = MAKER.make(tickLower, tickUpper);
-        token = maker.mint(COINAGE, name, symbol, supply, salt);
+        NeutrinoChannel channel = CHANNEL.make(tickLower, tickUpper);
+        token = channel.mint(COINAGE, name, symbol, supply, salt);
         token.approve(address(spring), supply);
         spring.fund(token, supply, tickLower, tickUpper);
         emit Launch(token, supply, tickLower, tickUpper);

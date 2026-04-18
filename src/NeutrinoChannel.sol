@@ -6,21 +6,21 @@ import {ICoinage} from "ierc20/ICoinage.sol";
 import {IERC20Metadata} from "ierc20/IERC20Metadata.sol";
 
 /**
- * @title NeutrinoMaker
+ * @title NeutrinoChannel
  * @notice Lightweight relay cloned per tick range so that each (tickLower,
  *         tickUpper) pair produces a distinct Coinage deployer address — and
  *         therefore a distinct hub token — without consuming the coinage salt.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
-contract NeutrinoMaker {
+contract NeutrinoChannel {
     string public constant VERSION = "0.1.0";
 
     /**
      * @notice The prototype instance that acts as the Bitsy factory.
      */
-    NeutrinoMaker public immutable PROTO;
+    NeutrinoChannel public immutable PROTO;
 
-    address public maker;
+    address public source;
 
     /**
      * @notice Thrown when {zzInit} is called by anyone other than {PROTO}.
@@ -58,18 +58,18 @@ contract NeutrinoMaker {
      * @param tickUpper Upper tick.
      * @return clone The deployed (or existing) clone.
      */
-    function make(int24 tickLower, int24 tickUpper) external returns (NeutrinoMaker clone) {
+    function make(int24 tickLower, int24 tickUpper) external returns (NeutrinoChannel clone) {
         (bool exists, address home, bytes32 salt) = made(msg.sender, tickLower, tickUpper);
-        clone = NeutrinoMaker(home);
+        clone = NeutrinoChannel(home);
         if (!exists) {
             Clones.cloneDeterministic(address(PROTO), salt, 0);
             clone.zzInit(msg.sender);
         }
     }
 
-    function zzInit(address maker_) external {
+    function zzInit(address source_) external {
         if (msg.sender != address(PROTO)) revert Unauthorized();
-        maker = maker_;
+        source = source_;
     }
 
     // ---- Relay ----
@@ -89,7 +89,7 @@ contract NeutrinoMaker {
         external
         returns (IERC20Metadata token)
     {
-        if (msg.sender != maker) revert Unauthorized();
+        if (msg.sender != source) revert Unauthorized();
         token = coinage.make(name, symbol, supply, salt);
         // forge-lint: disable-next-line(erc20-unchecked-transfer)
         token.transfer(msg.sender, supply);

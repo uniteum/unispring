@@ -3,14 +3,14 @@
 # Usage: source .env && chain=bitsy ./script/check-hub-salt.sh
 #
 # Required env (from .env):
-#   ICoinage, NeutrinoMaker, NeutrinoProto, HubName, HubSymbol,
+#   ICoinage, NeutrinoChannel, NeutrinoSourceProto, HubName, HubSymbol,
 #   HubTickLower, HubTickUpper, HubSupply, HubSaltMask, HubSaltMatch, HubSalt
 
 set -euo pipefail
 
 : "${ICoinage:?}"
-: "${NeutrinoMaker:?}"
-: "${NeutrinoProto:?}"
+: "${NeutrinoChannel:?}"
+: "${NeutrinoSourceProto:?}"
 : "${HubTickLower:?}"
 : "${HubTickUpper:?}"
 : "${HubName:?}"
@@ -24,22 +24,22 @@ set -euo pipefail
 name="$HubName"
 symbol="$HubSymbol"
 
-# Ask the NeutrinoMaker prototype for the maker clone address.
-maker=$(cast call "$NeutrinoMaker" \
+# Ask the NeutrinoChannel prototype for the channel clone address.
+channel=$(cast call "$NeutrinoChannel" \
   "made(address,int24,int24)(bool,address,bytes32)" \
-  "$NeutrinoProto" "$HubTickLower" "$HubTickUpper" \
+  "$NeutrinoSourceProto" "$HubTickLower" "$HubTickUpper" \
   --rpc-url "$chain" | sed -n '2p')
 
 # Ask Lepton for the hub address this salt would produce.
 result=$(cast call "$ICoinage" \
   "made(address,string,string,uint256,bytes32)(bool,address,bytes32)" \
-  "$maker" "$name" "$symbol" "$HubSupply" "$HubSalt" \
+  "$channel" "$name" "$symbol" "$HubSupply" "$HubSalt" \
   --rpc-url "$chain")
 
 deployed=$(echo "$result" | sed -n '1p')
 hub=$(echo "$result" | sed -n '2p')
 
-echo "maker    = $maker"
+echo "channel  = $channel"
 echo "hub      = $hub"
 echo "deployed = $deployed"
 
