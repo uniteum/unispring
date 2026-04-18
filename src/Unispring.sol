@@ -253,12 +253,11 @@ contract Unispring is IUnlockCallback {
         PoolKey memory key = _poolKey(currency0Sided ? tokenAddr : address(0));
         PoolId poolId = key.toId();
 
-        IPoolManager pm = POOL_MANAGER;
-        (uint160 sqrtPriceX96,,,) = pm.getSlot0(poolId);
+        (uint160 sqrtPriceX96,,,) = POOL_MANAGER.getSlot0(poolId);
         if (sqrtPriceX96 == 0) {
-            pm.initialize(key, TickMath.getSqrtPriceAtTick(currency0Sided ? tickLower : tickUpper));
+            POOL_MANAGER.initialize(key, TickMath.getSqrtPriceAtTick(currency0Sided ? tickLower : tickUpper));
         }
-        pm.unlock(
+        POOL_MANAGER.unlock(
             abi.encode(
                 FundData({
                     key: key, supply: supply, tickLower: tickLower, tickUpper: tickUpper, currency0Sided: currency0Sided
@@ -274,7 +273,7 @@ contract Unispring is IUnlockCallback {
      */
     function unlockCallback(bytes calldata data) external returns (bytes memory) {
         if (msg.sender != address(POOL_MANAGER)) revert InvalidUnlockCaller();
-        _fund(POOL_MANAGER, abi.decode(data, (FundData)));
+        _fund(abi.decode(data, (FundData)));
         return "";
     }
 
@@ -282,14 +281,14 @@ contract Unispring is IUnlockCallback {
      * @dev Fund a single-sided position with `supply` tokens. `currency0Sided`
      *      selects which side of the pair the supply funds.
      */
-    function _fund(IPoolManager pm, FundData memory cb) private {
+    function _fund(FundData memory cb) private {
         uint160 sqrtLower = TickMath.getSqrtPriceAtTick(cb.tickLower);
         uint160 sqrtUpper = TickMath.getSqrtPriceAtTick(cb.tickUpper);
         uint128 liquidity = cb.currency0Sided
             ? _liquidity0(sqrtLower, sqrtUpper, cb.supply)
             : _liquidity1(sqrtLower, sqrtUpper, cb.supply);
 
-        (BalanceDelta delta,) = pm.modifyLiquidity(
+        (BalanceDelta delta,) = POOL_MANAGER.modifyLiquidity(
             cb.key,
             ModifyLiquidityParams({
                 tickLower: cb.tickLower,
@@ -307,10 +306,10 @@ contract Unispring is IUnlockCallback {
         // forge-lint: disable-next-line(unsafe-typecast)
         uint256 owed = uint256(uint128(-amount));
 
-        pm.sync(currency);
+        POOL_MANAGER.sync(currency);
         // forge-lint: disable-next-line(erc20-unchecked-transfer)
-        IERC20(Currency.unwrap(currency)).transfer(address(pm), owed);
-        pm.settle();
+        IERC20(Currency.unwrap(currency)).transfer(address(POOL_MANAGER), owed);
+        POOL_MANAGER.settle();
     }
 
     /**
