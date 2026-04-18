@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Mine a leptonSalt that gives the hub token a vanity address.
+# Mine a tokenSalt that gives the hub token a vanity address.
 # Usage: source .env && chain=bitsy ./script/mine-hub-salt.sh --mask 0x... --match 0x...
 #
 # Required env (from .env):

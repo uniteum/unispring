@@ -25,13 +25,13 @@ contract Neutrino {
     Neutrino public immutable PROTO;
 
     /**
-     * @notice The Lepton prototype used to create hub and spoke tokens.
+     * @notice The Coinage prototype used to create hub and spoke tokens.
      */
-    ICoinage public immutable LEPTON;
+    ICoinage public immutable COINAGE;
 
     /**
      * @notice The NeutrinoMaker prototype cloned per tick range so each range
-     *         produces a distinct Lepton deployer (and therefore hub) address.
+     *         produces a distinct Coinage deployer (and therefore hub) address.
      */
     NeutrinoMaker public immutable MAKER;
 
@@ -69,13 +69,13 @@ contract Neutrino {
 
     /**
      * @notice Construct the prototype.
-     * @param lepton    The Lepton prototype (ICoinage).
+     * @param coinage   The Coinage prototype.
      * @param maker     The NeutrinoMaker prototype.
      * @param unispring The Unispring prototype.
      */
-    constructor(ICoinage lepton, NeutrinoMaker maker, Unispring unispring) {
+    constructor(ICoinage coinage, NeutrinoMaker maker, Unispring unispring) {
         PROTO = this;
-        LEPTON = lepton;
+        COINAGE = coinage;
         MAKER = maker;
         UNISPRING = unispring;
     }
@@ -87,7 +87,7 @@ contract Neutrino {
      * @param name       Hub token name (passed to Lepton).
      * @param symbol     Hub token symbol (passed to Lepton).
      * @param supply     Hub token supply (passed to Lepton).
-     * @param leptonSalt Salt for the Lepton hub token.
+     * @param tokenSalt Salt for the Lepton hub token.
      * @return exists  True if the clone is already deployed.
      * @return home    The deterministic clone address.
      * @return salt    The CREATE2 salt (derived from the input parameters).
@@ -99,13 +99,13 @@ contract Neutrino {
         uint256 supply,
         int24 tickLower,
         int24 tickUpper,
-        bytes32 leptonSalt
+        bytes32 tokenSalt
     ) public view returns (bool exists, address home, bytes32 salt, address hubHome) {
-        salt = keccak256(abi.encode(name, symbol, supply, tickLower, tickUpper, leptonSalt));
+        salt = keccak256(abi.encode(name, symbol, supply, tickLower, tickUpper, tokenSalt));
         home = Clones.predictDeterministicAddress(address(PROTO), salt, address(PROTO));
         exists = home.code.length > 0;
         (, address maker,) = MAKER.made(address(PROTO), tickLower, tickUpper);
-        (, hubHome,) = LEPTON.made(maker, name, symbol, supply, leptonSalt);
+        (, hubHome,) = COINAGE.made(maker, name, symbol, supply, tokenSalt);
     }
 
     /**
@@ -116,7 +116,7 @@ contract Neutrino {
      * @param supply     Hub token supply (entire supply funds the ETH/hub pool).
      * @param tickLower  Lower tick for the hub's ETH pool.
      * @param tickUpper  Upper tick for the hub's ETH pool.
-     * @param leptonSalt Salt for the Lepton hub token.
+     * @param tokenSalt Salt for the Lepton hub token.
      * @return clone The deployed (or existing) Neutrino clone.
      */
     function make(
@@ -125,16 +125,16 @@ contract Neutrino {
         uint256 supply,
         int24 tickLower,
         int24 tickUpper,
-        bytes32 leptonSalt
+        bytes32 tokenSalt
     ) external returns (Neutrino clone) {
         if (this != PROTO) {
-            clone = PROTO.make(name, symbol, supply, tickLower, tickUpper, leptonSalt);
+            clone = PROTO.make(name, symbol, supply, tickLower, tickUpper, tokenSalt);
         } else {
-            (bool exists, address home, bytes32 salt,) = made(name, symbol, supply, tickLower, tickUpper, leptonSalt);
+            (bool exists, address home, bytes32 salt,) = made(name, symbol, supply, tickLower, tickUpper, tokenSalt);
             clone = Neutrino(home);
             if (!exists) {
                 NeutrinoMaker hubMaker = MAKER.make(tickLower, tickUpper);
-                IERC20Metadata hubToken = hubMaker.mint(LEPTON, name, symbol, supply, leptonSalt);
+                IERC20Metadata hubToken = hubMaker.mint(COINAGE, name, symbol, supply, tokenSalt);
 
                 (, address springHome,) = UNISPRING.made(hubToken, tickLower, tickUpper);
                 // forge-lint: disable-next-line(erc20-unchecked-transfer)
@@ -180,7 +180,7 @@ contract Neutrino {
         int24 tickUpper
     ) external returns (IERC20Metadata token) {
         NeutrinoMaker maker = MAKER.make(tickLower, tickUpper);
-        token = maker.mint(LEPTON, name, symbol, supply, salt);
+        token = maker.mint(COINAGE, name, symbol, supply, salt);
         token.approve(address(spring), supply);
         spring.fund(token, supply, tickLower, tickUpper);
         emit Launch(token, supply, tickLower, tickUpper);
