@@ -15,6 +15,11 @@ import {Unispring} from "./Unispring.sol";
  *         clone to create a spoke token whose entire supply is deposited as
  *         permanent liquidity, paired against the hub. The minted tokens are
  *         neutrinos — fair-launched (neutral) leptons.
+ * @dev    Pure factory. Once {launch} returns, this contract has no further
+ *         authority over the spoke token or its pool: no pause, no reclaim,
+ *         no fee knob. Post-launch token behavior is governed by the minted
+ *         ERC-20 (lepton); pool behavior by the Uniswap V4 PoolManager and
+ *         whatever DEX routers reach it. See README §Trust boundaries.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
 contract NeutrinoSource {

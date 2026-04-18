@@ -117,6 +117,40 @@ Uniswap V4's `PoolManager` is immutable — no admin keys, no upgrade
 proxy. Lepton is immutable. Unispring is immutable. A token deployed
 through this stack inherits immutability from end to end.
 
+### Trust boundaries
+
+Unispring, NeutrinoSource, and NeutrinoChannel are **factories**. Their
+job is to mint a token, initialize a pool, and lock a single-sided
+position. Once that work is done, none of them has any authority over
+what they created — they cannot pause a token, reclaim a position,
+change a fee, or route a trade. The ongoing behavior of a launched
+token is split between two contracts that the factories do not control:
+
+| After launch, ...                  | ... is governed by                                                |
+|:-----------------------------------|:------------------------------------------------------------------|
+| Token transfers, approvals, supply | Lepton (the ERC-20 implementation)                                |
+| Swap math, pool state, liquidity   | The Uniswap V4 PoolManager — plus any DEX router that reaches it  |
+
+Concretely:
+
+- **NeutrinoChannel** relays one `Coinage.make()` call per clone and
+  transfers the minted supply to its caller. After `mint()` returns,
+  it holds no tokens and has no privileged relationship with the one
+  it just minted.
+- **NeutrinoSource** composes a channel-minted hub with a Unispring
+  clone at `make()`, then on each `launch()` mints a spoke and hands
+  it to Unispring for funding. The clone retains no claim on either
+  token or on the pool.
+- **Unispring** funds a permanent single-sided position via
+  `PoolManager.modifyLiquidity`. The position has no owner in any
+  meaningful sense — Unispring holds the nominal position key but
+  exposes no method to withdraw, collect, or modify it.
+
+So the security surface a maker or holder needs to reason about is
+narrow: **Lepton** (does the ERC-20 behave correctly?) and **Uniswap
+V4** (does the pool honor its stated math?). The factories above them
+are one-shot and step aside.
+
 ## How it works
 
 ```

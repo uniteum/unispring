@@ -24,6 +24,11 @@ import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
  * @dev    See README.md for the full design rationale. The hub token is supplied
  *         externally at construction; its ETH pool is funded single-sided by
  *         {zzInit}. Additional tokens are paired against the hub by {fund}.
+ * @dev    Pure factory. Once a {fund} call settles, the position is permanent
+ *         and this contract has no authority to unwind it, collect from it,
+ *         or modify the pool — no owner, no upgrade path, no admin keys. All
+ *         post-launch swap behavior belongs to the Uniswap V4 PoolManager and
+ *         whatever DEX routers reach the pool. See README §Trust boundaries.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
 contract Unispring is IUnlockCallback {

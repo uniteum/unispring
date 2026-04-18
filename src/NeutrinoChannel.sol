@@ -11,6 +11,10 @@ import {IERC20Metadata} from "ierc20/IERC20Metadata.sol";
  *         tickUpper) pair produces a distinct Coinage deployer address — and
  *         therefore a distinct hub token — without consuming the coinage salt.
  *         The minted tokens are neutrinos — fair-launched (neutral) leptons.
+ * @dev    Pure factory. Once {mint} returns, this contract has no further
+ *         authority over the minted token — all post-mint behavior is
+ *         governed by the lepton ERC-20 implementation. See README §Trust
+ *         boundaries.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
 contract NeutrinoChannel {
