@@ -41,7 +41,6 @@ contract Unispring is IUnlockCallback {
     /**
      * @notice The prototype instance that acts as the Bitsy factory.
      */
-    // forge-lint: disable-next-line(screaming-snake-case-immutable)
     Unispring public immutable PROTO;
 
     /**

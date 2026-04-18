@@ -22,7 +22,6 @@ contract Neutrino {
     /**
      * @notice The prototype instance that acts as the Bitsy factory.
      */
-    // forge-lint: disable-next-line(screaming-snake-case-immutable)
     Neutrino public immutable PROTO;
 
     /**
@@ -39,7 +38,6 @@ contract Neutrino {
     /**
      * @notice The Unispring prototype used to create fair-launch pools.
      */
-    // forge-lint: disable-next-line(screaming-snake-case-immutable)
     Unispring public immutable UNISPRING;
 
     /**

@@ -18,7 +18,6 @@ contract NeutrinoMaker {
     /**
      * @notice The prototype instance that acts as the Bitsy factory.
      */
-    // forge-lint: disable-next-line(screaming-snake-case-immutable)
     NeutrinoMaker public immutable PROTO;
 
     address public maker;
