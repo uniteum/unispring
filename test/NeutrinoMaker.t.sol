@@ -7,9 +7,9 @@ import {NeutrinoMaker} from "../src/NeutrinoMaker.sol";
 import {Test} from "forge-std/Test.sol";
 
 /**
- * @notice Mock lepton that records mint calls and returns a mock token.
+ * @notice Mock coinage that records mint calls and returns a mock token.
  */
-contract MockLepton is ICoinage {
+contract MockCoinage is ICoinage {
     MockMintedToken public lastToken;
 
     function made(address, string calldata, string calldata, uint256, bytes32)
@@ -55,11 +55,11 @@ contract MockMintedToken {
 
 contract NeutrinoMakerTest is Test {
     NeutrinoMaker internal proto;
-    MockLepton internal lepton;
+    MockCoinage internal coinage;
 
     function setUp() public {
         proto = new NeutrinoMaker();
-        lepton = new MockLepton();
+        coinage = new MockCoinage();
     }
 
     // ---- PROTO immutable ----
@@ -119,14 +119,14 @@ contract NeutrinoMakerTest is Test {
 
     // ---- mint ----
 
-    function test_MintRelaysToLeptonAndTransfersSupply() public {
+    function test_MintRelaysToCoinageAndTransfersSupply() public {
         NeutrinoMaker clone = proto.make(int24(-100), int24(100));
         uint256 supply = 1_000_000 ether;
 
-        IERC20Metadata token = clone.mint(lepton, "TestToken", "TT", supply, bytes32(0));
+        IERC20Metadata token = clone.mint(coinage, "TestToken", "TT", supply, bytes32(0));
 
-        // Token was created via lepton.
-        assertEq(address(token), address(lepton.lastToken()), "token should come from lepton");
+        // Token was created via coinage.
+        assertEq(address(token), address(coinage.lastToken()), "token should come from coinage");
         // Entire supply forwarded to the caller (this contract, the maker).
         assertEq(MockMintedToken(address(token)).balanceOf(address(this)), supply, "maker should hold full supply");
         assertEq(MockMintedToken(address(token)).balanceOf(address(clone)), 0, "clone should hold zero");
@@ -136,6 +136,6 @@ contract NeutrinoMakerTest is Test {
         NeutrinoMaker clone = proto.make(int24(-100), int24(100));
         vm.prank(address(0xBEEF));
         vm.expectRevert(NeutrinoMaker.Unauthorized.selector);
-        clone.mint(lepton, "TestToken", "TT", 1 ether, bytes32(0));
+        clone.mint(coinage, "TestToken", "TT", 1 ether, bytes32(0));
     }
 }

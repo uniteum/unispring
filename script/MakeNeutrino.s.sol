@@ -13,7 +13,7 @@ import {Script, console2} from "forge-std/Script.sol";
  *           HubSupply     — hub token supply in wei (required)
  *           HubTickLower  — lower tick for the hub's ETH pool (required)
  *           HubTickUpper  — upper tick for the hub's ETH pool (required)
- *           HubSalt       — Lepton salt for the hub token (required)
+ *           HubSalt       — Coinage salt for the hub token (required)
  *
  *         Usage:
  * forge script script/MakeNeutrino.s.sol -f $chain --private-key $tx_key --broadcast

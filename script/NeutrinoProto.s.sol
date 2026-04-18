@@ -10,7 +10,7 @@ import {Unispring} from "../src/Unispring.sol";
 /**
  * @notice Deploy the Neutrino prototype via Nick's CREATE2 deployer.
  * @dev    Configuration comes from environment variables:
- *           ICoinage       — the Lepton prototype
+ *           ICoinage       — the Coinage prototype
  *           NeutrinoMaker  — the NeutrinoMaker prototype
  *           UnispringProto — the Unispring prototype
  *
@@ -21,16 +21,16 @@ contract NeutrinoProto is Script {
     address constant NICK = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
 
     function run() external {
-        ICoinage lepton = ICoinage(vm.envAddress("ICoinage"));
+        ICoinage coinage = ICoinage(vm.envAddress("ICoinage"));
         NeutrinoMaker maker = NeutrinoMaker(vm.envAddress("NeutrinoMaker"));
         Unispring unispring = Unispring(payable(vm.envAddress("UnispringProto")));
 
-        console2.log("lepton:", address(lepton));
+        console2.log("coinage:", address(coinage));
         console2.log("maker:", address(maker));
         console2.log("unispring:", address(unispring));
 
         // Compute the deterministic prototype CREATE2 address.
-        bytes memory initCode = abi.encodePacked(type(Neutrino).creationCode, abi.encode(lepton, maker, unispring));
+        bytes memory initCode = abi.encodePacked(type(Neutrino).creationCode, abi.encode(coinage, maker, unispring));
         address predictedProto = vm.computeCreate2Address(bytes32(0), keccak256(initCode), NICK);
         console2.log("predicted proto:", predictedProto);
 

@@ -12,7 +12,7 @@ import {Script, console2} from "forge-std/Script.sol";
  *           SpokeName      — spoke token name (required)
  *           SpokeSymbol    — spoke token symbol (required)
  *           SpokeSupply    — spoke token supply in wei (required)
- *           SpokeSalt      — Lepton salt for the spoke token (required)
+ *           SpokeSalt      — Coinage salt for the spoke token (required)
  *           SpokeTickLower — lower tick for the spoke's pool (required)
  *           SpokeTickUpper — upper tick for the spoke's pool (required)
  *

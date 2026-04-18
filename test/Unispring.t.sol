@@ -14,7 +14,7 @@ import {PoolKey} from "v4-core/types/PoolKey.sol";
 import {ModifyLiquidityParams} from "v4-core/types/PoolOperation.sol";
 
 /**
- * @notice Minimal mintable ERC-20 used in place of a real Lepton clone.
+ * @notice Minimal mintable ERC-20 used in place of a real Coinage clone.
  */
 contract MockToken {
     string public name;

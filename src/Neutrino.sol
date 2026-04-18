@@ -10,8 +10,8 @@ import {Unispring} from "./Unispring.sol";
 
 /**
  * @title Neutrino
- * @notice One-click fair-launch factory. A Neutrino clone bundles a Lepton hub
- *         token with a Unispring clone. Call {launch} on a clone to create a
+ * @notice One-click fair-launch factory. A Neutrino clone bundles a hub token
+ *         minted via Coinage with a Unispring clone. Call {launch} on a clone to create a
  *         spoke token whose entire supply is deposited as permanent liquidity,
  *         paired against the hub.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
@@ -84,10 +84,10 @@ contract Neutrino {
 
     /**
      * @notice Predict the deterministic address of a clone.
-     * @param name       Hub token name (passed to Lepton).
-     * @param symbol     Hub token symbol (passed to Lepton).
-     * @param supply     Hub token supply (passed to Lepton).
-     * @param tokenSalt Salt for the Lepton hub token.
+     * @param name       Hub token name (passed to Coinage).
+     * @param symbol     Hub token symbol (passed to Coinage).
+     * @param supply     Hub token supply (passed to Coinage).
+     * @param tokenSalt Salt for the Coinage hub token.
      * @return exists  True if the clone is already deployed.
      * @return home    The deterministic clone address.
      * @return salt    The CREATE2 salt (derived from the input parameters).
@@ -116,7 +116,7 @@ contract Neutrino {
      * @param supply     Hub token supply (entire supply funds the ETH/hub pool).
      * @param tickLower  Lower tick for the hub's ETH pool.
      * @param tickUpper  Upper tick for the hub's ETH pool.
-     * @param tokenSalt Salt for the Lepton hub token.
+     * @param tokenSalt Salt for the Coinage hub token.
      * @return clone The deployed (or existing) Neutrino clone.
      */
     function make(
@@ -160,13 +160,13 @@ contract Neutrino {
     // ---- Fair launch ----
 
     /**
-     * @notice Create a spoke token via Lepton and deposit its entire supply as
+     * @notice Create a spoke token via Coinage and deposit its entire supply as
      *         permanent liquidity on this clone's Unispring, paired against the
      *         hub. Permissionless — anyone can launch a spoke.
      * @param name      Spoke token name.
      * @param symbol    Spoke token symbol.
      * @param supply    Spoke token supply (entire supply is funded).
-     * @param salt      Salt for the Lepton spoke token.
+     * @param salt      Salt for the Coinage spoke token.
      * @param tickLower Lower tick (price floor in spoke-in-hub terms).
      * @param tickUpper Upper tick of the position.
      * @return token The newly created spoke token.

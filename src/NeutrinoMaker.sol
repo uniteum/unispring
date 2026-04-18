@@ -8,8 +8,8 @@ import {IERC20Metadata} from "ierc20/IERC20Metadata.sol";
 /**
  * @title NeutrinoMaker
  * @notice Lightweight relay cloned per tick range so that each (tickLower,
- *         tickUpper) pair produces a distinct Lepton deployer address — and
- *         therefore a distinct hub token — without consuming the lepton salt.
+ *         tickUpper) pair produces a distinct Coinage deployer address — and
+ *         therefore a distinct hub token — without consuming the coinage salt.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
 contract NeutrinoMaker {
