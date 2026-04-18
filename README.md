@@ -262,6 +262,41 @@ Unispring takes no constructor arguments. The bytecode is identical on
 every chain it is deployed to, which lets it be deployed to a single
 deterministic CREATE2 address everywhere.
 
+## Patterns
+
+`fund` is permissionless and can be called any number of times against
+the same pool, by anyone, using their own tokens. Every position is
+permanent. A few useful patterns fall out of that:
+
+- **Staged emissions.** Fund an initial single-sided range covering
+  early buyers; once price moves through it, call `fund` again with
+  fresh supply at a higher range. Turns a one-shot launch into a
+  ladder with no admin key.
+- **Multi-tier launch ladder.** Split the initial supply across
+  several `fund` calls at different tick ranges to shape the offering
+  curve — some supply cheap, some expensive. A single range can't
+  express "sell 30% below price X, 70% above" cleanly.
+- **Permanent supply removal.** A holder who wants to sink tokens
+  irrevocably can fund them as single-sided LP instead of sending to
+  `0xdead`. Same effect on circulating supply, but the pool gets depth;
+  for spoke deposits, any future buys convert the locked spoke into
+  permanently locked hub.
+- **Community-strengthened liquidity.** Third parties who care about a
+  spoke can top up its floor without permission from the original
+  funder. Equally applies to the hub: treasuries or whales can stack
+  permanent hub sell-walls above spot as a credible commitment against
+  unbounded pumps.
+- **Re-arming a sold-out position.** Once the original single-sided
+  range is fully crossed, the position is inert as a further seller.
+  A fresh `fund` at a new range restarts distribution at the new
+  market price.
+
+The `token == hub` branch routes to the existing ETH/hub pool as a
+hub-sided (currency1) deposit, so hub re-funding only succeeds for
+ranges strictly above current spot; anything in-range or below reverts
+at settle. Spoke re-funding is symmetric: currency0-sided, so the
+range must sit strictly above current spot in spoke-in-hub terms.
+
 ## Comparison
 
 | Property | Solid | Solid + UniSolid | Unispring |
