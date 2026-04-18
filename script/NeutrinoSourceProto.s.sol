@@ -11,7 +11,7 @@ import {Unispring} from "../src/Unispring.sol";
  * @notice Deploy the NeutrinoSource prototype via Nick's CREATE2 deployer.
  * @dev    Configuration comes from environment variables:
  *           ICoinage        — the Coinage prototype
- *           NeutrinoChannel — the NeutrinoChannel prototype
+ *           NeutrinoChannelProto — the NeutrinoChannel prototype
  *           UnispringProto  — the Unispring prototype
  *
  * Usage:
@@ -22,7 +22,7 @@ contract NeutrinoSourceProto is Script {
 
     function run() external {
         ICoinage coinage = ICoinage(vm.envAddress("ICoinage"));
-        NeutrinoChannel channel = NeutrinoChannel(vm.envAddress("NeutrinoChannel"));
+        NeutrinoChannel channel = NeutrinoChannel(vm.envAddress("NeutrinoChannelProto"));
         Unispring unispring = Unispring(payable(vm.envAddress("UnispringProto")));
 
         console2.log("coinage:", address(coinage));

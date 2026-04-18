@@ -3,13 +3,13 @@
 # Usage: source .env && chain=bitsy ./script/check-hub-salt.sh
 #
 # Required env (from .env):
-#   ICoinage, NeutrinoChannel, NeutrinoSourceProto, HubName, HubSymbol,
+#   ICoinage, NeutrinoChannelProto, NeutrinoSourceProto, HubName, HubSymbol,
 #   HubTickLower, HubTickUpper, HubSupply, HubSaltMask, HubSaltMatch, HubSalt
 
 set -euo pipefail
 
 : "${ICoinage:?}"
-: "${NeutrinoChannel:?}"
+: "${NeutrinoChannelProto:?}"
 : "${NeutrinoSourceProto:?}"
 : "${HubTickLower:?}"
 : "${HubTickUpper:?}"
@@ -25,7 +25,7 @@ name="$HubName"
 symbol="$HubSymbol"
 
 # Ask the NeutrinoChannel prototype for the channel clone address.
-channel=$(cast call "$NeutrinoChannel" \
+channel=$(cast call "$NeutrinoChannelProto" \
   "made(address,int24,int24)(bool,address,bytes32)" \
   "$NeutrinoSourceProto" "$HubTickLower" "$HubTickUpper" \
   --rpc-url "$chain" | sed -n '2p')
