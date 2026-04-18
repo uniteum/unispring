@@ -10,6 +10,7 @@ import {IERC20Metadata} from "ierc20/IERC20Metadata.sol";
  * @notice Lightweight relay cloned per tick range so that each (tickLower,
  *         tickUpper) pair produces a distinct Coinage deployer address — and
  *         therefore a distinct hub token — without consuming the coinage salt.
+ *         The minted tokens are neutrinos — fair-launched (neutral) leptons.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
 contract NeutrinoChannel {

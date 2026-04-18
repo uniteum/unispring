@@ -13,7 +13,8 @@ import {Unispring} from "./Unispring.sol";
  * @notice One-click fair-launch factory. A NeutrinoSource clone bundles a hub
  *         token minted via Coinage with a Unispring clone. Call {launch} on a
  *         clone to create a spoke token whose entire supply is deposited as
- *         permanent liquidity, paired against the hub.
+ *         permanent liquidity, paired against the hub. The minted tokens are
+ *         neutrinos — fair-launched (neutral) leptons.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
 contract NeutrinoSource {
