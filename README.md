@@ -323,7 +323,10 @@ permanent. A few useful patterns fall out of that:
 - **Re-arming a sold-out position.** Once the original single-sided
   range is fully crossed, the position is inert as a further seller.
   A fresh `fund` at a new range restarts distribution at the new
-  market price.
+  market price. Third parties can also LP directly into the same
+  zero-fee pool or open a parallel pool at a non-zero fee tier above
+  the spent `tickUpper`; see DESIGN.md §14 for the full catalog of
+  post-buyout options.
 
 Re-funds only settle when the new range sits entirely on the
 single-sided side being added. For the hub (currency1-sided), `tickUpper`

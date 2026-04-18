@@ -314,6 +314,59 @@ clone that doesn't collide.
 
 ---
 
+## 14. Post-buyout dynamics
+
+**Scenario.** A single-sided spoke position is fully crossed by buyers.
+Price sits at `tickUpper`, the position holds 100% hub, and the pool
+contributes no liquidity above spot. What third parties can and can't
+do at that point — a catalog of the emergent market around a spent
+Unispring position. Complements the "Re-arming a sold-out position"
+bullet in README §Patterns.
+
+**Above `tickUpper` via `fund`.** The canonical path. A follow-on `fund`
+call with `tickLower ≥ currentTick` adds a new permanent single-sided
+spoke position at higher prices. Permissionless and re-callable (§9),
+so anyone — original funder, treasury, random holder — can extend the
+sell curve.
+
+**Above `tickUpper` via direct V4 LP in the same pool.** A third party
+can call `POOL_MANAGER.modifyLiquidity` against the Unispring PoolKey
+without going through Unispring. That position aggregates additively
+with anything Unispring deposited — same pool, same fee, same tick
+grid, no "competition" between positions. The meaningful distinction
+against `fund` is *ownership*: a direct V4 position is owned by
+`msg.sender` and is withdrawable; a `fund` position is owned by the
+clone with no exit path. Both earn zero (fee = 0), so the economic
+rationale for direct LP is staged distribution *with an out*, not
+yield.
+
+**Above `tickUpper` via a parallel pool at non-zero fee.** A distinct
+PoolKey `(currency0, currency1, fee > 0, ...)` is a distinct venue.
+Aggregators enumerate standard fee tiers and route across both. In any
+tick range where the zero-fee pool has depth, cost-minimizing routing
+prefers it; a fee-bearing pool overlapping Unispring's live range loses
+the flow. *Above* the spent `tickUpper` the zero-fee pool has no
+depth, so a fee-bearing pool has that range to itself until someone
+re-funds the zero-fee side. That window is the one regime where a
+parallel pool has economic room.
+
+**Below `tickLower`.** Dead capital. The floor is enforced by absence
+of liquidity (§6), and V4's swap math cannot cross an empty tick
+range, so no canonical path drives spot below `tickLower`. A position
+placed below it only ever activates if some external mechanism first
+drags spot below the floor — which no standard V4 route exposes.
+
+**"Bought out" is not terminal.** The fully-crossed position sits as
+100% hub at `tickUpper`. That hub is itself a permanent bid: the first
+seller back across the boundary consumes it and reactivates the
+original position. A spoke pool therefore alternates between "active at
+spot inside `[tickLower, tickUpper]`" and "saturated at `tickUpper`
+awaiting the next sell." The saturated state is a waiting state, not a
+dead state — which is why re-funds and parallel pools above `tickUpper`
+are optional enhancements, not required repairs.
+
+---
+
 ## Non-goals
 
 Things Unispring deliberately does **not** try to do:
