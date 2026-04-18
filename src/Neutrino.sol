@@ -3,7 +3,7 @@ pragma solidity ^0.8.30;
 
 import {Clones} from "clones/Clones.sol";
 import {ICoinage} from "ierc20/ICoinage.sol";
-import {IERC20} from "ierc20/IERC20.sol";
+import {IERC20Metadata} from "ierc20/IERC20Metadata.sol";
 
 import {NeutrinoMaker} from "./NeutrinoMaker.sol";
 import {Unispring} from "./Unispring.sol";
@@ -48,19 +48,19 @@ contract Neutrino {
     /**
      * @notice The hub token for this clone, derived from {spring}.
      */
-    function hub() public view returns (IERC20) {
-        return IERC20(spring.hub());
+    function hub() public view returns (IERC20Metadata) {
+        return IERC20Metadata(spring.hub());
     }
 
     /**
      * @notice Emitted when a new clone is created via {make}.
      */
-    event Make(Neutrino indexed clone, IERC20 indexed hub, Unispring indexed spring);
+    event Make(Neutrino indexed clone, IERC20Metadata indexed hub, Unispring indexed spring);
 
     /**
      * @notice Emitted when a spoke token is launched via {launch}.
      */
-    event Launch(ICoinage indexed token, uint256 supply, int24 tickLower, int24 tickUpper);
+    event Launch(IERC20Metadata indexed token, uint256 supply, int24 tickLower, int24 tickUpper);
 
     /**
      * @notice Thrown when {zzInit} is called by anyone other than {PROTO}.
@@ -134,16 +134,16 @@ contract Neutrino {
             clone = Neutrino(home);
             if (!exists) {
                 NeutrinoMaker hubMaker = MAKER.make(tickLower, tickUpper);
-                ICoinage hubToken = hubMaker.mint(LEPTON, name, symbol, supply, leptonSalt);
+                IERC20Metadata hubToken = hubMaker.mint(LEPTON, name, symbol, supply, leptonSalt);
 
-                (, address springHome,) = UNISPRING.made(IERC20(address(hubToken)), tickLower, tickUpper);
+                (, address springHome,) = UNISPRING.made(hubToken, tickLower, tickUpper);
                 // forge-lint: disable-next-line(erc20-unchecked-transfer)
-                IERC20(address(hubToken)).transfer(springHome, supply);
-                Unispring unispring = UNISPRING.make(IERC20(address(hubToken)), tickLower, tickUpper);
+                IERC20Metadata(address(hubToken)).transfer(springHome, supply);
+                Unispring unispring = UNISPRING.make(hubToken, tickLower, tickUpper);
 
                 Clones.cloneDeterministic(address(PROTO), salt, 0);
                 Neutrino(home).zzInit(unispring);
-                emit Make(clone, IERC20(address(hubToken)), unispring);
+                emit Make(clone, IERC20Metadata(address(hubToken)), unispring);
             }
         }
     }
@@ -178,11 +178,11 @@ contract Neutrino {
         bytes32 salt,
         int24 tickLower,
         int24 tickUpper
-    ) external returns (ICoinage token) {
+    ) external returns (IERC20Metadata token) {
         NeutrinoMaker maker = MAKER.make(tickLower, tickUpper);
         token = maker.mint(LEPTON, name, symbol, supply, salt);
-        IERC20(address(token)).approve(address(spring), supply);
-        spring.fund(IERC20(address(token)), supply, tickLower, tickUpper);
+        token.approve(address(spring), supply);
+        spring.fund(token, supply, tickLower, tickUpper);
         emit Launch(token, supply, tickLower, tickUpper);
     }
 }

@@ -2,22 +2,31 @@
 pragma solidity ^0.8.30;
 
 import {ICoinage} from "ierc20/ICoinage.sol";
+import {IERC20Metadata} from "ierc20/IERC20Metadata.sol";
 import {NeutrinoMaker} from "../src/NeutrinoMaker.sol";
 import {Test} from "forge-std/Test.sol";
 
 /**
  * @notice Mock lepton that records mint calls and returns a mock token.
  */
-contract MockLepton {
+contract MockLepton is ICoinage {
     MockMintedToken public lastToken;
+
+    function made(address, string calldata, string calldata, uint256, bytes32)
+        external
+        pure
+        returns (bool, address, bytes32)
+    {
+        revert();
+    }
 
     function make(string calldata name, string calldata symbol, uint256 supply, bytes32)
         external
-        returns (ICoinage token)
+        returns (IERC20Metadata token)
     {
         MockMintedToken t = new MockMintedToken(name, symbol, supply, msg.sender);
         lastToken = t;
-        return ICoinage(address(t));
+        return IERC20Metadata(address(t));
     }
 }
 
@@ -114,7 +123,7 @@ contract NeutrinoMakerTest is Test {
         NeutrinoMaker clone = proto.make(int24(-100), int24(100));
         uint256 supply = 1_000_000 ether;
 
-        ICoinage token = clone.mint(ICoinage(address(lepton)), "TestToken", "TT", supply, bytes32(0));
+        IERC20Metadata token = clone.mint(lepton, "TestToken", "TT", supply, bytes32(0));
 
         // Token was created via lepton.
         assertEq(address(token), address(lepton.lastToken()), "token should come from lepton");
@@ -127,6 +136,6 @@ contract NeutrinoMakerTest is Test {
         NeutrinoMaker clone = proto.make(int24(-100), int24(100));
         vm.prank(address(0xBEEF));
         vm.expectRevert(NeutrinoMaker.Unauthorized.selector);
-        clone.mint(ICoinage(address(lepton)), "TestToken", "TT", 1 ether, bytes32(0));
+        clone.mint(lepton, "TestToken", "TT", 1 ether, bytes32(0));
     }
 }
