@@ -79,6 +79,12 @@ contract Mimicoinage is IUnlockCallback {
     address public immutable OWNER;
 
     /**
+     * @notice Quote token paired with each mimic, indexed by the mimic
+     *         token address. Populated by {launch}; zero for unknown mimics.
+     */
+    mapping(IERC20 => IERC20) public quoteOf;
+
+    /**
      * @notice Emitted when a mimic token is launched.
      */
     event Launch(IERC20Metadata indexed mimic, IERC20Metadata indexed quote, PoolId indexed poolId);
@@ -97,6 +103,11 @@ contract Mimicoinage is IUnlockCallback {
      * @notice Thrown if liquidity computed from supply exceeds `uint128`.
      */
     error LiquidityOverflow();
+
+    /**
+     * @notice Thrown when {collect} is called with a mimic this factory did not launch.
+     */
+    error UnknownMimic(IERC20 mimic);
 
     /**
      * @notice Construct the singleton factory.
@@ -122,6 +133,7 @@ contract Mimicoinage is IUnlockCallback {
         uint8 decimals = quoteToken.decimals();
         string memory symbol = string.concat(quoteToken.symbol(), SUFFIX);
         mimic = COINAGE.make(name, symbol, decimals, SUPPLY, bytes32(0));
+        quoteOf[mimic] = quoteToken;
 
         bool mimicIsToken0 = address(mimic) < address(quoteToken);
         int24 tickLower = mimicIsToken0 ? int24(0) : int24(-1);
@@ -147,14 +159,28 @@ contract Mimicoinage is IUnlockCallback {
     }
 
     /**
-     * @notice Collect accrued swap fees for the given position and forward
+     * @notice Collect accrued swap fees for `mimic`'s position and forward
      *         them to {OWNER}. Permissionless — anyone can trigger the
-     *         collection, but fees always route to {OWNER}.
-     * @param  key       The pool key.
-     * @param  tickLower Lower tick of the Mimicoinage position.
-     * @param  tickUpper Upper tick of the Mimicoinage position.
+     *         collection, but fees always route to {OWNER}. Reverts if
+     *         `mimic` was not launched by this factory.
+     * @param  mimic The mimic token whose position fees should be collected.
      */
-    function collect(PoolKey calldata key, int24 tickLower, int24 tickUpper) external {
+    function collect(IERC20 mimic) external {
+        IERC20 quote = quoteOf[mimic];
+        if (address(quote) == address(0)) revert UnknownMimic(mimic);
+
+        bool mimicIsToken0 = address(mimic) < address(quote);
+        int24 tickLower = mimicIsToken0 ? int24(0) : int24(-1);
+        int24 tickUpper = mimicIsToken0 ? int24(1) : int24(0);
+
+        PoolKey memory key = PoolKey({
+            currency0: Currency.wrap(mimicIsToken0 ? address(mimic) : address(quote)),
+            currency1: Currency.wrap(mimicIsToken0 ? address(quote) : address(mimic)),
+            fee: FEE,
+            tickSpacing: TICK_SPACING,
+            hooks: IHooks(address(0))
+        });
+
         POOL_MANAGER.unlock(abi.encode(false, key, tickLower, tickUpper, false));
     }
 
