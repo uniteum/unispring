@@ -11,7 +11,8 @@ import {Script, console2} from "forge-std/Script.sol";
  *           HubNeutrinoSource — deployed NeutrinoSource clone for the hub (required)
  *           SpokeName         — spoke token name (required)
  *           SpokeSymbol       — spoke token symbol (required)
- *           SpokeSupply       — spoke token supply in wei (required)
+ *           SpokeDecimals     — spoke token decimals (required)
+ *           SpokeSupply       — spoke token supply in smallest unit (required)
  *           SpokeSalt         — Coinage salt for the spoke token (required)
  *           SpokeTickLower    — lower tick for the spoke's pool (required)
  *           SpokeTickUpper    — upper tick for the spoke's pool (required)
@@ -24,6 +25,7 @@ contract LaunchSpoke is Script {
         NeutrinoSource source = NeutrinoSource(vm.envAddress("HubNeutrinoSource"));
         string memory name = vm.envString("SpokeName");
         string memory symbol = vm.envString("SpokeSymbol");
+        uint8 decimals = uint8(vm.envUint("SpokeDecimals"));
         uint256 supply = vm.envUint("SpokeSupply");
         bytes32 salt = vm.envBytes32("SpokeSalt");
         int24 tickLower = int24(vm.envInt("SpokeTickLower"));
@@ -32,13 +34,14 @@ contract LaunchSpoke is Script {
         console2.log("HubNeutrinoSource :", address(source));
         console2.log("name              :", name);
         console2.log("symbol            :", symbol);
+        console2.log("decimals          :", decimals);
         console2.log("supply            :", supply);
         console2.log("salt              :", uint256(salt));
         console2.log("tickLower         :", int256(tickLower));
         console2.log("tickUpper         :", int256(tickUpper));
 
         vm.startBroadcast();
-        IERC20Metadata spoke = source.launch(name, symbol, supply, salt, tickLower, tickUpper);
+        IERC20Metadata spoke = source.launch(name, symbol, decimals, supply, salt, tickLower, tickUpper);
         vm.stopBroadcast();
 
         console2.log("Spoke             :", address(spoke));

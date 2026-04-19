@@ -92,6 +92,7 @@ contract NeutrinoSource {
      * @notice Predict the deterministic address of a clone.
      * @param name       Hub token name (passed to Coinage).
      * @param symbol     Hub token symbol (passed to Coinage).
+     * @param decimals   Hub token decimals (passed to Coinage).
      * @param supply     Hub token supply (passed to Coinage).
      * @param tokenSalt Salt for the Coinage hub token.
      * @return exists  True if the clone is already deployed.
@@ -102,16 +103,17 @@ contract NeutrinoSource {
     function made(
         string calldata name,
         string calldata symbol,
+        uint8 decimals,
         uint256 supply,
         int24 tickLower,
         int24 tickUpper,
         bytes32 tokenSalt
     ) public view returns (bool exists, address home, bytes32 salt, address hubHome) {
-        salt = keccak256(abi.encode(name, symbol, supply, tickLower, tickUpper, tokenSalt));
+        salt = keccak256(abi.encode(name, symbol, decimals, supply, tickLower, tickUpper, tokenSalt));
         home = Clones.predictDeterministicAddress(address(PROTO), salt, address(PROTO));
         exists = home.code.length > 0;
         (, address channel,) = CHANNEL.made(address(PROTO), tickLower, tickUpper);
-        (, hubHome,) = COINAGE.made(channel, name, symbol, supply, tokenSalt);
+        (, hubHome,) = COINAGE.made(channel, name, symbol, decimals, supply, tokenSalt);
     }
 
     /**
@@ -119,6 +121,7 @@ contract NeutrinoSource {
      *         NeutrinoSource clone that bundles them together. Idempotent.
      * @param name       Hub token name.
      * @param symbol     Hub token symbol.
+     * @param decimals   Hub token decimals.
      * @param supply     Hub token supply (entire supply funds the ETH/hub pool).
      * @param tickLower  Lower tick for the hub's ETH pool.
      * @param tickUpper  Upper tick for the hub's ETH pool.
@@ -128,19 +131,21 @@ contract NeutrinoSource {
     function make(
         string calldata name,
         string calldata symbol,
+        uint8 decimals,
         uint256 supply,
         int24 tickLower,
         int24 tickUpper,
         bytes32 tokenSalt
     ) external returns (NeutrinoSource clone) {
         if (this != PROTO) {
-            clone = PROTO.make(name, symbol, supply, tickLower, tickUpper, tokenSalt);
+            clone = PROTO.make(name, symbol, decimals, supply, tickLower, tickUpper, tokenSalt);
         } else {
-            (bool exists, address home, bytes32 salt,) = made(name, symbol, supply, tickLower, tickUpper, tokenSalt);
+            (bool exists, address home, bytes32 salt,) =
+                made(name, symbol, decimals, supply, tickLower, tickUpper, tokenSalt);
             clone = NeutrinoSource(home);
             if (!exists) {
                 NeutrinoChannel hubChannel = CHANNEL.make(tickLower, tickUpper);
-                IERC20Metadata hubToken = hubChannel.mint(COINAGE, name, symbol, supply, tokenSalt);
+                IERC20Metadata hubToken = hubChannel.mint(COINAGE, name, symbol, decimals, supply, tokenSalt);
 
                 (, address springHome,) = UNISPRING.made(hubToken, tickLower, tickUpper);
                 // forge-lint: disable-next-line(erc20-unchecked-transfer)
@@ -171,6 +176,7 @@ contract NeutrinoSource {
      *         hub. Permissionless — anyone can launch a spoke.
      * @param name      Spoke token name.
      * @param symbol    Spoke token symbol.
+     * @param decimals  Spoke token decimals.
      * @param supply    Spoke token supply (entire supply is funded).
      * @param salt      Salt for the Coinage spoke token.
      * @param tickLower Lower tick (price floor in spoke-in-hub terms).
@@ -180,13 +186,14 @@ contract NeutrinoSource {
     function launch(
         string calldata name,
         string calldata symbol,
+        uint8 decimals,
         uint256 supply,
         bytes32 salt,
         int24 tickLower,
         int24 tickUpper
     ) external returns (IERC20Metadata token) {
         NeutrinoChannel channel = CHANNEL.make(tickLower, tickUpper);
-        token = channel.mint(COINAGE, name, symbol, supply, salt);
+        token = channel.mint(COINAGE, name, symbol, decimals, supply, salt);
         token.approve(address(spring), supply);
         spring.fund(token, supply, tickLower, tickUpper);
         emit Launch(token, supply, tickLower, tickUpper);

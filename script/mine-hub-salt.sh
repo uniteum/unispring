@@ -3,7 +3,8 @@
 # Usage: source .env && chain=bitsy ./script/mine-hub-salt.sh --mask 0x... --match 0x...
 #
 # Required env (from .env):
-#   ICoinage, NeutrinoChannelProto, NeutrinoSourceProto, HubName, HubSymbol, HubTickLower, HubTickUpper, HubSupply
+#   ICoinage, NeutrinoChannelProto, NeutrinoSourceProto, HubName, HubSymbol,
+#   HubDecimals, HubTickLower, HubTickUpper, HubSupply
 #
 # Required env (from .env):
 #   HubSaltMask, HubSaltMatch
@@ -19,6 +20,7 @@ set -euo pipefail
 : "${HubTickUpper:?}"
 : "${HubName:?}"
 : "${HubSymbol:?}"
+: "${HubDecimals:?}"
 : "${HubSupply:?}"
 : "${HubSaltMask:?}"
 : "${HubSaltMatch:?}"
@@ -42,8 +44,8 @@ channel=$(cast call "$NeutrinoChannelProto" \
 
 # --- args-hash ---
 args_hash=$(cast keccak "$(cast abi-encode \
-  "f(address,string,string,uint256)" \
-  "$channel" "$name" "$symbol" "$HubSupply")")
+  "f(address,string,string,uint8,uint256)" \
+  "$channel" "$name" "$symbol" "$HubDecimals" "$HubSupply")")
 
 echo "deployer      = $deployer"
 echo "initcode_hash = $initcode_hash"

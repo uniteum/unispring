@@ -83,19 +83,24 @@ contract NeutrinoChannel {
      * @notice Mint a hub token via the Coinage factory and transfer the entire
      *         supply to the caller. Because each clone has a tick-dependent
      *         address, Coinage sees a different deployer per tick range.
-     * @param coinage Coinage prototype to mint through.
-     * @param name    Token name.
-     * @param symbol  Token symbol.
-     * @param supply  Token supply.
-     * @param salt    Coinage salt (free for vanity grinding).
+     * @param coinage  Coinage prototype to mint through.
+     * @param name     Token name.
+     * @param symbol   Token symbol.
+     * @param decimals Token decimals.
+     * @param supply   Token supply, denominated in the smallest unit.
+     * @param salt     Coinage salt (free for vanity grinding).
      * @return token The minted hub token.
      */
-    function mint(ICoinage coinage, string calldata name, string calldata symbol, uint256 supply, bytes32 salt)
-        external
-        returns (IERC20Metadata token)
-    {
+    function mint(
+        ICoinage coinage,
+        string calldata name,
+        string calldata symbol,
+        uint8 decimals,
+        uint256 supply,
+        bytes32 salt
+    ) external returns (IERC20Metadata token) {
         if (msg.sender != source) revert Unauthorized();
-        token = coinage.make(name, symbol, supply, salt);
+        token = coinage.make(name, symbol, decimals, supply, salt);
         // forge-lint: disable-next-line(erc20-unchecked-transfer)
         token.transfer(msg.sender, supply);
     }

@@ -4,7 +4,8 @@
 #
 # Required env (from .env):
 #   ICoinage, NeutrinoChannelProto, NeutrinoSourceProto, HubName, HubSymbol,
-#   HubTickLower, HubTickUpper, HubSupply, HubSaltMask, HubSaltMatch, HubSalt
+#   HubDecimals, HubTickLower, HubTickUpper, HubSupply, HubSaltMask,
+#   HubSaltMatch, HubSalt
 
 set -euo pipefail
 
@@ -15,6 +16,7 @@ set -euo pipefail
 : "${HubTickUpper:?}"
 : "${HubName:?}"
 : "${HubSymbol:?}"
+: "${HubDecimals:?}"
 : "${HubSupply:?}"
 : "${HubSaltMask:?}"
 : "${HubSaltMatch:?}"
@@ -32,8 +34,8 @@ channel=$(cast call "$NeutrinoChannelProto" \
 
 # Ask Lepton for the hub address this salt would produce.
 result=$(cast call "$ICoinage" \
-  "made(address,string,string,uint256,bytes32)(bool,address,bytes32)" \
-  "$channel" "$name" "$symbol" "$HubSupply" "$HubSalt" \
+  "made(address,string,string,uint8,uint256,bytes32)(bool,address,bytes32)" \
+  "$channel" "$name" "$symbol" "$HubDecimals" "$HubSupply" "$HubSalt" \
   --rpc-url "$chain")
 
 deployed=$(echo "$result" | sed -n '1p')

@@ -12,7 +12,7 @@ import {Test} from "forge-std/Test.sol";
 contract MockCoinage is ICoinage {
     MockMintedToken public lastToken;
 
-    function made(address, string calldata, string calldata, uint256, bytes32)
+    function made(address, string calldata, string calldata, uint8, uint256, bytes32)
         external
         pure
         returns (bool, address, bytes32)
@@ -20,11 +20,11 @@ contract MockCoinage is ICoinage {
         revert();
     }
 
-    function make(string calldata name, string calldata symbol, uint256 supply, bytes32)
+    function make(string calldata name, string calldata symbol, uint8 decimals, uint256 supply, bytes32)
         external
         returns (IERC20Metadata token)
     {
-        MockMintedToken t = new MockMintedToken(name, symbol, supply, msg.sender);
+        MockMintedToken t = new MockMintedToken(name, symbol, decimals, supply, msg.sender);
         lastToken = t;
         return IERC20Metadata(address(t));
     }
@@ -36,12 +36,14 @@ contract MockCoinage is ICoinage {
 contract MockMintedToken {
     string public name;
     string public symbol;
+    uint8 public decimals;
     uint256 public totalSupply;
     mapping(address => uint256) public balanceOf;
 
-    constructor(string memory name_, string memory symbol_, uint256 supply_, address recipient) {
+    constructor(string memory name_, string memory symbol_, uint8 decimals_, uint256 supply_, address recipient) {
         name = name_;
         symbol = symbol_;
+        decimals = decimals_;
         totalSupply = supply_;
         balanceOf[recipient] = supply_;
     }
@@ -123,7 +125,7 @@ contract NeutrinoChannelTest is Test {
         NeutrinoChannel clone = proto.make(int24(-100), int24(100));
         uint256 supply = 1_000_000 ether;
 
-        IERC20Metadata token = clone.mint(coinage, "TestToken", "TT", supply, bytes32(0));
+        IERC20Metadata token = clone.mint(coinage, "TestToken", "TT", 18, supply, bytes32(0));
 
         // Token was created via coinage.
         assertEq(address(token), address(coinage.lastToken()), "token should come from coinage");
@@ -136,6 +138,6 @@ contract NeutrinoChannelTest is Test {
         NeutrinoChannel clone = proto.make(int24(-100), int24(100));
         vm.prank(address(0xBEEF));
         vm.expectRevert(NeutrinoChannel.Unauthorized.selector);
-        clone.mint(coinage, "TestToken", "TT", 1 ether, bytes32(0));
+        clone.mint(coinage, "TestToken", "TT", 18, 1 ether, bytes32(0));
     }
 }
