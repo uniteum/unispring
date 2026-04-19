@@ -131,6 +131,40 @@ contract Mimicoinage is IUnlockCallback {
     }
 
     /**
+     * @notice Collect accrued swap fees for `mimic`'s position and forward
+     *         them to {OWNER}. Permissionless — anyone can trigger the
+     *         collection, but fees always route to {OWNER}. Reverts if
+     *         `mimic` was not launched by this factory.
+     * @param  mimic The mimic token whose position fees should be collected.
+     */
+    /**
+     * @notice The number of mimics launched by this factory.
+     */
+    function mimicsCount() external view returns (uint256) {
+        return mimics.length;
+    }
+
+    /**
+     * @notice Return a contiguous slice of {mimics}. Clamps to the array
+     *         bounds: passing an `offset` at or past the end returns an
+     *         empty array; passing a `count` that runs past the end
+     *         returns only the existing tail.
+     * @param  offset Index of the first mimic to return.
+     * @param  count  Maximum number of mimics to return.
+     * @return slice  The requested mimic tokens, in launch order.
+     */
+    function mimicsRange(uint256 offset, uint256 count) external view returns (IERC20Metadata[] memory slice) {
+        uint256 length = mimics.length;
+        if (offset >= length) return new IERC20Metadata[](0);
+        uint256 end = offset + count;
+        if (end > length) end = length;
+        slice = new IERC20Metadata[](end - offset);
+        for (uint256 i = 0; i < slice.length; i++) {
+            slice[i] = mimics[offset + i];
+        }
+    }
+
+    /**
      * @notice Mint a mimic of `original` and seat its entire supply into a
      *         single-tick V4 position at the 1:1 edge. The position is
      *         permanent.
@@ -166,40 +200,6 @@ contract Mimicoinage is IUnlockCallback {
         POOL_MANAGER.unlock(abi.encode(true, key, tickLower, tickUpper, mimicIsToken0));
 
         emit Launch(mimic, original, poolId);
-    }
-
-    /**
-     * @notice Collect accrued swap fees for `mimic`'s position and forward
-     *         them to {OWNER}. Permissionless — anyone can trigger the
-     *         collection, but fees always route to {OWNER}. Reverts if
-     *         `mimic` was not launched by this factory.
-     * @param  mimic The mimic token whose position fees should be collected.
-     */
-    /**
-     * @notice The number of mimics launched by this factory.
-     */
-    function mimicsCount() external view returns (uint256) {
-        return mimics.length;
-    }
-
-    /**
-     * @notice Return a contiguous slice of {mimics}. Clamps to the array
-     *         bounds: passing an `offset` at or past the end returns an
-     *         empty array; passing a `count` that runs past the end
-     *         returns only the existing tail.
-     * @param  offset Index of the first mimic to return.
-     * @param  count  Maximum number of mimics to return.
-     * @return slice  The requested mimic tokens, in launch order.
-     */
-    function mimicsRange(uint256 offset, uint256 count) external view returns (IERC20Metadata[] memory slice) {
-        uint256 length = mimics.length;
-        if (offset >= length) return new IERC20Metadata[](0);
-        uint256 end = offset + count;
-        if (end > length) end = length;
-        slice = new IERC20Metadata[](end - offset);
-        for (uint256 i = 0; i < slice.length; i++) {
-            slice[i] = mimics[offset + i];
-        }
     }
 
     function collect(IERC20 mimic) external {
