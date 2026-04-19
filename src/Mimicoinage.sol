@@ -20,17 +20,19 @@ import {ModifyLiquidityParams} from "v4-core/types/PoolOperation.sol";
 
 /**
  * @title Mimicoinage
- * @notice Singleton factory that mints an ERC-20 pegged 1:1 against a quote
- *         token and seats its entire supply into a single-tick Uniswap V4
- *         position owned by this contract. The position is permanent — no
- *         function on this contract can decrease or unwind liquidity.
- *         {collect} forwards accrued swap fees to the immutable {OWNER}.
- * @dev    The mimic token carries the quote token's decimals so the raw
+ * @notice Singleton factory that mints an ERC-20 pegged 1:1 against an
+ *         original token and seats its entire supply into a single-tick
+ *         Uniswap V4 position owned by this contract. The position is
+ *         permanent — no function on this contract can decrease or unwind
+ *         liquidity. {collect} forwards accrued swap fees to the immutable
+ *         {OWNER}.
+ * @dev    The mimic token carries the original's decimals so the raw
  *         sqrtPrice of 1 (tick 0) corresponds to a 1:1 human-unit peg.
  *         The pool uses {FEE} = 100 (0.01%), {TICK_SPACING} = 1, and no
- *         hook. Range is `[0, 1)` when the mimic sorts below the quote and
- *         `[-1, 0)` when it sorts above — both place tick 0 at the edge of
- *         the range such that the position holds only the mimic at genesis.
+ *         hook. Range is `[0, 1)` when the mimic sorts below the original
+ *         and `[-1, 0)` when it sorts above — both place tick 0 at the edge
+ *         of the range such that the position holds only the mimic at
+ *         genesis.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
 contract Mimicoinage is IUnlockCallback {
@@ -56,7 +58,7 @@ contract Mimicoinage is IUnlockCallback {
     int24 public constant TICK_SPACING = 1;
 
     /**
-     * @notice Symbol suffix appended to the quote token's symbol.
+     * @notice Symbol suffix appended to the original token's symbol.
      */
     string public constant SUFFIX = "x1";
 
@@ -79,15 +81,15 @@ contract Mimicoinage is IUnlockCallback {
     address public immutable OWNER;
 
     /**
-     * @notice Quote token paired with each mimic, indexed by the mimic
+     * @notice Original token paired with each mimic, indexed by the mimic
      *         token address. Populated by {launch}; zero for unknown mimics.
      */
-    mapping(IERC20 => IERC20) public quoteOf;
+    mapping(IERC20 => IERC20) public originalOf;
 
     /**
      * @notice Emitted when a mimic token is launched.
      */
-    event Launch(IERC20Metadata indexed mimic, IERC20Metadata indexed quote, PoolId indexed poolId);
+    event Launch(IERC20Metadata indexed mimic, IERC20Metadata indexed original, PoolId indexed poolId);
 
     /**
      * @notice Emitted when {collect} forwards swap fees to {OWNER}.
@@ -122,26 +124,26 @@ contract Mimicoinage is IUnlockCallback {
     }
 
     /**
-     * @notice Mint a mimic of `quoteToken` and seat its entire supply into a
+     * @notice Mint a mimic of `original` and seat its entire supply into a
      *         single-tick V4 position at the 1:1 edge. The position is
      *         permanent.
-     * @param  quoteToken The reference token to peg against.
-     * @param  name       Name for the newly minted mimic token.
-     * @return mimic      The newly minted mimic token.
+     * @param  original The reference token to peg against.
+     * @param  name     Name for the newly minted mimic token.
+     * @return mimic    The newly minted mimic token.
      */
-    function launch(IERC20Metadata quoteToken, string calldata name) external returns (IERC20Metadata mimic) {
-        uint8 decimals = quoteToken.decimals();
-        string memory symbol = string.concat(quoteToken.symbol(), SUFFIX);
+    function launch(IERC20Metadata original, string calldata name) external returns (IERC20Metadata mimic) {
+        uint8 decimals = original.decimals();
+        string memory symbol = string.concat(original.symbol(), SUFFIX);
         mimic = COINAGE.make(name, symbol, decimals, SUPPLY, bytes32(0));
-        quoteOf[mimic] = quoteToken;
+        originalOf[mimic] = original;
 
-        bool mimicIsToken0 = address(mimic) < address(quoteToken);
+        bool mimicIsToken0 = address(mimic) < address(original);
         int24 tickLower = mimicIsToken0 ? int24(0) : int24(-1);
         int24 tickUpper = mimicIsToken0 ? int24(1) : int24(0);
 
         PoolKey memory key = PoolKey({
-            currency0: Currency.wrap(mimicIsToken0 ? address(mimic) : address(quoteToken)),
-            currency1: Currency.wrap(mimicIsToken0 ? address(quoteToken) : address(mimic)),
+            currency0: Currency.wrap(mimicIsToken0 ? address(mimic) : address(original)),
+            currency1: Currency.wrap(mimicIsToken0 ? address(original) : address(mimic)),
             fee: FEE,
             tickSpacing: TICK_SPACING,
             hooks: IHooks(address(0))
@@ -155,7 +157,7 @@ contract Mimicoinage is IUnlockCallback {
 
         POOL_MANAGER.unlock(abi.encode(true, key, tickLower, tickUpper, mimicIsToken0));
 
-        emit Launch(mimic, quoteToken, poolId);
+        emit Launch(mimic, original, poolId);
     }
 
     /**
@@ -166,16 +168,16 @@ contract Mimicoinage is IUnlockCallback {
      * @param  mimic The mimic token whose position fees should be collected.
      */
     function collect(IERC20 mimic) external {
-        IERC20 quote = quoteOf[mimic];
-        if (address(quote) == address(0)) revert UnknownMimic(mimic);
+        IERC20 original = originalOf[mimic];
+        if (address(original) == address(0)) revert UnknownMimic(mimic);
 
-        bool mimicIsToken0 = address(mimic) < address(quote);
+        bool mimicIsToken0 = address(mimic) < address(original);
         int24 tickLower = mimicIsToken0 ? int24(0) : int24(-1);
         int24 tickUpper = mimicIsToken0 ? int24(1) : int24(0);
 
         PoolKey memory key = PoolKey({
-            currency0: Currency.wrap(mimicIsToken0 ? address(mimic) : address(quote)),
-            currency1: Currency.wrap(mimicIsToken0 ? address(quote) : address(mimic)),
+            currency0: Currency.wrap(mimicIsToken0 ? address(mimic) : address(original)),
+            currency1: Currency.wrap(mimicIsToken0 ? address(original) : address(mimic)),
             fee: FEE,
             tickSpacing: TICK_SPACING,
             hooks: IHooks(address(0))
