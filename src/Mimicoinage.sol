@@ -3,24 +3,28 @@ pragma solidity ^0.8.30;
 
 import {IAddressLookup} from "ilookup/IAddressLookup.sol";
 import {ICoinage} from "ierc20/ICoinage.sol";
+import {IERC20} from "ierc20/IERC20.sol";
 import {IERC20Metadata} from "ierc20/IERC20Metadata.sol";
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
+import {IUnlockCallback} from "v4-core/interfaces/callback/IUnlockCallback.sol";
 import {FixedPoint96} from "v4-core/libraries/FixedPoint96.sol";
 import {FullMath} from "v4-core/libraries/FullMath.sol";
+import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
 import {TickMath} from "v4-core/libraries/TickMath.sol";
+import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
 import {Currency} from "v4-core/types/Currency.sol";
 import {PoolId} from "v4-core/types/PoolId.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
-import {IPositionManager} from "v4-periphery/interfaces/IPositionManager.sol";
-import {Actions} from "v4-periphery/libraries/Actions.sol";
-import {ActionConstants} from "v4-periphery/libraries/ActionConstants.sol";
+import {ModifyLiquidityParams} from "v4-core/types/PoolOperation.sol";
 
 /**
  * @title Mimicoinage
  * @notice Singleton factory that mints an ERC-20 pegged 1:1 against a quote
  *         token and seats its entire supply into a single-tick Uniswap V4
- *         position. The position NFT is minted to the immutable {OWNER}.
+ *         position owned by this contract. The position is permanent — no
+ *         function on this contract can decrease or unwind liquidity.
+ *         {collect} forwards accrued swap fees to the immutable {OWNER}.
  * @dev    The mimic token carries the quote token's decimals so the raw
  *         sqrtPrice of 1 (tick 0) corresponds to a 1:1 human-unit peg.
  *         The pool uses {FEE} = 100 (0.01%), {TICK_SPACING} = 1, and no
@@ -29,8 +33,10 @@ import {ActionConstants} from "v4-periphery/libraries/ActionConstants.sol";
  *         the range such that the position holds only the mimic at genesis.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
-contract Mimicoinage {
-    string public constant VERSION = "0.1.0";
+contract Mimicoinage is IUnlockCallback {
+    using StateLibrary for IPoolManager;
+
+    string public constant VERSION = "0.2.0";
 
     /**
      * @notice Fixed raw supply minted for every mimic token. Sized to stay
@@ -61,61 +67,54 @@ contract Mimicoinage {
     IPoolManager public immutable POOL_MANAGER;
 
     /**
-     * @notice The Uniswap V4 PositionManager, resolved from the
-     *         `IAddressLookup` supplied at construction. Mints the position
-     *         NFT.
-     */
-    IPositionManager public immutable POSITION_MANAGER;
-
-    /**
      * @notice The Coinage factory used to mint the mimic ERC-20.
      */
     ICoinage public immutable COINAGE;
 
     /**
-     * @notice Recipient of every mimic position NFT minted by this contract.
+     * @notice Recipient of swap fees collected by {collect}. Has no other
+     *         authority: cannot decrease liquidity, cannot unwind the
+     *         position, cannot pause. Set at construction and immutable.
      */
     address public immutable OWNER;
 
     /**
      * @notice Emitted when a mimic token is launched.
-     * @param mimic    The newly minted mimic token.
-     * @param quote    The quote (reference) token.
-     * @param poolId   The Uniswap V4 pool id.
-     * @param tokenId  The position NFT id minted to {OWNER}.
      */
-    event Launch(IERC20Metadata indexed mimic, IERC20Metadata indexed quote, PoolId indexed poolId, uint256 tokenId);
+    event Launch(IERC20Metadata indexed mimic, IERC20Metadata indexed quote, PoolId indexed poolId);
 
     /**
-     * @notice Thrown if computed liquidity exceeds `uint128`.
+     * @notice Emitted when {collect} forwards swap fees to {OWNER}.
+     */
+    event Collect(PoolId indexed poolId, uint256 amount0, uint256 amount1);
+
+    /**
+     * @notice Thrown when {unlockCallback} is invoked by anyone other than the PoolManager.
+     */
+    error InvalidUnlockCaller();
+
+    /**
+     * @notice Thrown if liquidity computed from supply exceeds `uint128`.
      */
     error LiquidityOverflow();
 
     /**
      * @notice Construct the singleton factory.
-     * @param  poolManagerLookup     Lookup for the chain-local PoolManager.
-     * @param  positionManagerLookup Lookup for the chain-local PositionManager.
-     * @param  coinage               The Coinage factory used to mint mimics.
-     * @param  owner                 Recipient of every minted position NFT.
+     * @param  poolManagerLookup Lookup for the chain-local PoolManager.
+     * @param  coinage           The Coinage factory used to mint mimics.
+     * @param  owner             Recipient of collected swap fees.
      */
-    constructor(
-        IAddressLookup poolManagerLookup,
-        IAddressLookup positionManagerLookup,
-        ICoinage coinage,
-        address owner
-    ) {
+    constructor(IAddressLookup poolManagerLookup, ICoinage coinage, address owner) {
         POOL_MANAGER = IPoolManager(poolManagerLookup.value());
-        POSITION_MANAGER = IPositionManager(positionManagerLookup.value());
         COINAGE = coinage;
         OWNER = owner;
     }
 
     /**
      * @notice Mint a mimic of `quoteToken` and seat its entire supply into a
-     *         single-tick V4 position at the 1:1 edge. The position NFT is
-     *         minted to {OWNER}.
-     * @param  quoteToken The reference token to peg against (read for
-     *                    decimals + symbol).
+     *         single-tick V4 position at the 1:1 edge. The position is
+     *         permanent.
+     * @param  quoteToken The reference token to peg against.
      * @param  name       Name for the newly minted mimic token.
      * @return mimic      The newly minted mimic token.
      */
@@ -135,39 +134,98 @@ contract Mimicoinage {
             tickSpacing: TICK_SPACING,
             hooks: IHooks(address(0))
         });
+        PoolId poolId = key.toId();
 
-        POSITION_MANAGER.initializePool(key, TickMath.getSqrtPriceAtTick(0));
+        (uint160 sqrtPriceX96,,,) = POOL_MANAGER.getSlot0(poolId);
+        if (sqrtPriceX96 == 0) {
+            POOL_MANAGER.initialize(key, TickMath.getSqrtPriceAtTick(0));
+        }
 
+        POOL_MANAGER.unlock(abi.encode(true, key, tickLower, tickUpper, mimicIsToken0));
+
+        emit Launch(mimic, quoteToken, poolId);
+    }
+
+    /**
+     * @notice Collect accrued swap fees for the given position and forward
+     *         them to {OWNER}. Permissionless — anyone can trigger the
+     *         collection, but fees always route to {OWNER}.
+     * @param  key       The pool key.
+     * @param  tickLower Lower tick of the Mimicoinage position.
+     * @param  tickUpper Upper tick of the Mimicoinage position.
+     */
+    function collect(PoolKey calldata key, int24 tickLower, int24 tickUpper) external {
+        POOL_MANAGER.unlock(abi.encode(false, key, tickLower, tickUpper, false));
+    }
+
+    /**
+     * @inheritdoc IUnlockCallback
+     * @dev Dispatches on the boolean flag in `data`: `true` funds the
+     *      launch position, `false` collects fees to {OWNER}.
+     */
+    function unlockCallback(bytes calldata data) external returns (bytes memory) {
+        if (msg.sender != address(POOL_MANAGER)) revert InvalidUnlockCaller();
+        (bool isLaunch, PoolKey memory key, int24 tickLower, int24 tickUpper, bool mimicIsToken0) =
+            abi.decode(data, (bool, PoolKey, int24, int24, bool));
+
+        if (isLaunch) {
+            _fund(key, tickLower, tickUpper, mimicIsToken0);
+        } else {
+            _collect(key, tickLower, tickUpper);
+        }
+        return "";
+    }
+
+    /**
+     * @dev Fund the launch position single-sided with {SUPPLY} of the mimic.
+     */
+    function _fund(PoolKey memory key, int24 tickLower, int24 tickUpper, bool mimicIsToken0) private {
         uint160 sqrtLower = TickMath.getSqrtPriceAtTick(tickLower);
         uint160 sqrtUpper = TickMath.getSqrtPriceAtTick(tickUpper);
         uint128 liquidity =
             mimicIsToken0 ? _liquidity0(sqrtLower, sqrtUpper, SUPPLY) : _liquidity1(sqrtLower, sqrtUpper, SUPPLY);
 
-        // Pre-transfer the mimic supply to PositionManager so the SETTLE
-        // action below can pay from PositionManager's own balance instead of
-        // routing through permit2.
-        // forge-lint: disable-next-line(erc20-unchecked-transfer)
-        mimic.transfer(address(POSITION_MANAGER), SUPPLY);
-
-        uint256 tokenId = POSITION_MANAGER.nextTokenId();
-
-        bytes memory actions = abi.encodePacked(uint8(Actions.MINT_POSITION), uint8(Actions.SETTLE));
-        bytes[] memory params = new bytes[](2);
-        params[0] = abi.encode(
+        (BalanceDelta delta,) = POOL_MANAGER.modifyLiquidity(
             key,
-            tickLower,
-            tickUpper,
-            uint256(liquidity),
-            mimicIsToken0 ? SUPPLY : uint128(0),
-            mimicIsToken0 ? uint128(0) : SUPPLY,
-            OWNER,
+            ModifyLiquidityParams({
+                tickLower: tickLower, tickUpper: tickUpper, liquidityDelta: int256(uint256(liquidity)), salt: bytes32(0)
+            }),
             ""
         );
-        params[1] = abi.encode(Currency.wrap(address(mimic)), ActionConstants.OPEN_DELTA, false);
 
-        POSITION_MANAGER.modifyLiquidities(abi.encode(actions, params), block.timestamp);
+        Currency currency = mimicIsToken0 ? key.currency0 : key.currency1;
+        int128 amount = mimicIsToken0 ? delta.amount0() : delta.amount1();
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 owed = uint256(uint128(-amount));
 
-        emit Launch(mimic, quoteToken, key.toId(), tokenId);
+        POOL_MANAGER.sync(currency);
+        // forge-lint: disable-next-line(erc20-unchecked-transfer)
+        IERC20(Currency.unwrap(currency)).transfer(address(POOL_MANAGER), owed);
+        POOL_MANAGER.settle();
+    }
+
+    /**
+     * @dev Collect fees from the Mimicoinage-owned position via a zero-delta
+     *      modifyLiquidity and forward them to {OWNER}.
+     */
+    function _collect(PoolKey memory key, int24 tickLower, int24 tickUpper) private {
+        (, BalanceDelta feesAccrued) = POOL_MANAGER.modifyLiquidity(
+            key,
+            ModifyLiquidityParams({tickLower: tickLower, tickUpper: tickUpper, liquidityDelta: 0, salt: bytes32(0)}),
+            ""
+        );
+
+        int128 fee0 = feesAccrued.amount0();
+        int128 fee1 = feesAccrued.amount1();
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 amount0 = fee0 > 0 ? uint256(uint128(fee0)) : 0;
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 amount1 = fee1 > 0 ? uint256(uint128(fee1)) : 0;
+
+        if (amount0 > 0) POOL_MANAGER.take(key.currency0, OWNER, amount0);
+        if (amount1 > 0) POOL_MANAGER.take(key.currency1, OWNER, amount1);
+
+        emit Collect(key.toId(), amount0, amount1);
     }
 
     /**

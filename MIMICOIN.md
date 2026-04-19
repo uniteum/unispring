@@ -1,15 +1,18 @@
 # Mimicoin
 
 A **Mimicoin** is an ERC-20 token that trades 1:1 with a reference ("quote")
-token within a 1-bp band, backed by a single Uniswap V4 position. For any
-quote — USDC, WBTC, USDe — you get a mirror: `USDCx1`, `WBTCx1`, `USDex1`,
-pegged within `[1.0000, 1.0001)` with no operator, no oracle, and no admin
-keys.
+token within a 1-bp band, backed by a single permanent Uniswap V4 position.
+For any quote — USDC, WBTC, USDe — you get a mirror: `USDCx1`, `WBTCx1`,
+`USDex1`, pegged within `[0.9999, 1.0001]` with no oracle and no power to
+unwind.
 
 The factory that creates them is **Mimicoinage** — a singleton with one
-function: `launch(quoteToken, name)`. Each call mints a fresh Mimicoin and
-seats its entire supply into a single-tick V4 pool at price 1. The liquidity
-NFT goes to the factory owner; everything else is permissionless.
+launch function. Each call mints a fresh Mimicoin and seats its entire
+supply into a single-tick V4 pool at price 1. The position is owned by
+the Mimicoinage contract itself and cannot be decreased, withdrawn, or
+destroyed: the contract exposes no function for reducing liquidity. Only
+accrued swap fees (at 0.01%) can be collected — permissionless to trigger,
+always forwarded to the factory owner.
 
 ## How the peg works
 
@@ -24,16 +27,17 @@ nobody pays more than `1.0001 × quote` for a Mimicoin, nobody sells for
 less than `0.9999 × quote`. With 10²⁷ raw mimic units seeded, the pool
 cannot be drained by any quantity of quote that exists.
 
+Because the position is permanent and no party can decrease it, the
+backing is as durable as the pool itself. The owner's only stream of
+value from a launched Mimicoin is the ongoing 0.01% fee on swap volume.
+
 ## What it's for
 
-- **Permissionless stablecoin mirror.** Deploy `USDCx1` alongside USDC with
-  its own address, integrations, and reputation — collateralized 1:1 by
-  real USDC in the pool.
-- **Fixed-price token sale.** Launch a token at exactly $1 with no ICO
-  machinery. Buyers bring USDC; the pool hands out tokens; the owner holds
-  the NFT and claims the accumulated USDC later by unwinding the position.
-- **Fixed-price distribution.** Airdrop or distribute claims knowing every
-  unit is redeemable 1:1 against the quote.
+- **Permissionless stablecoin mirror.** Deploy `USDCx1` alongside USDC
+  with its own address, integrations, and reputation — collateralized
+  1:1 by real USDC in the pool, with no unwind path for anyone.
+- **Free-floating distribution.** Airdrop or distribute Mimicoin knowing
+  every unit is redeemable 1:1 against the quote, forever.
 - **Cross-venue scaffold.** Mirror a native asset on a venue where
   bridging the real thing isn't feasible.
 - **Dev-chain tracking.** Sandbox tokens that track real-world prices
@@ -46,9 +50,12 @@ cannot be drained by any quantity of quote that exists.
   issuance.
 - **Not an oracle.** If the quote token depegs from its own reference
   asset, the Mimicoin tracks the quote token, not the reference.
+- **Not a yield source for the owner beyond fees.** The owner cannot
+  harvest the accumulated quote by unwinding — only the 0.01% fee stream
+  is extractable.
 
 ## TL;DR
 
 A Mimicoin is a real ERC-20 with a hard 1-bp price corridor around any
-quote token, collateralized by real quote already in the pool, deployable
-in one transaction.
+quote token, collateralized by real quote in a permanent V4 position
+that no one — including the factory owner — can unwind.
