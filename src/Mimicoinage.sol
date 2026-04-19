@@ -87,6 +87,13 @@ contract Mimicoinage is IUnlockCallback {
     mapping(IERC20 => IERC20) public originalOf;
 
     /**
+     * @notice All mimics launched by this factory, in launch order. The
+     *         auto-generated getter returns a single element by index; use
+     *         {mimicsCount} and {mimicsRange} for bulk reads.
+     */
+    IERC20Metadata[] public mimics;
+
+    /**
      * @notice Emitted when a mimic token is launched.
      */
     event Launch(IERC20Metadata indexed mimic, IERC20Metadata indexed original, PoolId indexed poolId);
@@ -136,6 +143,7 @@ contract Mimicoinage is IUnlockCallback {
         string memory symbol = string.concat(original.symbol(), SUFFIX);
         mimic = COINAGE.make(name, symbol, decimals, SUPPLY, bytes32(0));
         originalOf[mimic] = original;
+        mimics.push(mimic);
 
         bool mimicIsToken0 = address(mimic) < address(original);
         int24 tickLower = mimicIsToken0 ? int24(0) : int24(-1);
@@ -167,6 +175,33 @@ contract Mimicoinage is IUnlockCallback {
      *         `mimic` was not launched by this factory.
      * @param  mimic The mimic token whose position fees should be collected.
      */
+    /**
+     * @notice The number of mimics launched by this factory.
+     */
+    function mimicsCount() external view returns (uint256) {
+        return mimics.length;
+    }
+
+    /**
+     * @notice Return a contiguous slice of {mimics}. Clamps to the array
+     *         bounds: passing an `offset` at or past the end returns an
+     *         empty array; passing a `count` that runs past the end
+     *         returns only the existing tail.
+     * @param  offset Index of the first mimic to return.
+     * @param  count  Maximum number of mimics to return.
+     * @return slice  The requested mimic tokens, in launch order.
+     */
+    function mimicsRange(uint256 offset, uint256 count) external view returns (IERC20Metadata[] memory slice) {
+        uint256 length = mimics.length;
+        if (offset >= length) return new IERC20Metadata[](0);
+        uint256 end = offset + count;
+        if (end > length) end = length;
+        slice = new IERC20Metadata[](end - offset);
+        for (uint256 i = 0; i < slice.length; i++) {
+            slice[i] = mimics[offset + i];
+        }
+    }
+
     function collect(IERC20 mimic) external {
         IERC20 original = originalOf[mimic];
         if (address(original) == address(0)) revert UnknownMimic(mimic);
