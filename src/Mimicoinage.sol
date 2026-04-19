@@ -8,6 +8,7 @@ import {IERC20Metadata} from "ierc20/IERC20Metadata.sol";
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 import {IUnlockCallback} from "v4-core/interfaces/callback/IUnlockCallback.sol";
+import {FixedPoint128} from "v4-core/libraries/FixedPoint128.sol";
 import {FixedPoint96} from "v4-core/libraries/FixedPoint96.sol";
 import {FullMath} from "v4-core/libraries/FullMath.sol";
 import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
@@ -165,6 +166,31 @@ contract Mimicoinage is IUnlockCallback {
     }
 
     /**
+     * @notice Return the uncollected swap fees owed to each mimic's position.
+     *         For an unknown mimic (not launched by this factory), both
+     *         amounts are zero. Values match what {collect} would transfer
+     *         to {OWNER} if called now. Amounts are ordered by the pool's
+     *         currencies: `amounts0[i]` is for the position's `currency0`.
+     * @param  mimicArr Mimic tokens to query.
+     * @return amounts0 Pending fees in each position's `currency0`.
+     * @return amounts1 Pending fees in each position's `currency1`.
+     */
+    function pendingFees(IERC20[] calldata mimicArr)
+        external
+        view
+        returns (uint256[] memory amounts0, uint256[] memory amounts1)
+    {
+        amounts0 = new uint256[](mimicArr.length);
+        amounts1 = new uint256[](mimicArr.length);
+        for (uint256 i = 0; i < mimicArr.length; i++) {
+            IERC20 mimic = mimicArr[i];
+            IERC20 original = originalOf[mimic];
+            if (address(original) == address(0)) continue;
+            (amounts0[i], amounts1[i]) = _pendingFees(mimic, original);
+        }
+    }
+
+    /**
      * @notice Mint a mimic of `original` and seat its entire supply into a
      *         single-tick V4 position at the 1:1 edge. The position is
      *         permanent.
@@ -289,6 +315,35 @@ contract Mimicoinage is IUnlockCallback {
         if (amount1 > 0) POOL_MANAGER.take(key.currency1, OWNER, amount1);
 
         emit Collect(key.toId(), amount0, amount1);
+    }
+
+    /**
+     * @dev Compute the uncollected fees for the Mimicoinage-owned position
+     *      of (mimic, original). Mirrors Uniswap's feeGrowthInside delta
+     *      formula and uses unchecked subtraction to handle X128 wraparound.
+     */
+    function _pendingFees(IERC20 mimic, IERC20 original) private view returns (uint256 amount0, uint256 amount1) {
+        bool mimicIsToken0 = address(mimic) < address(original);
+        int24 tickLower = mimicIsToken0 ? int24(0) : int24(-1);
+        int24 tickUpper = mimicIsToken0 ? int24(1) : int24(0);
+
+        PoolKey memory key = PoolKey({
+            currency0: Currency.wrap(mimicIsToken0 ? address(mimic) : address(original)),
+            currency1: Currency.wrap(mimicIsToken0 ? address(original) : address(mimic)),
+            fee: FEE,
+            tickSpacing: TICK_SPACING,
+            hooks: IHooks(address(0))
+        });
+        PoolId poolId = key.toId();
+
+        (uint128 liquidity, uint256 growth0Last, uint256 growth1Last) =
+            POOL_MANAGER.getPositionInfo(poolId, address(this), tickLower, tickUpper, bytes32(0));
+        (uint256 growth0Now, uint256 growth1Now) = POOL_MANAGER.getFeeGrowthInside(poolId, tickLower, tickUpper);
+
+        unchecked {
+            amount0 = FullMath.mulDiv(growth0Now - growth0Last, liquidity, FixedPoint128.Q128);
+            amount1 = FullMath.mulDiv(growth1Now - growth1Last, liquidity, FixedPoint128.Q128);
+        }
     }
 
     /**
