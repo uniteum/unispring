@@ -259,27 +259,6 @@ contract Mimicoinage is IUnlockCallback {
     }
 
     /**
-     * @inheritdoc IUnlockCallback
-     * @dev Dispatches on the leading boolean in `data`: `true` funds the
-     *      launch position, `false` iterates a batch of collect positions.
-     */
-    function unlockCallback(bytes calldata data) external returns (bytes memory) {
-        if (msg.sender != address(POOL_MANAGER)) revert InvalidUnlockCaller();
-        bool isLaunch = abi.decode(data[:32], (bool));
-        if (isLaunch) {
-            (, PoolKey memory key, int24 tickLower, int24 tickUpper, bool mimicIsToken0) =
-                abi.decode(data, (bool, PoolKey, int24, int24, bool));
-            _fund(key, tickLower, tickUpper, mimicIsToken0);
-        } else {
-            (, Position[] memory positions) = abi.decode(data, (bool, Position[]));
-            for (uint256 i = 0; i < positions.length; i++) {
-                _collect(positions[i].key, positions[i].tickLower, positions[i].tickUpper);
-            }
-        }
-        return "";
-    }
-
-    /**
      * @dev Build {Position} records for each mimic and dispatch a single
      *      unlock that collects all of them. Reverts on unknown mimics.
      */
@@ -305,6 +284,27 @@ contract Mimicoinage is IUnlockCallback {
             });
         }
         POOL_MANAGER.unlock(abi.encode(false, positions));
+    }
+
+    /**
+     * @inheritdoc IUnlockCallback
+     * @dev Dispatches on the leading boolean in `data`: `true` funds the
+     *      launch position, `false` iterates a batch of collect positions.
+     */
+    function unlockCallback(bytes calldata data) external returns (bytes memory) {
+        if (msg.sender != address(POOL_MANAGER)) revert InvalidUnlockCaller();
+        bool isLaunch = abi.decode(data[:32], (bool));
+        if (isLaunch) {
+            (, PoolKey memory key, int24 tickLower, int24 tickUpper, bool mimicIsToken0) =
+                abi.decode(data, (bool, PoolKey, int24, int24, bool));
+            _fund(key, tickLower, tickUpper, mimicIsToken0);
+        } else {
+            (, Position[] memory positions) = abi.decode(data, (bool, Position[]));
+            for (uint256 i = 0; i < positions.length; i++) {
+                _collect(positions[i].key, positions[i].tickLower, positions[i].tickUpper);
+            }
+        }
+        return "";
     }
 
     /**
