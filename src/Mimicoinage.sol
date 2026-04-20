@@ -201,6 +201,26 @@ contract Mimicoinage is IUnlockCallback {
     }
 
     /**
+     * @notice Predict the address of the mimic that {launch} would create
+     *         for `(original, name)`. Lets a UI show the future token
+     *         address (and whether it already exists) before any gas is
+     *         spent.
+     * @param  original The reference token that would be pegged against.
+     * @param  name     Name that would be passed to {launch}.
+     * @return exists   True if the mimic has already been deployed.
+     * @return mimic    Deterministic address of the mimic.
+     */
+    function predictMimic(IERC20Metadata original, string calldata name)
+        external
+        view
+        returns (bool exists, address mimic)
+    {
+        uint8 decimals = original.decimals();
+        string memory symbol = string.concat(original.symbol(), SUFFIX);
+        (exists, mimic,) = COINAGE.made(address(this), name, symbol, decimals, SUPPLY, bytes32(0));
+    }
+
+    /**
      * @notice Mint a mimic of `original` and seat its entire supply into a
      *         single-tick V4 position at the 1:1 edge. The position is
      *         permanent.
