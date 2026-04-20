@@ -39,6 +39,16 @@ import {ModifyLiquidityParams} from "v4-core/types/PoolOperation.sol";
 contract Mimicoinage is IUnlockCallback {
     using StateLibrary for IPoolManager;
 
+    /**
+     * @dev Transport record used to batch-encode collect operations across
+     *      the unlock boundary.
+     */
+    struct Position {
+        PoolKey key;
+        int24 tickLower;
+        int24 tickUpper;
+    }
+
     string public constant VERSION = "0.2.0";
 
     /**
@@ -228,41 +238,73 @@ contract Mimicoinage is IUnlockCallback {
         emit Launch(mimic, original, poolId);
     }
 
+    /**
+     * @notice Collect accrued swap fees for `mimic`'s position. Equivalent
+     *         to calling {collect(IERC20[])} with a single-element array.
+     */
     function collect(IERC20 mimic) external {
-        IERC20 original = originalOf[mimic];
-        if (address(original) == address(0)) revert UnknownMimic(mimic);
+        IERC20[] memory arr = new IERC20[](1);
+        arr[0] = mimic;
+        _collectMany(arr);
+    }
 
-        bool mimicIsToken0 = address(mimic) < address(original);
-        int24 tickLower = mimicIsToken0 ? int24(0) : int24(-1);
-        int24 tickUpper = mimicIsToken0 ? int24(1) : int24(0);
-
-        PoolKey memory key = PoolKey({
-            currency0: Currency.wrap(mimicIsToken0 ? address(mimic) : address(original)),
-            currency1: Currency.wrap(mimicIsToken0 ? address(original) : address(mimic)),
-            fee: FEE,
-            tickSpacing: TICK_SPACING,
-            hooks: IHooks(address(0))
-        });
-
-        POOL_MANAGER.unlock(abi.encode(false, key, tickLower, tickUpper, false));
+    /**
+     * @notice Collect accrued swap fees for several positions in a single
+     *         unlock and forward them to {OWNER}. Reverts with
+     *         {UnknownMimic} if any entry was not launched by this factory.
+     * @param  mimicArr Mimic tokens whose positions should be collected.
+     */
+    function collect(IERC20[] calldata mimicArr) external {
+        _collectMany(mimicArr);
     }
 
     /**
      * @inheritdoc IUnlockCallback
-     * @dev Dispatches on the boolean flag in `data`: `true` funds the
-     *      launch position, `false` collects fees to {OWNER}.
+     * @dev Dispatches on the leading boolean in `data`: `true` funds the
+     *      launch position, `false` iterates a batch of collect positions.
      */
     function unlockCallback(bytes calldata data) external returns (bytes memory) {
         if (msg.sender != address(POOL_MANAGER)) revert InvalidUnlockCaller();
-        (bool isLaunch, PoolKey memory key, int24 tickLower, int24 tickUpper, bool mimicIsToken0) =
-            abi.decode(data, (bool, PoolKey, int24, int24, bool));
-
+        bool isLaunch = abi.decode(data[:32], (bool));
         if (isLaunch) {
+            (, PoolKey memory key, int24 tickLower, int24 tickUpper, bool mimicIsToken0) =
+                abi.decode(data, (bool, PoolKey, int24, int24, bool));
             _fund(key, tickLower, tickUpper, mimicIsToken0);
         } else {
-            _collect(key, tickLower, tickUpper);
+            (, Position[] memory positions) = abi.decode(data, (bool, Position[]));
+            for (uint256 i = 0; i < positions.length; i++) {
+                _collect(positions[i].key, positions[i].tickLower, positions[i].tickUpper);
+            }
         }
         return "";
+    }
+
+    /**
+     * @dev Build {Position} records for each mimic and dispatch a single
+     *      unlock that collects all of them. Reverts on unknown mimics.
+     */
+    function _collectMany(IERC20[] memory mimicArr) private {
+        if (mimicArr.length == 0) return;
+        Position[] memory positions = new Position[](mimicArr.length);
+        for (uint256 i = 0; i < mimicArr.length; i++) {
+            IERC20 mimic = mimicArr[i];
+            IERC20 original = originalOf[mimic];
+            if (address(original) == address(0)) revert UnknownMimic(mimic);
+
+            bool mimicIsToken0 = address(mimic) < address(original);
+            positions[i] = Position({
+                key: PoolKey({
+                    currency0: Currency.wrap(mimicIsToken0 ? address(mimic) : address(original)),
+                    currency1: Currency.wrap(mimicIsToken0 ? address(original) : address(mimic)),
+                    fee: FEE,
+                    tickSpacing: TICK_SPACING,
+                    hooks: IHooks(address(0))
+                }),
+                tickLower: mimicIsToken0 ? int24(0) : int24(-1),
+                tickUpper: mimicIsToken0 ? int24(1) : int24(0)
+            });
+        }
+        POOL_MANAGER.unlock(abi.encode(false, positions));
     }
 
     /**
