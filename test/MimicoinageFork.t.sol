@@ -3,7 +3,7 @@ pragma solidity ^0.8.30;
 
 import {Mimicoinage} from "../src/Mimicoinage.sol";
 import {IAddressLookup} from "ilookup/IAddressLookup.sol";
-import {ICoinage} from "ierc20/ICoinage.sol";
+import {ICoinage as Coinage} from "ierc20/ICoinage.sol";
 import {IERC20} from "ierc20/IERC20.sol";
 import {IERC20Metadata} from "ierc20/IERC20Metadata.sol";
 import {Test} from "forge-std/Test.sol";
@@ -26,12 +26,20 @@ import {PoolId} from "v4-core/types/PoolId.sol";
 contract MimicoinageForkTest is Test {
     using StateLibrary for IPoolManager;
 
-    /// @dev Mirrors values in `.env` — real mainnet deployments.
-    address internal constant POOL_MANAGER_LOOKUP = 0xd6185883DD1Fa3F6F4F0b646f94D1fb46d618c23;
-    address internal constant COINAGE = 0xE5c44386F56eD35f1Dbeed0f457424DEb741F06c;
-    address internal constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+    /// @dev Loaded from `.env`; names mirror the env keys exactly.
+    // forge-lint: disable-next-line(screaming-snake-case-immutable)
+    address internal immutable PoolManagerLookup;
+    // forge-lint: disable-next-line(screaming-snake-case-immutable)
+    address internal immutable ICoinage;
+    address internal immutable USDC;
 
     Mimicoinage internal mimicoinage;
+
+    constructor() {
+        PoolManagerLookup = vm.envAddress("PoolManagerLookup");
+        ICoinage = vm.envAddress("ICoinage");
+        USDC = vm.envAddress("USDC");
+    }
 
     function setUp() public {
         uint256 forkBlock = vm.envOr("FORK_BLOCK", uint256(0));
@@ -41,10 +49,10 @@ contract MimicoinageForkTest is Test {
             vm.createSelectFork("mainnet", forkBlock);
         }
 
-        require(POOL_MANAGER_LOOKUP.code.length > 0, "PoolManagerLookup missing at forked block");
-        require(COINAGE.code.length > 0, "Coinage missing at forked block");
+        require(PoolManagerLookup.code.length > 0, "PoolManagerLookup missing at forked block");
+        require(ICoinage.code.length > 0, "ICoinage missing at forked block");
 
-        mimicoinage = new Mimicoinage(IAddressLookup(POOL_MANAGER_LOOKUP), ICoinage(COINAGE), address(this));
+        mimicoinage = new Mimicoinage(IAddressLookup(PoolManagerLookup), Coinage(ICoinage), address(this));
     }
 
     function test_PredictMimicMatchesLaunch() public {
