@@ -1,22 +1,26 @@
 #!/usr/bin/env bash
 # Mine a salt that gives an ICoinage-minted token a vanity address.
 #
-# Usage: ./script/mine-icoinage-salt.sh --icoinage <addr> --maker <addr> --name <str> --symbol <str> --decimals <u8> --supply <u256> --mask <20-byte hex> --match <20-byte hex> [saltminer flags...]
+# Flags default to matching env vars (Solidity-identifier naming), so `source .env` first and override only what you need.
 #
-# Example: ./script/mine-icoinage-salt.sh --icoinage 0xE5c44386F56eD35f1Dbeed0f457424DEb741F06c --maker 0xC6e6ca13983A28c15A1eCF05F9bf610A92ad6222 --name Foo --symbol BAR --decimals 18 --supply 1000000000000000000000000 --mask 0xffff00000000000000000000000000000000ffff --match 0xffff000000000000000000000000000000000001
+# Usage: ./script/mine-icoinage-salt.sh [--icoinage <addr>] [--maker <addr>] [--name <str>] [--symbol <str>] [--decimals <u8>] [--supply <u256>] [--mask <20-byte hex>] [--match <20-byte hex>] [saltminer flags...]
+#
+# Env defaults: ICoinage, Maker, Name, Symbol, Decimals, Supply, SaltMask, SaltMatch
+#
+# Example: source .env && ./script/mine-icoinage-salt.sh --maker 0xC6e6ca13983A28c15A1eCF05F9bf610A92ad6222 --name Foo --symbol BAR --decimals 18 --supply 1000000000000000000000000 --mask 0xffff00000000000000000000000000000000ffff --match 0xffff000000000000000000000000000000000001
 #
 # Remaining flags are forwarded to saltminer (e.g. --min, --max, --shard, --device).
 
 set -euo pipefail
 
-icoinage=
-maker=
-name=
-symbol=
-decimals=
-supply=
-mask=
-match=
+icoinage=${ICoinage:-}
+maker=${Maker:-}
+name=${Name:-}
+symbol=${Symbol:-}
+decimals=${Decimals:-}
+supply=${Supply:-}
+mask=${SaltMask:-}
+match=${SaltMatch:-}
 rest=()
 
 while [[ $# -gt 0 ]]; do
@@ -33,14 +37,14 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-: "${icoinage:?--icoinage required}"
-: "${maker:?--maker required}"
-: "${name:?--name required}"
-: "${symbol:?--symbol required}"
-: "${decimals:?--decimals required}"
-: "${supply:?--supply required}"
-: "${mask:?--mask required}"
-: "${match:?--match required}"
+: "${icoinage:?set --icoinage or ICoinage}"
+: "${maker:?set --maker or Maker}"
+: "${name:?set --name or Name}"
+: "${symbol:?set --symbol or Symbol}"
+: "${decimals:?set --decimals or Decimals}"
+: "${supply:?set --supply or Supply}"
+: "${mask:?set --mask or SaltMask}"
+: "${match:?set --match or SaltMatch}"
 
 # EIP-1167 proxy initcode keyed to the ICoinage proto.
 initcode_hash=$(cast keccak \
