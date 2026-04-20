@@ -210,6 +210,37 @@ contract Mimicoinage is IUnlockCallback {
     }
 
     /**
+     * @notice Rebuild the Uniswap V4 {PoolKey} used by `mimic`'s position.
+     *         Useful for direct reads against `POOL_MANAGER` state (e.g.
+     *         via `StateLibrary`). Reverts on unknown mimics.
+     * @param  mimic A mimic launched by this factory.
+     * @return key   The pool key with sorted currencies and this factory's
+     *               fee/tickSpacing/hooks constants.
+     */
+    function poolKeyOf(IERC20 mimic) public view returns (PoolKey memory key) {
+        IERC20 original = originalOf[mimic];
+        if (address(original) == address(0)) revert UnknownMimic(mimic);
+        bool mimicIsToken0 = address(mimic) < address(original);
+        key = PoolKey({
+            currency0: Currency.wrap(mimicIsToken0 ? address(mimic) : address(original)),
+            currency1: Currency.wrap(mimicIsToken0 ? address(original) : address(mimic)),
+            fee: FEE,
+            tickSpacing: TICK_SPACING,
+            hooks: IHooks(address(0))
+        });
+    }
+
+    /**
+     * @notice Shortcut for `poolKeyOf(mimic).toId()`. Reverts on unknown
+     *         mimics.
+     * @param  mimic A mimic launched by this factory.
+     * @return id    The derived Uniswap V4 pool id.
+     */
+    function poolIdOf(IERC20 mimic) external view returns (PoolId id) {
+        id = poolKeyOf(mimic).toId();
+    }
+
+    /**
      * @notice Predict the address of the mimic that {launch} would create
      *         for `(original, name)`. Lets a UI show the future token
      *         address (and whether it already exists) before any gas is
