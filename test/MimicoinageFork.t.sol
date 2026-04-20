@@ -7,9 +7,27 @@ import {ICoinage as Coinage} from "ierc20/ICoinage.sol";
 import {IERC20} from "ierc20/IERC20.sol";
 import {IERC20Metadata} from "ierc20/IERC20Metadata.sol";
 import {Test} from "forge-std/Test.sol";
+import {FixedPoint96} from "v4-core/libraries/FixedPoint96.sol";
 import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 import {PoolId} from "v4-core/types/PoolId.sol";
+import {PoolKey} from "v4-core/types/PoolKey.sol";
+
+/**
+ * @notice Minimal V4Quoter interface — single-hop exact-input entrypoint.
+ */
+interface IV4Quoter {
+    struct QuoteExactSingleParams {
+        PoolKey poolKey;
+        bool zeroForOne;
+        uint128 exactAmount;
+        bytes hookData;
+    }
+
+    function quoteExactInputSingle(QuoteExactSingleParams calldata params)
+        external
+        returns (uint256 amountOut, uint256 gasEstimate);
+}
 
 /**
  * @notice Fork test against mainnet state. Deploys a fresh Mimicoinage
@@ -32,6 +50,12 @@ contract MimicoinageForkTest is Test {
     // forge-lint: disable-next-line(screaming-snake-case-immutable)
     address internal immutable ICoinage;
     address internal immutable USDC;
+    // forge-lint: disable-next-line(screaming-snake-case-immutable)
+    address internal immutable V4Quoter;
+    // forge-lint: disable-next-line(screaming-snake-case-immutable)
+    address internal immutable ffffff;
+    // forge-lint: disable-next-line(screaming-snake-case-immutable)
+    address internal immutable zeros;
 
     Mimicoinage internal mimicoinage;
 
@@ -39,6 +63,9 @@ contract MimicoinageForkTest is Test {
         PoolManagerLookup = vm.envAddress("PoolManagerLookup");
         ICoinage = vm.envAddress("ICoinage");
         USDC = vm.envAddress("USDC");
+        V4Quoter = vm.envAddress("V4Quoter");
+        ffffff = vm.envAddress("ffffff");
+        zeros = vm.envAddress("zeros");
     }
 
     function setUp() public {
@@ -79,5 +106,68 @@ contract MimicoinageForkTest is Test {
 
         // Entire supply is seated in the position — Mimicoinage holds nothing.
         assertEq(IERC20(address(mimic)).balanceOf(address(mimicoinage)), 0, "supply should be in V4, not in factory");
+    }
+
+    /**
+     * @notice Both orderings must initialize at the identical 1:1 spot price.
+     *         `ffffff` is a high-address lepton (mimic sorts below → token0);
+     *         `zeros` is a low-address lepton (mimic sorts above → token1).
+     *         Sanity checks the ordering, then asserts both pools land at
+     *         tick 0 with sqrtPriceX96 = 2**96.
+     */
+    function test_BothOrderingsLaunchAtIdenticalPrice() public {
+        require(ffffff.code.length > 0, "ffffff lepton missing at forked block");
+        require(zeros.code.length > 0, "zeros lepton missing at forked block");
+
+        IERC20Metadata hiMimic = mimicoinage.launch(IERC20Metadata(ffffff), "mimicFF");
+        IERC20Metadata loMimic = mimicoinage.launch(IERC20Metadata(zeros), "mimicZZ");
+
+        assertLt(uint160(address(hiMimic)), uint160(ffffff), "mimic of high lepton must sort below (token0)");
+        assertGt(uint160(address(loMimic)), uint160(zeros), "mimic of low lepton must sort above (token1)");
+
+        (uint160 hiSqrt, int24 hiTick,,) =
+            mimicoinage.POOL_MANAGER().getSlot0(mimicoinage.poolIdOf(IERC20(address(hiMimic))));
+        (uint160 loSqrt, int24 loTick,,) =
+            mimicoinage.POOL_MANAGER().getSlot0(mimicoinage.poolIdOf(IERC20(address(loMimic))));
+
+        assertEq(hiTick, int24(0), "high-lepton pool must initialize at tick 0");
+        assertEq(loTick, int24(0), "low-lepton pool must initialize at tick 0");
+        assertEq(uint256(hiSqrt), FixedPoint96.Q96, "high-lepton pool sqrtPrice != 2**96");
+        assertEq(uint256(loSqrt), FixedPoint96.Q96, "low-lepton pool sqrtPrice != 2**96");
+        assertEq(hiSqrt, loSqrt, "spot prices must match across orderings");
+    }
+
+    /**
+     * @notice Equivalent swaps across the two orderings must quote the same
+     *         output. Buys `mimic` with `original` in each pool; the range
+     *         geometry differs (mimic-above vs mimic-below) but the fee tier,
+     *         tick spacing, and seated supply are identical, so outputs
+     *         should match to sub-bp precision.
+     */
+    function test_QuotedOutputsMatchAcrossOrdering() public {
+        IERC20Metadata hiMimic = mimicoinage.launch(IERC20Metadata(ffffff), "mimicFF");
+        IERC20Metadata loMimic = mimicoinage.launch(IERC20Metadata(zeros), "mimicZZ");
+
+        PoolKey memory hiKey = mimicoinage.poolKeyOf(IERC20(address(hiMimic)));
+        PoolKey memory loKey = mimicoinage.poolKeyOf(IERC20(address(loMimic)));
+
+        // Buy mimic with original:
+        //   hi pool — mimic is token0, original is token1 → oneForZero (zeroForOne=false)
+        //   lo pool — mimic is token1, original is token0 → zeroForOne=true
+        uint128 amountIn = 1e18;
+        IV4Quoter quoter = IV4Quoter(V4Quoter);
+
+        (uint256 hiOut,) = quoter.quoteExactInputSingle(
+            IV4Quoter.QuoteExactSingleParams({poolKey: hiKey, zeroForOne: false, exactAmount: amountIn, hookData: ""})
+        );
+        (uint256 loOut,) = quoter.quoteExactInputSingle(
+            IV4Quoter.QuoteExactSingleParams({poolKey: loKey, zeroForOne: true, exactAmount: amountIn, hookData: ""})
+        );
+
+        assertGt(hiOut, 0, "high-lepton quote returned zero");
+        assertGt(loOut, 0, "low-lepton quote returned zero");
+        // Tolerance 0.01%: asymmetry comes from sqrt(1.0001)-1 vs 1-1/sqrt(1.0001),
+        // which diverge by ~5e-5 of the gap at tick-spacing 1.
+        assertApproxEqRel(hiOut, loOut, 1e14, "quoted outputs diverge across orderings");
     }
 }
