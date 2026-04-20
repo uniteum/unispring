@@ -201,6 +201,15 @@ contract Mimicoinage is IUnlockCallback {
     }
 
     /**
+     * @notice Whether `token` was launched by this factory as a mimic.
+     * @param  token Any address.
+     * @return True if `token` appears in {originalOf}.
+     */
+    function isMimic(IERC20 token) external view returns (bool) {
+        return address(originalOf[token]) != address(0);
+    }
+
+    /**
      * @notice Predict the address of the mimic that {launch} would create
      *         for `(original, name)`. Lets a UI show the future token
      *         address (and whether it already exists) before any gas is
