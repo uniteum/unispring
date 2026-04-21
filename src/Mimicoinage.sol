@@ -130,6 +130,15 @@ contract Mimicoinage is IUnlockCallback {
     error UnknownMimic(IERC20 mimic);
 
     /**
+     * @notice Thrown when {launch} encounters a pool that has already been
+     *         initialized at a price other than the 1:1 genesis (tick 0).
+     *         Pools are permanent once initialized in V4, so recovery is not
+     *         possible on the affected {PoolKey}; re-launch with a different
+     *         `name` to produce a fresh mimic address and a fresh pool.
+     */
+    error PoolPreInitialized(uint160 sqrtPriceX96);
+
+    /**
      * @notice Construct the singleton factory.
      * @param  poolManagerLookup Lookup for the chain-local PoolManager.
      * @param  coinage           The Coinage factory used to mint mimics.
@@ -289,8 +298,11 @@ contract Mimicoinage is IUnlockCallback {
         PoolId poolId = key.toId();
 
         (uint160 sqrtPriceX96,,,) = POOL_MANAGER.getSlot0(poolId);
+        uint160 genesisSqrtPriceX96 = TickMath.getSqrtPriceAtTick(0);
         if (sqrtPriceX96 == 0) {
-            POOL_MANAGER.initialize(key, TickMath.getSqrtPriceAtTick(0));
+            POOL_MANAGER.initialize(key, genesisSqrtPriceX96);
+        } else if (sqrtPriceX96 != genesisSqrtPriceX96) {
+            revert PoolPreInitialized(sqrtPriceX96);
         }
 
         POOL_MANAGER.unlock(abi.encode(true, key, tickLower, tickUpper, mimicIsToken0));

@@ -10,9 +10,12 @@ import {IAddressLookup} from "ilookup/IAddressLookup.sol";
 import {ICoinage as Coinage} from "ierc20/ICoinage.sol";
 import {IERC20} from "ierc20/IERC20.sol";
 import {IERC20Metadata} from "ierc20/IERC20Metadata.sol";
+import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 import {FixedPoint96} from "v4-core/libraries/FixedPoint96.sol";
 import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
+import {TickMath} from "v4-core/libraries/TickMath.sol";
+import {Currency} from "v4-core/types/Currency.sol";
 import {PoolId} from "v4-core/types/PoolId.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
 
@@ -288,5 +291,56 @@ contract MimicoinageForkTest is ForkBase {
         IERC20 bogus = IERC20(USDC);
         vm.expectRevert(abi.encodeWithSelector(Mimicoinage.UnknownMimic.selector, bogus));
         mimicoinage.poolIdOf(bogus);
+    }
+
+    /**
+     * @notice If the PoolKey was already initialized at the 1:1 genesis price
+     *         (by someone else beating us to it benignly), {launch} skips the
+     *         re-init and completes normally.
+     */
+    function test_LaunchIdempotentAtGenesisPrice() public {
+        (, address predicted) = mimicoinage.predictMimic(IERC20Metadata(ffffff), "mimicFF");
+        PoolKey memory key = _predictedPoolKey(IERC20Metadata(ffffff), "mimicFF");
+        mimicoinage.POOL_MANAGER().initialize(key, TickMath.getSqrtPriceAtTick(0));
+
+        IERC20Metadata mimic = mimicoinage.launch(IERC20Metadata(ffffff), "mimicFF");
+        assertEq(address(mimic), predicted, "launched address != predicted");
+        assertTrue(mimicoinage.isMimic(IERC20(address(mimic))), "mimic not registered");
+    }
+
+    /**
+     * @notice A griefer that pre-initializes the target PoolKey at any price
+     *         other than tick 0 blocks {launch} with {PoolPreInitialized}.
+     *         The workaround is to re-launch with a different `name`, which
+     *         produces a fresh mimic address and a fresh PoolKey.
+     */
+    function test_LaunchRevertsOnPreInitializedPool() public {
+        PoolKey memory key = _predictedPoolKey(IERC20Metadata(ffffff), "mimicFF");
+        uint160 griefSqrt = TickMath.getSqrtPriceAtTick(100);
+        mimicoinage.POOL_MANAGER().initialize(key, griefSqrt);
+
+        vm.expectRevert(abi.encodeWithSelector(Mimicoinage.PoolPreInitialized.selector, griefSqrt));
+        mimicoinage.launch(IERC20Metadata(ffffff), "mimicFF");
+
+        // Re-launching under a different name yields a different PoolKey and succeeds.
+        IERC20Metadata escaped = mimicoinage.launch(IERC20Metadata(ffffff), "mimicFF2");
+        assertTrue(mimicoinage.isMimic(IERC20(address(escaped))), "rescue launch under new name failed");
+    }
+
+    /**
+     * @dev Rebuild the {PoolKey} {launch} will compute for `(original, name)`
+     *      using the predicted mimic CREATE2 address — lets a test pre-init
+     *      the target pool before the mimic exists.
+     */
+    function _predictedPoolKey(IERC20Metadata original, string memory name) internal view returns (PoolKey memory) {
+        (, address predicted) = mimicoinage.predictMimic(original, name);
+        bool mimicIsToken0 = predicted < address(original);
+        return PoolKey({
+            currency0: Currency.wrap(mimicIsToken0 ? predicted : address(original)),
+            currency1: Currency.wrap(mimicIsToken0 ? address(original) : predicted),
+            fee: mimicoinage.FEE(),
+            tickSpacing: mimicoinage.TICK_SPACING(),
+            hooks: IHooks(address(0))
+        });
     }
 }
