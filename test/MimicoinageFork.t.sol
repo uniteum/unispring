@@ -217,4 +217,76 @@ contract MimicoinageForkTest is ForkBase {
         assertEq(pending0[0], 0, "residual currency0 fees after collect");
         assertEq(pending1[0], 0, "residual currency1 fees after collect");
     }
+
+    /**
+     * @notice Batch {collect} sweeps several positions in one unlock. Two
+     *         mimics accrue fees on opposite currencies (ffffff as currency1
+     *         vs zeros as currency0); a single {collectBatch} pushes both
+     *         forecasts to {OWNER}.
+     */
+    function test_CollectBatchRoutesFeesToOwner() public {
+        IERC20Metadata hiMimic = mimicoinage.launch(IERC20Metadata(ffffff), "mimicFF");
+        IERC20Metadata loMimic = mimicoinage.launch(IERC20Metadata(zeros), "mimicZZ");
+
+        PoolKey memory hiKey = mimicoinage.poolKeyOf(IERC20(address(hiMimic)));
+        PoolKey memory loKey = mimicoinage.poolKeyOf(IERC20(address(loMimic)));
+
+        uint128 amountIn = 1e18;
+        Trader alice = new Trader("alice", router);
+        Trader bobby = new Trader("bobby", router);
+        deal(ffffff, address(alice), uint256(amountIn));
+        deal(zeros, address(bobby), uint256(amountIn));
+
+        // hi: spend ffffff (currency1) → fees on pending1; lo: spend zeros (currency0) → fees on pending0.
+        alice.swap(hiKey, false, amountIn);
+        bobby.swap(loKey, true, amountIn);
+
+        IERC20[] memory arr = new IERC20[](2);
+        arr[0] = IERC20(address(hiMimic));
+        arr[1] = IERC20(address(loMimic));
+        (uint256[] memory pending0, uint256[] memory pending1) = mimicoinage.pendingFees(arr);
+        assertGt(pending1[0], 0, "ffffff (currency1) fees should be pending on hi");
+        assertGt(pending0[1], 0, "zeros (currency0) fees should be pending on lo");
+
+        uint256 ffffffBefore = IERC20(ffffff).balanceOf(address(bot));
+        uint256 zerosBefore = IERC20(zeros).balanceOf(address(bot));
+
+        bot.collectBatch(arr);
+
+        assertEq(
+            IERC20(ffffff).balanceOf(address(bot)) - ffffffBefore, pending1[0], "bot ffffff delta != hi pending1"
+        );
+        assertEq(IERC20(zeros).balanceOf(address(bot)) - zerosBefore, pending0[1], "bot zeros delta != lo pending0");
+
+        (pending0, pending1) = mimicoinage.pendingFees(arr);
+        assertEq(pending0[0] + pending1[0] + pending0[1] + pending1[1], 0, "residual fees after batch collect");
+    }
+
+    /**
+     * @notice {collect} reverts with {UnknownMimic} for a token this factory
+     *         did not launch.
+     */
+    function test_CollectRevertsOnUnknownMimic() public {
+        IERC20 bogus = IERC20(USDC);
+        vm.expectRevert(abi.encodeWithSelector(Mimicoinage.UnknownMimic.selector, bogus));
+        bot.collect(bogus);
+    }
+
+    /**
+     * @notice {poolKeyOf} reverts with {UnknownMimic} for an unknown token.
+     */
+    function test_PoolKeyOfRevertsOnUnknownMimic() public {
+        IERC20 bogus = IERC20(USDC);
+        vm.expectRevert(abi.encodeWithSelector(Mimicoinage.UnknownMimic.selector, bogus));
+        mimicoinage.poolKeyOf(bogus);
+    }
+
+    /**
+     * @notice {poolIdOf} reverts with {UnknownMimic} for an unknown token.
+     */
+    function test_PoolIdOfRevertsOnUnknownMimic() public {
+        IERC20 bogus = IERC20(USDC);
+        vm.expectRevert(abi.encodeWithSelector(Mimicoinage.UnknownMimic.selector, bogus));
+        mimicoinage.poolIdOf(bogus);
+    }
 }
