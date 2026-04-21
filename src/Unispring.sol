@@ -2,46 +2,36 @@
 pragma solidity ^0.8.30;
 
 import {Clones} from "clones/Clones.sol";
-import {IAddressLookup} from "ilookup/IAddressLookup.sol";
+import {Fountain} from "./Fountain.sol";
 import {IERC20} from "ierc20/IERC20.sol";
-import {IHooks} from "v4-core/interfaces/IHooks.sol";
-import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
-import {IUnlockCallback} from "v4-core/interfaces/callback/IUnlockCallback.sol";
-import {FixedPoint96} from "v4-core/libraries/FixedPoint96.sol";
-import {FullMath} from "v4-core/libraries/FullMath.sol";
-import {TickMath} from "v4-core/libraries/TickMath.sol";
-import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
-import {Currency} from "v4-core/types/Currency.sol";
-import {PoolId} from "v4-core/types/PoolId.sol";
-import {PoolKey} from "v4-core/types/PoolKey.sol";
-import {ModifyLiquidityParams} from "v4-core/types/PoolOperation.sol";
-import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
 
 /**
  * @title Unispring
- * @notice Fair-launch pool funder on Uniswap V4 — permanent liquidity, built-in
- *         price floor, hub-paired spokes. Zero-fee pools.
- * @dev    See README.md for the full design rationale. The hub token is supplied
- *         externally at construction; its ETH pool is funded single-sided by
- *         {zzInit}. Additional tokens are paired against the hub by {fund}.
- * @dev    Pure factory. Once a {fund} call settles, the position is permanent
- *         and this contract has no authority to unwind it, collect from it,
- *         or modify the pool — no owner, no upgrade path, no admin keys. All
- *         post-launch swap behavior belongs to the Uniswap V4 PoolManager and
- *         whatever DEX routers reach the pool. See README §Trust boundaries.
+ * @notice Clone-per-hub factory that seats fair-launch pools on {FOUNTAIN}.
+ *         Each clone owns a single hub token and pairs it against spokes
+ *         supplied by callers. The hub's own ETH pool is seated single-sided
+ *         by {zzInit}; spoke pools are seated single-sided by {fund}.
+ * @dev    All V4 plumbing — unlock, modifyLiquidity, liquidity math, fee
+ *         collection — lives on {FOUNTAIN}. Unispring only mints/tracks
+ *         the clone-per-hub key, pre-approves {FOUNTAIN} against pulled
+ *         tokens, and delegates to {Fountain.fund}. Pools inherit
+ *         {Fountain.FEE} (0.01%) and accrued fees flow to {Fountain.OWNER}.
+ * @dev    Ticks: callers pass V4-native `(tickLower, tickUpper)` in the
+ *         log_1.0001(currency1/currency0) convention. For the hub pool the
+ *         hub sorts above ETH (currency1), so Unispring translates into
+ *         Fountain's log(quote/token) user-tick semantics by negating and
+ *         swapping; spoke pools (spoke sorts below hub as currency0) pass
+ *         through identity. Either way, the V4 position lands at
+ *         `[tickLower, tickUpper)` in V4-native terms.
+ * @dev    Pure factory. Once {fund} settles, the position is permanent and
+ *         this contract has no authority to unwind it or modify the pool —
+ *         no owner, no upgrade path, no admin keys. All post-launch swap
+ *         behavior belongs to the Uniswap V4 PoolManager and whatever DEX
+ *         routers reach the pool. See README §Trust boundaries.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
-contract Unispring is IUnlockCallback {
-    string public constant VERSION = "0.1.0";
-
-    using StateLibrary for IPoolManager;
-
-    /**
-     * @notice Pool fee, in hundredths of a bip. Set to zero: Unispring creates
-     *         zero-fee pools. No fees accrue to the position and there is no
-     *         compounding mechanism.
-     */
-    uint24 public constant FEE = 0;
+contract Unispring {
+    string public constant VERSION = "0.2.0";
 
     /**
      * @notice The prototype instance that acts as the Bitsy factory.
@@ -49,10 +39,11 @@ contract Unispring is IUnlockCallback {
     Unispring public immutable PROTO;
 
     /**
-     * @notice The Uniswap V4 PoolManager, resolved from the `IAddressLookup`
-     *         supplied at construction.
+     * @notice The Fountain that seats and owns every position funded through
+     *         this Unispring. Inherits its {Fountain.POOL_MANAGER},
+     *         {Fountain.FEE}, and {Fountain.OWNER}.
      */
-    IPoolManager public immutable POOL_MANAGER;
+    Fountain public immutable FOUNTAIN;
 
     /**
      * @notice The hub token, set by {zzInit} on each clone.
@@ -69,27 +60,23 @@ contract Unispring is IUnlockCallback {
     event Make(Unispring indexed clone, IERC20 indexed hub, int24 tickLower, int24 tickUpper);
 
     /**
-     * @notice Emitted when a pool is initialized, paired against the hub, and funded.
-     * @param funder    The address that called {fund} (or PROTO for {zzInit}).
-     * @param token     The spoke token (or the hub, for {zzInit}).
-     * @param poolId    The Uniswap V4 pool id.
-     * @param supply    The fixed supply funded into the pool.
-     * @param tickLower Lower tick of the funded position.
-     * @param tickUpper Upper tick of the funded position.
+     * @notice Emitted when a pool is initialized, paired against the hub (or
+     *         ETH for the hub pool itself), and funded.
+     * @param funder     The address that called {fund} (or PROTO for {zzInit}).
+     * @param token      The spoke token (or the hub, for {zzInit}).
+     * @param positionId The {FOUNTAIN} position id seated by this call.
+     * @param supply     The fixed supply funded into the pool.
+     * @param tickLower  V4-native lower tick of the funded position.
+     * @param tickUpper  V4-native upper tick of the funded position.
      */
     event Funded(
         address indexed funder,
         IERC20 indexed token,
-        PoolId indexed poolId,
+        uint256 indexed positionId,
         uint256 supply,
         int24 tickLower,
         int24 tickUpper
     );
-
-    /**
-     * @notice Thrown when `tick` is outside `[MIN_TICK, MAX_TICK]`.
-     */
-    error TickOutOfRange(int24 tick);
 
     /**
      * @notice Thrown when `tickLower` is not strictly below `tickUpper`.
@@ -105,28 +92,18 @@ contract Unispring is IUnlockCallback {
     error SpokeMustSortBelowHub(address token);
 
     /**
-     * @notice Thrown when {unlockCallback} is invoked by anyone other than the PoolManager.
-     */
-    error InvalidUnlockCaller();
-
-    /**
      * @notice Thrown when {zzInit} is called by anyone other than {PROTO}.
      */
     error Unauthorized();
 
     /**
-     * @notice Thrown if liquidity computed from supply exceeds `uint128`.
-     */
-    error LiquidityOverflow();
-
-    /**
      * @notice Construct the prototype. Clones are created via {make}.
-     * @param  poolManagerLookup `IAddressLookup` resolving the chain-local
-     *                           Uniswap V4 PoolManager.
+     * @param  fountain The Fountain that will seat every position funded
+     *                  through this Unispring.
      */
-    constructor(IAddressLookup poolManagerLookup) {
+    constructor(Fountain fountain) {
         PROTO = this;
-        POOL_MANAGER = IPoolManager(poolManagerLookup.value());
+        FOUNTAIN = fountain;
     }
 
     // ---- Bitsy factory ----
@@ -157,10 +134,10 @@ contract Unispring is IUnlockCallback {
             clone = PROTO.make(hub_, tickLower, tickUpper);
         } else {
             (bool exists, address home, bytes32 salt) = made(hub_, tickLower, tickUpper);
-            clone = Unispring(payable(home));
+            clone = Unispring(home);
             if (!exists) {
                 Clones.cloneDeterministic(address(PROTO), salt, 0);
-                Unispring(payable(home)).zzInit(hub_, tickLower, tickUpper);
+                Unispring(home).zzInit(hub_, tickLower, tickUpper);
                 emit Make(clone, hub_, tickLower, tickUpper);
             }
         }
@@ -178,125 +155,61 @@ contract Unispring is IUnlockCallback {
         if (msg.sender != address(PROTO)) revert Unauthorized();
         hub = address(hub_);
         uint256 supply = hub_.balanceOf(address(this));
+        // forge-lint: disable-next-line(erc20-unchecked-transfer)
         hub_.approve(address(this), supply);
         this.fund(hub_, supply, tickLower, tickUpper);
     }
 
     /**
      * @notice Lock `supply` tokens into a single-sided V4 position paired
-     *         against {hub}. Permissionless — anyone can pair any ERC-20, any
-     *         number of times.
+     *         against {hub} (or ETH when `token` is the hub). Permissionless —
+     *         anyone can pair any ERC-20, any number of times.
      * @dev    Spokes must sort strictly below {hub} (become `currency0`).
      *         Caller must approve this contract for `supply` tokens. See
      *         DESIGN.md §9 for the permissionless + re-call semantics, §10
      *         for the spoke-isolation argument, and README §Patterns for
      *         common re-funding use cases.
-     * @param  token     The token to pair against the hub.
-     * @param  supply    Amount of `token` to pull from the caller and lock.
-     * @param  tickLower Lower tick; must be ≥ `MIN_TICK` and strictly below
-     *                   `tickUpper`. For spokes, this is the price floor in
-     *                   spoke-in-hub semantics.
-     * @param  tickUpper Upper tick; must be ≤ `MAX_TICK`.
+     * @param  token      The token to pair. The hub itself pairs against ETH;
+     *                    any other token pairs against {hub}.
+     * @param  supply     Amount of `token` to pull from the caller and lock.
+     * @param  tickLower  V4-native lower tick; strictly below `tickUpper`.
+     * @param  tickUpper  V4-native upper tick.
+     * @return positionId The {FOUNTAIN} position id seated by this call.
      */
-    function fund(IERC20 token, uint256 supply, int24 tickLower, int24 tickUpper) external {
-        if (tickLower < TickMath.MIN_TICK) revert TickOutOfRange(tickLower);
+    function fund(IERC20 token, uint256 supply, int24 tickLower, int24 tickUpper)
+        external
+        returns (uint256 positionId)
+    {
         if (tickLower >= tickUpper) revert TickLowerNotBelowUpper(tickLower, tickUpper);
-        if (tickUpper > TickMath.MAX_TICK) revert TickOutOfRange(tickUpper);
+
+        address tokenAddr = address(token);
+        bool isHub = tokenAddr == hub;
+        if (!isHub && tokenAddr >= hub) revert SpokeMustSortBelowHub(tokenAddr);
 
         // forge-lint: disable-next-line(erc20-unchecked-transfer)
         token.transferFrom(msg.sender, address(this), supply);
-
-        address tokenAddr = address(token);
-        bool currency0Sided = tokenAddr != hub;
-        if (currency0Sided && tokenAddr >= hub) revert SpokeMustSortBelowHub(tokenAddr);
-
-        PoolKey memory key = _poolKey(currency0Sided ? tokenAddr : address(0));
-        PoolId poolId = key.toId();
-
-        (uint160 sqrtPriceX96,,,) = POOL_MANAGER.getSlot0(poolId);
-        if (sqrtPriceX96 == 0) {
-            POOL_MANAGER.initialize(key, TickMath.getSqrtPriceAtTick(currency0Sided ? tickLower : tickUpper));
-        }
-        POOL_MANAGER.unlock(abi.encode(key, supply, tickLower, tickUpper, currency0Sided));
-
-        emit Funded(msg.sender, token, poolId, supply, tickLower, tickUpper);
-    }
-
-    /**
-     * @inheritdoc IUnlockCallback
-     * @dev Funds a single-sided position with `supply` tokens. `currency0Sided`
-     *      selects which side of the pair the supply funds: `true` for every
-     *      {fund}-created pool, `false` for the {zzInit}-created hub pool.
-     */
-    function unlockCallback(bytes calldata data) external returns (bytes memory) {
-        if (msg.sender != address(POOL_MANAGER)) revert InvalidUnlockCaller();
-        (PoolKey memory key, uint256 supply, int24 tickLower, int24 tickUpper, bool currency0Sided) =
-            abi.decode(data, (PoolKey, uint256, int24, int24, bool));
-
-        uint160 sqrtLower = TickMath.getSqrtPriceAtTick(tickLower);
-        uint160 sqrtUpper = TickMath.getSqrtPriceAtTick(tickUpper);
-        uint128 liquidity =
-            currency0Sided ? _liquidity0(sqrtLower, sqrtUpper, supply) : _liquidity1(sqrtLower, sqrtUpper, supply);
-
-        (BalanceDelta delta,) = POOL_MANAGER.modifyLiquidity(
-            key,
-            ModifyLiquidityParams({
-                tickLower: tickLower, tickUpper: tickUpper, liquidityDelta: int256(uint256(liquidity)), salt: bytes32(0)
-            }),
-            ""
-        );
-
-        // The position is single-sided, so only the funded side is owed.
-        // That amount is non-positive (a debit owed by the caller); negation fits in uint128.
-        Currency currency = currency0Sided ? key.currency0 : key.currency1;
-        int128 amount = currency0Sided ? delta.amount0() : delta.amount1();
-        // forge-lint: disable-next-line(unsafe-typecast)
-        uint256 owed = uint256(uint128(-amount));
-
-        POOL_MANAGER.sync(currency);
         // forge-lint: disable-next-line(erc20-unchecked-transfer)
-        IERC20(Currency.unwrap(currency)).transfer(address(POOL_MANAGER), owed);
-        POOL_MANAGER.settle();
+        token.approve(address(FOUNTAIN), supply);
 
-        return "";
-    }
+        int24[] memory ticks = new int24[](2);
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = supply;
+        address quote;
+        if (isHub) {
+            // Hub sorts above ETH (currency1). Fountain takes ticks in
+            // log(quote/token) semantics and negates for the flip case;
+            // negate-and-swap here to preserve Unispring's V4-native range.
+            ticks[0] = -tickUpper;
+            ticks[1] = -tickLower;
+            quote = address(0);
+        } else {
+            // Spoke sorts below hub (currency0): identity mapping.
+            ticks[0] = tickLower;
+            ticks[1] = tickUpper;
+            quote = hub;
+        }
 
-    /**
-     * @dev Build a pool key with the given currency0 paired against {hub}.
-     *      Pass `address(0)` for the hub pool (ETH/hub), or a spoke token
-     *      address for a spoke pool. Caller must ensure `currency0 < hub`.
-     */
-    function _poolKey(address currency0) private view returns (PoolKey memory) {
-        return PoolKey({
-            currency0: Currency.wrap(currency0),
-            currency1: Currency.wrap(hub),
-            fee: FEE,
-            tickSpacing: 1,
-            hooks: IHooks(address(0))
-        });
-    }
-
-    /**
-     * @dev Liquidity for a single-sided position in currency0.
-     *      L = amount0 * (sqrtLower * sqrtUpper / Q96) / (sqrtUpper - sqrtLower)
-     */
-    function _liquidity0(uint160 sqrtLower, uint160 sqrtUpper, uint256 amount0) private pure returns (uint128) {
-        uint256 intermediate = FullMath.mulDiv(uint256(sqrtLower), uint256(sqrtUpper), FixedPoint96.Q96);
-        return _toUint128(FullMath.mulDiv(amount0, intermediate, uint256(sqrtUpper - sqrtLower)));
-    }
-
-    /**
-     * @dev Liquidity for a single-sided position in currency1.
-     *      L = amount1 * Q96 / (sqrtUpper - sqrtLower)
-     */
-    function _liquidity1(uint160 sqrtLower, uint160 sqrtUpper, uint256 amount1) private pure returns (uint128) {
-        return _toUint128(FullMath.mulDiv(amount1, FixedPoint96.Q96, uint256(sqrtUpper - sqrtLower)));
-    }
-
-    function _toUint128(uint256 x) private pure returns (uint128) {
-        if (x > type(uint128).max) revert LiquidityOverflow();
-        // safe: bounds checked on the line above.
-        // forge-lint: disable-next-line(unsafe-typecast)
-        return uint128(x);
+        positionId = FOUNTAIN.fund(token, quote, 1, ticks, amounts);
+        emit Funded(msg.sender, token, positionId, supply, tickLower, tickUpper);
     }
 }

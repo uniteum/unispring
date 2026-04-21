@@ -26,13 +26,13 @@ contract CheckPool is Script {
         PoolKey memory key = PoolKey({
             currency0: Currency.wrap(newIsCurrency0 ? newToken : hub),
             currency1: Currency.wrap(newIsCurrency0 ? hub : newToken),
-            fee: spring.FEE(),
+            fee: spring.FOUNTAIN().FEE(),
             tickSpacing: 1,
             hooks: IHooks(address(0))
         });
         PoolId id = key.toId();
 
-        IPoolManager pm = spring.POOL_MANAGER();
+        IPoolManager pm = spring.FOUNTAIN().POOL_MANAGER();
         (uint160 sqrtPriceX96, int24 tick, uint24 protocolFee, uint24 lpFee) = pm.getSlot0(id);
         uint128 liquidity = pm.getLiquidity(id);
 

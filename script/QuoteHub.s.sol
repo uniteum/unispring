@@ -42,7 +42,7 @@ contract QuoteHub is Script {
         PoolKey memory key = PoolKey({
             currency0: Currency.wrap(address(0)),
             currency1: Currency.wrap(unispring.hub()),
-            fee: unispring.FEE(),
+            fee: unispring.FOUNTAIN().FEE(),
             tickSpacing: 1,
             hooks: IHooks(address(0))
         });
