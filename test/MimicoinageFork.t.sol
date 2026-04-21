@@ -41,7 +41,7 @@ interface IV4Quoter {
  *         Run with:
  *           forge test --match-contract MimicoinageForkTest -f mainnet -vv
  *         or pin a block for reproducibility:
- *           FORK_BLOCK=24915800 forge test --match-contract MimicoinageForkTest -f mainnet -vv
+ *           FORK_BLOCK=24923365 forge test --match-contract MimicoinageForkTest -f mainnet -vv
  */
 contract MimicoinageForkTest is Test {
     using StateLibrary for IPoolManager;
