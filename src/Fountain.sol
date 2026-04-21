@@ -46,23 +46,26 @@ interface IFountainActions {
  * @notice Shapes a bonding curve for an externally-supplied ERC-20 token by
  *         seating multiple permanent, single-sided V4 positions against a
  *         quote currency (ERC-20 or native ETH). Callers partition a price
- *         range with an ascending array of "token/quote" ticks and assign a
- *         token amount to each segment; Fountain flips and negates into
- *         V4-native tick ranges when the token sorts below the quote, then
- *         funds every segment in a single unlock.
+ *         range with an ascending array of V4-native ticks (matching
+ *         Unispring and Mimicoinage) and assign a token amount to each
+ *         segment; Fountain flips and negates into V4-native tick ranges
+ *         when the token sorts above the quote (forcing it into
+ *         `currency1`), then funds every segment in a single unlock.
  * @dev    Positions are permanent — no function on this contract decreases
  *         or unwinds liquidity. {collect} forwards accrued swap fees to the
  *         immutable {OWNER}.
  * @dev    Fixed pool parameters: {FEE} = 100 (0.01%), no hooks. Tick
  *         spacing is caller-specified so the same Fountain can shape
  *         curves in pools of different granularity.
- * @dev    Tick convention: callers pass ticks in "token/quote" price
- *         semantics (log_1.0001(token/quote)). When the token sorts below
- *         the quote it becomes `currency0` in V4's layout and V4's internal
- *         tick is `log_1.0001(currency1/currency0) = log_1.0001(quote/token)`,
- *         the reciprocal — so Fountain maps user segment
- *         `[T[i], T[i+1])` to V4 range `[-T[i+1], -T[i])`. When the token
- *         sorts above the quote the mapping is the identity.
+ * @dev    Tick convention: callers pass ticks in V4-native semantics
+ *         (`log_1.0001(currency1/currency0)` = `log_1.0001(quote/token)`
+ *         when the token is `currency0`). When the token sorts below the
+ *         quote it becomes `currency0` and the mapping is the identity:
+ *         user segment `[T[i], T[i+1])` is seated at V4 `[T[i], T[i+1])`.
+ *         When the token sorts above the quote it becomes `currency1`,
+ *         V4's internal price becomes the reciprocal, and Fountain maps
+ *         `[T[i], T[i+1])` to V4 `[-T[i+1], -T[i])` so the user's intent
+ *         is preserved.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
 contract Fountain is IUnlockCallback {
@@ -195,10 +198,10 @@ contract Fountain is IUnlockCallback {
      *         bounded by `ticks[i]` and `ticks[i + 1]` single-sided in
      *         `token`. Caller must have approved this contract for the sum
      *         of `amounts`.
-     * @dev    The outermost tick `ticks[ticks.length - 1]` is treated as the
-     *         pool's starting price: if the pool does not yet exist it is
-     *         initialized at that price; if it already exists its price
-     *         must match exactly, else {PoolPreInitialized} reverts.
+     * @dev    The lowest tick `ticks[0]` is treated as the pool's starting
+     *         price: if the pool does not yet exist it is initialized at
+     *         that price; if it already exists its price must match
+     *         exactly, else {PoolPreInitialized} reverts.
      * @param  token           The token whose supply funds the positions.
      * @param  quote           The quote currency (zero for native ETH).
      * @param  tickSpacing     Tick spacing of the target pool. All ticks
@@ -247,7 +250,7 @@ contract Fountain is IUnlockCallback {
         });
         PoolId poolId = key.toId();
 
-        int24 startingV4Tick = tokenIsCurrency0 ? -ticks[n] : ticks[n];
+        int24 startingV4Tick = tokenIsCurrency0 ? ticks[0] : -ticks[0];
         uint160 startingSqrtPriceX96 = TickMath.getSqrtPriceAtTick(startingV4Tick);
 
         (uint160 existingSqrtPriceX96,,,) = POOL_MANAGER.getSlot0(poolId);
@@ -367,7 +370,12 @@ contract Fountain is IUnlockCallback {
 
     /**
      * @dev Seat every segment of the caller-described curve in one unlock.
-     *      Net token debit is accumulated across positions and settled
+     *      User segment [userTicks[i], userTicks[i+1]) with amount[i]
+     *      funds a V4 position at [userTicks[i], userTicks[i+1]) when the
+     *      token is currency0 (identity mapping; matches Unispring and
+     *      Mimicoinage), or at [-userTicks[i+1], -userTicks[i]) when the
+     *      token is currency1 (flipping under V4's price inversion). Net
+     *      token debit is accumulated across positions and settled
      *      against the PoolManager once at the end. The non-token side of
      *      each position has zero delta (single-sided), so no settlement
      *      is needed for the quote currency.
@@ -381,11 +389,11 @@ contract Fountain is IUnlockCallback {
             int24 tickLower;
             int24 tickUpper;
             if (tokenIsCurrency0) {
-                tickLower = -userTicks[i + 1];
-                tickUpper = -userTicks[i];
-            } else {
                 tickLower = userTicks[i];
                 tickUpper = userTicks[i + 1];
+            } else {
+                tickLower = -userTicks[i + 1];
+                tickUpper = -userTicks[i];
             }
 
             uint160 sqrtLower = TickMath.getSqrtPriceAtTick(tickLower);
