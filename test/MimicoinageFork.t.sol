@@ -2,6 +2,7 @@
 pragma solidity ^0.8.30;
 
 import {Mimicoinage} from "../src/Mimicoinage.sol";
+import {Collector} from "./Collector.sol";
 import {SwapRouter} from "./SwapRouter.sol";
 import {Trader} from "./Trader.sol";
 import {IAddressLookup} from "ilookup/IAddressLookup.sol";
@@ -205,5 +206,43 @@ contract MimicoinageForkTest is Test {
         // Sanity: price moved after the first buy, so the second buy gets less mimic.
         assertLt(hi2, hi1, "hi: second buy did not reflect advanced pool state");
         assertLt(lo2, lo1, "lo: second buy did not reflect advanced pool state");
+    }
+
+    /**
+     * @notice A swap accrues fees on the input side of the position; any
+     *         caller can then poke {Mimicoinage.collect}, and the fees land
+     *         with {OWNER} (here, this test contract). Verifies both the
+     *         {pendingFees} view and the actual transfer amount.
+     */
+    function test_CollectRoutesFeesToOwner() public {
+        // mimic sorts below ffffff → mimic is currency0, ffffff is currency1.
+        // A zeroForOne=false swap spends currency1 (ffffff), so fees accrue on currency1.
+        IERC20Metadata mimic = mimicoinage.launch(IERC20Metadata(ffffff), "mimicFF");
+        PoolKey memory key = mimicoinage.poolKeyOf(IERC20(address(mimic)));
+
+        uint128 amountIn = 1e18;
+        Trader alice = new Trader("alice", router);
+        deal(ffffff, address(alice), uint256(amountIn));
+        alice.swap(key, false, amountIn);
+
+        IERC20[] memory arr = new IERC20[](1);
+        arr[0] = IERC20(address(mimic));
+        (uint256[] memory pending0, uint256[] memory pending1) = mimicoinage.pendingFees(arr);
+        assertEq(pending0[0], 0, "no fees should accrue on currency0 (mimic)");
+        assertGt(pending1[0], 0, "fees should accrue on currency1 (ffffff) after a buy");
+
+        uint256 expected = pending1[0];
+        uint256 ownerBefore = IERC20(ffffff).balanceOf(address(this));
+
+        Collector bot = new Collector("bot", mimicoinage);
+        bot.collect(IERC20(address(mimic)));
+
+        assertEq(
+            IERC20(ffffff).balanceOf(address(this)) - ownerBefore, expected, "OWNER received != pendingFees forecast"
+        );
+
+        (pending0, pending1) = mimicoinage.pendingFees(arr);
+        assertEq(pending0[0], 0, "residual currency0 fees after collect");
+        assertEq(pending1[0], 0, "residual currency1 fees after collect");
     }
 }
