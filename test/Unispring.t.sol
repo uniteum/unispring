@@ -2,6 +2,7 @@
 pragma solidity ^0.8.30;
 
 import {Unispring} from "../src/Unispring.sol";
+import {TestToken} from "./TestToken.sol";
 import {IAddressLookup} from "ilookup/IAddressLookup.sol";
 import {IERC20} from "ierc20/IERC20.sol";
 import {Test} from "forge-std/Test.sol";
@@ -12,47 +13,6 @@ import {Currency} from "v4-core/types/Currency.sol";
 import {PoolId} from "v4-core/types/PoolId.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
 import {ModifyLiquidityParams} from "v4-core/types/PoolOperation.sol";
-
-/**
- * @notice Minimal mintable ERC-20 used in place of a real Coinage clone.
- */
-contract MockToken {
-    string public name;
-    string public symbol;
-    // forge-lint: disable-next-line(screaming-snake-case-const)
-    uint8 public constant decimals = 18;
-    uint256 public totalSupply;
-    mapping(address => uint256) public balanceOf;
-    mapping(address => mapping(address => uint256)) public allowance;
-
-    constructor(string memory n, string memory s) {
-        name = n;
-        symbol = s;
-    }
-
-    function mint(address to, uint256 amt) external {
-        balanceOf[to] += amt;
-        totalSupply += amt;
-    }
-
-    function transfer(address to, uint256 amt) external returns (bool) {
-        balanceOf[msg.sender] -= amt;
-        balanceOf[to] += amt;
-        return true;
-    }
-
-    function approve(address spender, uint256 amt) external returns (bool) {
-        allowance[msg.sender][spender] = amt;
-        return true;
-    }
-
-    function transferFrom(address from, address to, uint256 amt) external returns (bool) {
-        allowance[from][msg.sender] -= amt;
-        balanceOf[from] -= amt;
-        balanceOf[to] += amt;
-        return true;
-    }
-}
 
 /**
  * @notice Minimal stand-in for the Uniswap V4 PoolManager. Implements just the
@@ -158,7 +118,7 @@ contract MockPoolManager {
             paid = msg.value;
         } else {
             address tok = Currency.unwrap(c);
-            paid = MockToken(tok).balanceOf(address(this));
+            paid = TestToken(tok).balanceOf(address(this));
         }
     }
 }
@@ -179,8 +139,8 @@ contract UnispringTest is Test {
         pm = new MockPoolManager();
         vm.mockCall(LOOKUP_ADDR, abi.encodeWithSelector(IAddressLookup.value.selector), abi.encode(address(pm)));
 
-        // 2. Etch a MockToken at the fixed HUB address so it has working ERC-20 code.
-        MockToken template = new MockToken("", "");
+        // 2. Etch a TestToken at the fixed HUB address so it has working ERC-20 code.
+        TestToken template = new TestToken("", "", 18);
         vm.etch(HUB_ADDR, address(template).code);
 
         // 3. Construct the prototype, pre-fund the clone, then make (funds hub in zzInit).
@@ -188,10 +148,10 @@ contract UnispringTest is Test {
         int24 tickLower = TickMath.MIN_TICK + 1;
         int24 tickUpper = -HUB_TICK_FLOOR;
         (, address home,) = proto.made(IERC20(HUB_ADDR), tickLower, tickUpper);
-        MockToken(HUB_ADDR).mint(home, HUB_SUPPLY);
+        TestToken(HUB_ADDR).mint(home, HUB_SUPPLY);
         unispring = proto.make(IERC20(HUB_ADDR), tickLower, tickUpper);
 
-        // 5. Etch a second MockToken at the fixed spoke-token address, below HUB_ADDR,
+        // 5. Etch a second TestToken at the fixed spoke-token address, below HUB_ADDR,
         //    ready for upcoming `fund` calls.
         vm.etch(SPOKE_TOKEN_ADDR, address(template).code);
     }
@@ -205,8 +165,8 @@ contract UnispringTest is Test {
         int24 tickFloor = -120_000;
 
         // Mint spoke supply to this test contract and approve Unispring to pull it.
-        MockToken(SPOKE_TOKEN_ADDR).mint(address(this), supply);
-        MockToken(SPOKE_TOKEN_ADDR).approve(address(unispring), supply);
+        TestToken(SPOKE_TOKEN_ADDR).mint(address(this), supply);
+        TestToken(SPOKE_TOKEN_ADDR).approve(address(unispring), supply);
 
         int24 tickUpper = TickMath.MAX_TICK - 1;
         unispring.fund(IERC20(SPOKE_TOKEN_ADDR), supply, tickFloor, tickUpper);
@@ -233,8 +193,8 @@ contract UnispringTest is Test {
         assertEq(tickUpper_, tickUpper);
 
         // The caller settled by transferring spoke tokens to the (mock) PoolManager.
-        uint256 pmBalance = MockToken(SPOKE_TOKEN_ADDR).balanceOf(address(pm));
-        uint256 leftover = MockToken(SPOKE_TOKEN_ADDR).balanceOf(address(unispring));
+        uint256 pmBalance = TestToken(SPOKE_TOKEN_ADDR).balanceOf(address(pm));
+        uint256 leftover = TestToken(SPOKE_TOKEN_ADDR).balanceOf(address(unispring));
         assertEq(pmBalance + leftover, supply, "supply must be conserved");
         assertGt(pmBalance, 0, "PoolManager received zero tokens");
     }

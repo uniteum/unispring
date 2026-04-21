@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
+import {TestToken} from "./TestToken.sol";
 import {Test} from "forge-std/Test.sol";
 
 /**
@@ -43,5 +44,18 @@ contract ForkBase is Test {
 
         require(PoolManagerLookup.code.length > 0, "PoolManagerLookup missing at forked block");
         require(ICoinage.code.length > 0, "ICoinage missing at forked block");
+    }
+
+    /**
+     * @notice Deploy a fresh {TestToken} that sorts strictly between the
+     *         fixed `zeros` and `ffffff` leptons — guaranteeing both the
+     *         flip case (paired against `ffffff`, token = currency0) and
+     *         no-flip case (paired against `zeros`, token = currency1) are
+     *         reachable from a single token instance.
+     */
+    function _makeToken(string memory name, string memory symbol, uint8 decimals) internal returns (TestToken token) {
+        token = new TestToken(name, symbol, decimals);
+        require(address(token) > zeros, "token must sort above zeros");
+        require(address(token) < ffffff, "token must sort below ffffff");
     }
 }

@@ -5,6 +5,7 @@ import {Fountain, Position} from "../src/Fountain.sol";
 import {ForkBase} from "./ForkBase.t.sol";
 import {Funder} from "./Funder.sol";
 import {SwapRouter} from "./SwapRouter.sol";
+import {TestToken} from "./TestToken.sol";
 import {Trader} from "./Trader.sol";
 import {IAddressLookup} from "ilookup/IAddressLookup.sol";
 import {IERC20} from "ierc20/IERC20.sol";
@@ -16,45 +17,6 @@ import {Currency} from "v4-core/types/Currency.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
 
 /**
- * @notice Minimal mintable ERC-20 used as the externally-supplied token
- *         in Fountain fork tests. Simple enough that `mint(to, amt)` works
- *         without real supply controls; the tests reason about Fountain's
- *         behavior, not token correctness.
- */
-contract MockERC20 {
-    string public name = "MockToken";
-    string public symbol = "MOCK";
-    // forge-lint: disable-next-line(screaming-snake-case-const)
-    uint8 public constant decimals = 18;
-    uint256 public totalSupply;
-    mapping(address => uint256) public balanceOf;
-    mapping(address => mapping(address => uint256)) public allowance;
-
-    function mint(address to, uint256 amt) external {
-        totalSupply += amt;
-        balanceOf[to] += amt;
-    }
-
-    function transfer(address to, uint256 amt) external returns (bool) {
-        balanceOf[msg.sender] -= amt;
-        balanceOf[to] += amt;
-        return true;
-    }
-
-    function approve(address spender, uint256 amt) external returns (bool) {
-        allowance[msg.sender][spender] = amt;
-        return true;
-    }
-
-    function transferFrom(address from, address to, uint256 amt) external returns (bool) {
-        allowance[from][msg.sender] -= amt;
-        balanceOf[from] -= amt;
-        balanceOf[to] += amt;
-        return true;
-    }
-}
-
-/**
  * @notice Fork test against mainnet state. Deploys a fresh Fountain against
  *         the real PoolManager resolved through the Uniteum
  *         `PoolManagerLookup`, then exercises funding, pre-initialization
@@ -62,7 +24,7 @@ contract MockERC20 {
  *         collection across both tick-flip orientations and a native-ETH
  *         quote.
  *
- *         The MockERC20 deployed in setUp sits between the `zeros` (low)
+ *         The {TestToken} deployed in setUp sits between the `zeros` (low)
  *         and `ffffff` (high) leptons defined by {ForkBase}, so pairing it
  *         against `ffffff` exercises the flip case (token sorts as
  *         `currency0`) and pairing it against `zeros` (or native ETH)
@@ -79,7 +41,7 @@ contract FountainForkTest is ForkBase {
     Fountain internal fountain;
     SwapRouter internal router;
     Funder internal bot;
-    MockERC20 internal token;
+    TestToken internal token;
 
     uint256 internal constant SEGMENT_AMOUNT = 1_000_000 ether;
     int24 internal constant TICK_SPACING = 1;
@@ -91,11 +53,8 @@ contract FountainForkTest is ForkBase {
         fountain = new Fountain(IAddressLookup(PoolManagerLookup), address(bot));
         bot.setFountain(fountain);
         router = new SwapRouter(fountain.POOL_MANAGER());
-        token = new MockERC20();
+        token = _makeToken("MockToken", "MOCK", 18);
 
-        // Sanity: the test assumes the deployed MockERC20 sorts between the fixed leptons.
-        require(address(token) < ffffff, "token must sort below ffffff for flip-case tests");
-        require(address(token) > zeros, "token must sort above zeros for no-flip-case tests");
         require(ffffff.code.length > 0, "ffffff lepton missing at forked block");
         require(zeros.code.length > 0, "zeros lepton missing at forked block");
     }

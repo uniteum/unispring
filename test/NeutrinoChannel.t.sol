@@ -4,13 +4,15 @@ pragma solidity ^0.8.30;
 import {ICoinage} from "ierc20/ICoinage.sol";
 import {IERC20Metadata} from "ierc20/IERC20Metadata.sol";
 import {NeutrinoChannel} from "../src/NeutrinoChannel.sol";
+import {TestToken} from "./TestToken.sol";
 import {Test} from "forge-std/Test.sol";
 
 /**
- * @notice Mock coinage that records mint calls and returns a mock token.
+ * @notice Mock coinage that records mint calls and returns a fresh {TestToken}
+ *         with the requested supply pre-minted to the caller.
  */
 contract MockCoinage is ICoinage {
-    MockMintedToken public lastToken;
+    TestToken public lastToken;
 
     function made(address, string calldata, string calldata, uint8, uint256, bytes32)
         external
@@ -24,34 +26,10 @@ contract MockCoinage is ICoinage {
         external
         returns (IERC20Metadata token)
     {
-        MockMintedToken t = new MockMintedToken(name, symbol, decimals, supply, msg.sender);
+        TestToken t = new TestToken(name, symbol, decimals);
+        t.mint(msg.sender, supply);
         lastToken = t;
         return IERC20Metadata(address(t));
-    }
-}
-
-/**
- * @notice Minimal ERC-20 that mints supply to a given recipient on construction.
- */
-contract MockMintedToken {
-    string public name;
-    string public symbol;
-    uint8 public decimals;
-    uint256 public totalSupply;
-    mapping(address => uint256) public balanceOf;
-
-    constructor(string memory name_, string memory symbol_, uint8 decimals_, uint256 supply_, address recipient) {
-        name = name_;
-        symbol = symbol_;
-        decimals = decimals_;
-        totalSupply = supply_;
-        balanceOf[recipient] = supply_;
-    }
-
-    function transfer(address to, uint256 amt) external returns (bool) {
-        balanceOf[msg.sender] -= amt;
-        balanceOf[to] += amt;
-        return true;
     }
 }
 
@@ -130,8 +108,8 @@ contract NeutrinoChannelTest is Test {
         // Token was created via coinage.
         assertEq(address(token), address(coinage.lastToken()), "token should come from coinage");
         // Entire supply forwarded to the caller (this contract, the source).
-        assertEq(MockMintedToken(address(token)).balanceOf(address(this)), supply, "source should hold full supply");
-        assertEq(MockMintedToken(address(token)).balanceOf(address(clone)), 0, "clone should hold zero");
+        assertEq(TestToken(address(token)).balanceOf(address(this)), supply, "source should hold full supply");
+        assertEq(TestToken(address(token)).balanceOf(address(clone)), 0, "clone should hold zero");
     }
 
     function test_MintRevertsIfCallerIsNotSource() public {
