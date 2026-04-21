@@ -2,21 +2,18 @@
 pragma solidity ^0.8.30;
 
 import {Mimicoinage} from "../src/Mimicoinage.sol";
+import {SwapRouter} from "./SwapRouter.sol";
+import {Trader} from "./Trader.sol";
 import {IAddressLookup} from "ilookup/IAddressLookup.sol";
 import {ICoinage as Coinage} from "ierc20/ICoinage.sol";
 import {IERC20} from "ierc20/IERC20.sol";
 import {IERC20Metadata} from "ierc20/IERC20Metadata.sol";
 import {Test} from "forge-std/Test.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
-import {IUnlockCallback} from "v4-core/interfaces/callback/IUnlockCallback.sol";
 import {FixedPoint96} from "v4-core/libraries/FixedPoint96.sol";
 import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
-import {TickMath} from "v4-core/libraries/TickMath.sol";
-import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
-import {Currency} from "v4-core/types/Currency.sol";
 import {PoolId} from "v4-core/types/PoolId.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
-import {SwapParams} from "v4-core/types/PoolOperation.sol";
 
 /**
  * @notice Minimal V4Quoter interface — single-hop exact-input entrypoint.
@@ -46,7 +43,7 @@ interface IV4Quoter {
  *         or pin a block for reproducibility:
  *           FORK_BLOCK=24915800 forge test --match-contract MimicoinageForkTest -f mainnet -vv
  */
-contract MimicoinageForkTest is Test, IUnlockCallback {
+contract MimicoinageForkTest is Test {
     using StateLibrary for IPoolManager;
 
     /// @dev Loaded from `.env`; names mirror the env keys exactly.
@@ -63,6 +60,7 @@ contract MimicoinageForkTest is Test, IUnlockCallback {
     address internal immutable zeros;
 
     Mimicoinage internal mimicoinage;
+    SwapRouter internal router;
 
     constructor() {
         PoolManagerLookup = vm.envAddress("PoolManagerLookup");
@@ -85,6 +83,7 @@ contract MimicoinageForkTest is Test, IUnlockCallback {
         require(ICoinage.code.length > 0, "ICoinage missing at forked block");
 
         mimicoinage = new Mimicoinage(IAddressLookup(PoolManagerLookup), Coinage(ICoinage), address(this));
+        router = new SwapRouter(mimicoinage.POOL_MANAGER());
     }
 
     function test_PredictMimicMatchesLaunch() public {
@@ -180,7 +179,7 @@ contract MimicoinageForkTest is Test, IUnlockCallback {
      * @notice Two sequential exact-input buys in each pool must match across
      *         orderings on BOTH buys — i.e. the second buy also prices
      *         symmetrically after the first advances pool state. Quoter is
-     *         stateless, so this executes real swaps via {_buyMimic}.
+     *         stateless, so this executes real swaps via persona traders.
      */
     function test_SequentialBuysMatchAcrossOrdering() public {
         IERC20Metadata hiMimic = mimicoinage.launch(IERC20Metadata(ffffff), "mimicFF");
@@ -190,75 +189,21 @@ contract MimicoinageForkTest is Test, IUnlockCallback {
         PoolKey memory loKey = mimicoinage.poolKeyOf(IERC20(address(loMimic)));
 
         uint128 amountIn = 1e18;
-        deal(ffffff, address(this), uint256(amountIn) * 2);
-        deal(zeros, address(this), uint256(amountIn) * 2);
+        Trader alice = new Trader("alice", router);
+        Trader bob = new Trader("bob", router);
+        deal(ffffff, address(alice), uint256(amountIn) * 2);
+        deal(zeros, address(bob), uint256(amountIn) * 2);
 
-        uint256 hi1 = _buyMimic(hiKey, false, amountIn);
-        uint256 lo1 = _buyMimic(loKey, true, amountIn);
+        uint256 hi1 = alice.swap(hiKey, false, amountIn);
+        uint256 lo1 = bob.swap(loKey, true, amountIn);
         assertApproxEqRel(hi1, lo1, 1e14, "first buy: outputs diverge across orderings");
 
-        uint256 hi2 = _buyMimic(hiKey, false, amountIn);
-        uint256 lo2 = _buyMimic(loKey, true, amountIn);
+        uint256 hi2 = alice.swap(hiKey, false, amountIn);
+        uint256 lo2 = bob.swap(loKey, true, amountIn);
         assertApproxEqRel(hi2, lo2, 1e14, "second buy: outputs diverge across orderings");
 
         // Sanity: price moved after the first buy, so the second buy gets less mimic.
         assertLt(hi2, hi1, "hi: second buy did not reflect advanced pool state");
         assertLt(lo2, lo1, "lo: second buy did not reflect advanced pool state");
-    }
-
-    /**
-     * @inheritdoc IUnlockCallback
-     * @dev Executes an exact-input swap encoded by {_buyMimic} and settles
-     *      both sides against this contract's token balance. Test-only;
-     *      restricted to the PoolManager's callback path.
-     */
-    function unlockCallback(bytes calldata data) external returns (bytes memory) {
-        IPoolManager pm = mimicoinage.POOL_MANAGER();
-        require(msg.sender == address(pm), "unauthorized unlock");
-        (PoolKey memory key, SwapParams memory params) = abi.decode(data, (PoolKey, SwapParams));
-
-        BalanceDelta delta = pm.swap(key, params, "");
-        int128 a0 = delta.amount0();
-        int128 a1 = delta.amount1();
-
-        if (a0 < 0) {
-            pm.sync(key.currency0);
-            // forge-lint: disable-next-line(erc20-unchecked-transfer,unsafe-typecast)
-            IERC20(Currency.unwrap(key.currency0)).transfer(address(pm), uint256(uint128(-a0)));
-            pm.settle();
-        }
-        if (a1 < 0) {
-            pm.sync(key.currency1);
-            // forge-lint: disable-next-line(erc20-unchecked-transfer,unsafe-typecast)
-            IERC20(Currency.unwrap(key.currency1)).transfer(address(pm), uint256(uint128(-a1)));
-            pm.settle();
-        }
-        // forge-lint: disable-next-line(unsafe-typecast)
-        if (a0 > 0) pm.take(key.currency0, address(this), uint256(uint128(a0)));
-        // forge-lint: disable-next-line(unsafe-typecast)
-        if (a1 > 0) pm.take(key.currency1, address(this), uint256(uint128(a1)));
-
-        return abi.encode(delta);
-    }
-
-    /**
-     * @dev Execute an exact-input buy of `mimic` with `original` directly
-     *      against the PoolManager via this contract's {unlockCallback},
-     *      avoiding a separately-deployed swap helper (whose CREATE address
-     *      can fall on forked mainnet state the RPC may not serve).
-     *      Returns the mimic received.
-     */
-    function _buyMimic(PoolKey memory key, bool zeroForOne, uint128 amountIn) internal returns (uint256 mimicOut) {
-        uint160 limit = zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1;
-        SwapParams memory params = SwapParams({
-            zeroForOne: zeroForOne,
-            // forge-lint: disable-next-line(unsafe-typecast)
-            amountSpecified: -int256(uint256(amountIn)),
-            sqrtPriceLimitX96: limit
-        });
-        bytes memory result = mimicoinage.POOL_MANAGER().unlock(abi.encode(key, params));
-        BalanceDelta delta = abi.decode(result, (BalanceDelta));
-        // forge-lint: disable-next-line(unsafe-typecast)
-        mimicOut = zeroForOne ? uint256(uint128(delta.amount1())) : uint256(uint128(delta.amount0()));
     }
 }
