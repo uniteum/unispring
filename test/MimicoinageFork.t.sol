@@ -77,6 +77,7 @@ contract MimicoinageForkTest is ForkBase {
         IERC20Metadata mimic = mimicoinage.launch(IERC20Metadata(USDC), "USDCmimic");
 
         assertEq(mimic.decimals(), IERC20Metadata(USDC).decimals(), "decimals must match original");
+        assertEq(mimic.symbol(), "USDCx1", "symbol must be original.symbol + SUFFIX");
         assertTrue(mimicoinage.isMimic(IERC20(address(mimic))), "launched token not marked as mimic");
 
         // Pool is initialized at tick 0 (sqrtPriceX96 for tick 0 = 2**96).
@@ -256,9 +257,7 @@ contract MimicoinageForkTest is ForkBase {
 
         bot.collectBatch(arr);
 
-        assertEq(
-            IERC20(ffffff).balanceOf(address(bot)) - ffffffBefore, pending1[0], "bot ffffff delta != hi pending1"
-        );
+        assertEq(IERC20(ffffff).balanceOf(address(bot)) - ffffffBefore, pending1[0], "bot ffffff delta != hi pending1");
         assertEq(IERC20(zeros).balanceOf(address(bot)) - zerosBefore, pending0[1], "bot zeros delta != lo pending0");
 
         (pending0, pending1) = mimicoinage.pendingFees(arr);
@@ -363,6 +362,38 @@ contract MimicoinageForkTest is ForkBase {
         IERC20Metadata[] memory mid = mimicoinage.mimicsRange(1, 1);
         assertEq(mid.length, 1, "middle slice length");
         assertEq(address(mid[0]), address(m1), "mid[0]");
+    }
+
+    /**
+     * @notice {unlockCallback} is only callable by the PoolManager; a direct
+     *         external call must revert.
+     */
+    function test_UnlockCallbackRevertsForNonPoolManager() public {
+        vm.expectRevert(Mimicoinage.InvalidUnlockCaller.selector);
+        mimicoinage.unlockCallback("");
+    }
+
+    /**
+     * @notice {collect} with an empty array early-returns without unlocking
+     *         the PoolManager and emits nothing.
+     */
+    function test_EmptyCollectBatchIsNoop() public {
+        vm.recordLogs();
+        bot.collectBatch(new IERC20[](0));
+        assertEq(vm.getRecordedLogs().length, 0, "empty collectBatch should emit nothing");
+    }
+
+    /**
+     * @notice {pendingFees} returns zero for tokens this factory did not
+     *         launch, without reverting — the skip branch over unknown
+     *         entries.
+     */
+    function test_PendingFeesZeroForUnknownMimic() public view {
+        IERC20[] memory arr = new IERC20[](1);
+        arr[0] = IERC20(USDC); // never launched as a mimic in this test's setUp
+        (uint256[] memory pending0, uint256[] memory pending1) = mimicoinage.pendingFees(arr);
+        assertEq(pending0[0], 0, "unknown mimic currency0 fees must be zero");
+        assertEq(pending1[0], 0, "unknown mimic currency1 fees must be zero");
     }
 
     /**
