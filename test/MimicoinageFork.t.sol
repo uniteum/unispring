@@ -3,13 +3,13 @@ pragma solidity ^0.8.30;
 
 import {Mimicoinage} from "../src/Mimicoinage.sol";
 import {Collector} from "./Collector.sol";
+import {ForkBase} from "./ForkBase.t.sol";
 import {SwapRouter} from "./SwapRouter.sol";
 import {Trader} from "./Trader.sol";
 import {IAddressLookup} from "ilookup/IAddressLookup.sol";
 import {ICoinage as Coinage} from "ierc20/ICoinage.sol";
 import {IERC20} from "ierc20/IERC20.sol";
 import {IERC20Metadata} from "ierc20/IERC20Metadata.sol";
-import {Test} from "forge-std/Test.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 import {FixedPoint96} from "v4-core/libraries/FixedPoint96.sol";
 import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
@@ -44,45 +44,15 @@ interface IV4Quoter {
  *         or pin a block for reproducibility:
  *           FORK_BLOCK=24923365 forge test --match-contract MimicoinageForkTest -f mainnet -vv
  */
-contract MimicoinageForkTest is Test {
+contract MimicoinageForkTest is ForkBase {
     using StateLibrary for IPoolManager;
-
-    /// @dev Loaded from `.env`; names mirror the env keys exactly.
-    // forge-lint: disable-next-line(screaming-snake-case-immutable)
-    address internal immutable PoolManagerLookup;
-    // forge-lint: disable-next-line(screaming-snake-case-immutable)
-    address internal immutable ICoinage;
-    address internal immutable USDC;
-    // forge-lint: disable-next-line(screaming-snake-case-immutable)
-    address internal immutable V4Quoter;
-    // forge-lint: disable-next-line(screaming-snake-case-immutable)
-    address internal immutable ffffff;
-    // forge-lint: disable-next-line(screaming-snake-case-immutable)
-    address internal immutable zeros;
 
     Mimicoinage internal mimicoinage;
     SwapRouter internal router;
     Collector internal bot;
 
-    constructor() {
-        PoolManagerLookup = vm.envAddress("PoolManagerLookup");
-        ICoinage = vm.envAddress("ICoinage");
-        USDC = vm.envAddress("USDC");
-        V4Quoter = vm.envAddress("V4Quoter");
-        ffffff = vm.envAddress("ffffff");
-        zeros = vm.envAddress("zeros");
-    }
-
-    function setUp() public {
-        uint256 forkBlock = vm.envOr("FORK_BLOCK", uint256(0));
-        if (forkBlock == 0) {
-            vm.createSelectFork("mainnet");
-        } else {
-            vm.createSelectFork("mainnet", forkBlock);
-        }
-
-        require(PoolManagerLookup.code.length > 0, "PoolManagerLookup missing at forked block");
-        require(ICoinage.code.length > 0, "ICoinage missing at forked block");
+    function setUp() public override {
+        super.setUp();
 
         bot = new Collector("bot");
         mimicoinage = new Mimicoinage(IAddressLookup(PoolManagerLookup), Coinage(ICoinage), address(bot));
