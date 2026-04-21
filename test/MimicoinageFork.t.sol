@@ -62,6 +62,7 @@ contract MimicoinageForkTest is Test {
 
     Mimicoinage internal mimicoinage;
     SwapRouter internal router;
+    Collector internal bot;
 
     constructor() {
         PoolManagerLookup = vm.envAddress("PoolManagerLookup");
@@ -83,7 +84,9 @@ contract MimicoinageForkTest is Test {
         require(PoolManagerLookup.code.length > 0, "PoolManagerLookup missing at forked block");
         require(ICoinage.code.length > 0, "ICoinage missing at forked block");
 
-        mimicoinage = new Mimicoinage(IAddressLookup(PoolManagerLookup), Coinage(ICoinage), address(this));
+        bot = new Collector("bot");
+        mimicoinage = new Mimicoinage(IAddressLookup(PoolManagerLookup), Coinage(ICoinage), address(bot));
+        bot.setMimicoinage(mimicoinage);
         router = new SwapRouter(mimicoinage.POOL_MANAGER());
     }
 
@@ -209,10 +212,10 @@ contract MimicoinageForkTest is Test {
     }
 
     /**
-     * @notice A swap accrues fees on the input side of the position; any
-     *         caller can then poke {Mimicoinage.collect}, and the fees land
-     *         with {OWNER} (here, this test contract). Verifies both the
-     *         {pendingFees} view and the actual transfer amount.
+     * @notice A swap accrues fees on the input side of the position; the
+     *         Collector (which is also {Mimicoinage.OWNER}) then pokes
+     *         {collect}, and the fees land on its own balance. Verifies both
+     *         the {pendingFees} forecast and the actual transfer amount.
      */
     function test_CollectRoutesFeesToOwner() public {
         // mimic sorts below ffffff → mimic is currency0, ffffff is currency1.
@@ -232,13 +235,12 @@ contract MimicoinageForkTest is Test {
         assertGt(pending1[0], 0, "fees should accrue on currency1 (ffffff) after a buy");
 
         uint256 expected = pending1[0];
-        uint256 ownerBefore = IERC20(ffffff).balanceOf(address(this));
+        uint256 ownerBefore = IERC20(ffffff).balanceOf(address(bot));
 
-        Collector bot = new Collector("bot", mimicoinage);
         bot.collect(IERC20(address(mimic)));
 
         assertEq(
-            IERC20(ffffff).balanceOf(address(this)) - ownerBefore, expected, "OWNER received != pendingFees forecast"
+            IERC20(ffffff).balanceOf(address(bot)) - ownerBefore, expected, "OWNER received != pendingFees forecast"
         );
 
         (pending0, pending1) = mimicoinage.pendingFees(arr);
