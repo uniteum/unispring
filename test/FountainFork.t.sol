@@ -338,20 +338,20 @@ contract FountainForkTest is ForkBase {
     // Pending fees + take
     // ----------------------------------------------------------------------
 
-    function test_PendingFeesZeroBeforeSwap() public {
+    function test_UntakenZeroBeforeSwap() public {
         _fundTwoFlip();
         uint256[] memory ids = new uint256[](2);
         ids[0] = 0;
         ids[1] = 1;
-        (uint256[] memory p0, uint256[] memory p1) = fountain.pendingFees(ids);
+        (uint256[] memory p0, uint256[] memory p1) = fountain.untaken(ids);
         assertEq(p0[0] + p1[0] + p0[1] + p1[1], 0, "no fees accrued before swaps");
     }
 
-    function test_PendingFeesRevertsOnUnknownPosition() public {
+    function test_UntakenRevertsOnUnknownPosition() public {
         uint256[] memory ids = new uint256[](1);
         ids[0] = 99;
         vm.expectRevert(abi.encodeWithSelector(Fountain.UnknownPosition.selector, uint256(99)));
-        fountain.pendingFees(ids);
+        fountain.untaken(ids);
     }
 
     function test_TakeSinglePosition_NoFlipCase() public {
@@ -371,16 +371,16 @@ contract FountainForkTest is ForkBase {
 
         uint256[] memory ids = new uint256[](1);
         ids[0] = 0;
-        (uint256[] memory pending0, uint256[] memory pending1) = fountain.pendingFees(ids);
+        (uint256[] memory pending0, uint256[] memory pending1) = fountain.untaken(ids);
         assertEq(pending0[0], 0, "no fees on currency0 (token)");
         assertGt(pending1[0], 0, "fees accrued on currency1 (ffffff)");
 
         uint256 expected = pending1[0];
         uint256 before = IERC20(ffffff).balanceOf(address(bot));
         bot.take(0);
-        assertEq(IERC20(ffffff).balanceOf(address(bot)) - before, expected, "TAKER received pendingFees[1]");
+        assertEq(IERC20(ffffff).balanceOf(address(bot)) - before, expected, "TAKER received untaken[1]");
 
-        (pending0, pending1) = fountain.pendingFees(ids);
+        (pending0, pending1) = fountain.untaken(ids);
         assertEq(pending0[0] + pending1[0], 0, "residual fees after take");
     }
 
@@ -401,14 +401,14 @@ contract FountainForkTest is ForkBase {
 
         uint256[] memory ids = new uint256[](1);
         ids[0] = 0;
-        (uint256[] memory pending0, uint256[] memory pending1) = fountain.pendingFees(ids);
+        (uint256[] memory pending0, uint256[] memory pending1) = fountain.untaken(ids);
         assertGt(pending0[0], 0, "fees accrued on currency0 (zeros)");
         assertEq(pending1[0], 0, "no fees on currency1 (token)");
 
         uint256 expected = pending0[0];
         uint256 before = IERC20(zeros).balanceOf(address(bot));
         bot.take(0);
-        assertEq(IERC20(zeros).balanceOf(address(bot)) - before, expected, "TAKER received pendingFees[0]");
+        assertEq(IERC20(zeros).balanceOf(address(bot)) - before, expected, "TAKER received untaken[0]");
     }
 
     function test_TakeBatchAcrossTwoPools() public {
@@ -436,7 +436,7 @@ contract FountainForkTest is ForkBase {
         ids[1] = 1;
         ids[2] = 2;
         ids[3] = 3;
-        (uint256[] memory pending0, uint256[] memory pending1) = fountain.pendingFees(ids);
+        (uint256[] memory pending0, uint256[] memory pending1) = fountain.untaken(ids);
         // Flip pool fees on currency0 (zeros), no-flip pool fees on currency1 (ffffff).
         uint256 expectedZeros = pending0[0] + pending0[1];
         uint256 expectedFfffff = pending1[2] + pending1[3];
@@ -458,7 +458,7 @@ contract FountainForkTest is ForkBase {
             "bot zeros delta matches flip-case pending0 total"
         );
 
-        (pending0, pending1) = fountain.pendingFees(ids);
+        (pending0, pending1) = fountain.untaken(ids);
         uint256 residual;
         for (uint256 i = 0; i < 4; i++) {
             residual += pending0[i] + pending1[i];

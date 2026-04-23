@@ -15,7 +15,7 @@ import {PoolKey} from "v4-core/types/PoolKey.sol";
  * @notice Thin factory that mints an ERC-20 pegged 1:1 against an original
  *         token and seats its entire supply as a single-tick segment in
  *         {FOUNTAIN}. All fee machinery — {Fountain.take},
- *         {Fountain.pendingFees}, {Fountain.taker} — lives on Fountain;
+ *         {Fountain.untaken}, {Fountain.taker} — lives on Fountain;
  *         Mimicoinage only records the mimic→position mapping and exposes
  *         the pool parameters needed to look up pool state.
  * @dev    The mimic token carries the original's decimals so the raw
@@ -61,7 +61,7 @@ contract Mimicoinage {
      * @notice The Fountain that holds each mimic's single-tick position
      *         and routes its swap fees to {Fountain.taker}. Callers use
      *         {positionIdOf} to resolve a mimic to its Fountain position
-     *         id for direct take / pendingFees queries.
+     *         id for direct take / untaken queries.
      */
     Fountain public immutable FOUNTAIN;
 

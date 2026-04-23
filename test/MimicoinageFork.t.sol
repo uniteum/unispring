@@ -193,7 +193,7 @@ contract MimicoinageForkTest is ForkBase {
     /**
      * @notice A swap accrues fees on the input side of the position; Fountain
      *         routes them to its taker (the bot) on {take}. Verifies both
-     *         the {Fountain.pendingFees} forecast and the actual transfer.
+     *         the {Fountain.untaken} forecast and the actual transfer.
      */
     function test_TakeRoutesFeesToTaker() public {
         // mimic sorts below ffffff → mimic is currency0, ffffff is currency1.
@@ -208,7 +208,7 @@ contract MimicoinageForkTest is ForkBase {
 
         uint256[] memory ids = new uint256[](1);
         ids[0] = positionId;
-        (uint256[] memory pending0, uint256[] memory pending1) = fountain.pendingFees(ids);
+        (uint256[] memory pending0, uint256[] memory pending1) = fountain.untaken(ids);
         assertEq(pending0[0], 0, "no fees should accrue on currency0 (mimic)");
         assertGt(pending1[0], 0, "fees should accrue on currency1 (ffffff) after a buy");
 
@@ -217,11 +217,9 @@ contract MimicoinageForkTest is ForkBase {
 
         bot.take(positionId);
 
-        assertEq(
-            IERC20(ffffff).balanceOf(address(bot)) - takerBefore, expected, "TAKER received != pendingFees forecast"
-        );
+        assertEq(IERC20(ffffff).balanceOf(address(bot)) - takerBefore, expected, "TAKER received != untaken forecast");
 
-        (pending0, pending1) = fountain.pendingFees(ids);
+        (pending0, pending1) = fountain.untaken(ids);
         assertEq(pending0[0], 0, "residual currency0 fees after take");
         assertEq(pending1[0], 0, "residual currency1 fees after take");
     }
@@ -252,7 +250,7 @@ contract MimicoinageForkTest is ForkBase {
         uint256[] memory ids = new uint256[](2);
         ids[0] = hiId;
         ids[1] = loId;
-        (uint256[] memory pending0, uint256[] memory pending1) = fountain.pendingFees(ids);
+        (uint256[] memory pending0, uint256[] memory pending1) = fountain.untaken(ids);
         assertGt(pending1[0], 0, "ffffff (currency1) fees should be pending on hi");
         assertGt(pending0[1], 0, "zeros (currency0) fees should be pending on lo");
 
@@ -264,7 +262,7 @@ contract MimicoinageForkTest is ForkBase {
         assertEq(IERC20(ffffff).balanceOf(address(bot)) - ffffffBefore, pending1[0], "bot ffffff delta != hi pending1");
         assertEq(IERC20(zeros).balanceOf(address(bot)) - zerosBefore, pending0[1], "bot zeros delta != lo pending0");
 
-        (pending0, pending1) = fountain.pendingFees(ids);
+        (pending0, pending1) = fountain.untaken(ids);
         assertEq(pending0[0] + pending1[0] + pending0[1] + pending1[1], 0, "residual fees after batch take");
     }
 

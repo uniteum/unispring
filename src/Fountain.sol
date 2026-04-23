@@ -338,7 +338,7 @@ contract Fountain is IUnlockCallback {
      *         `currency0`.
      * @param  ids Position ids to query. Reverts on any out-of-range id.
      */
-    function pendingFees(uint256[] calldata ids)
+    function untaken(uint256[] calldata ids)
         external
         view
         returns (uint256[] memory amounts0, uint256[] memory amounts1)
@@ -349,7 +349,7 @@ contract Fountain is IUnlockCallback {
         for (uint256 i = 0; i < ids.length; i++) {
             if (ids[i] >= length) revert UnknownPosition(ids[i]);
             Position storage p = positions[ids[i]];
-            (amounts0[i], amounts1[i]) = _pendingFees(p.key, p.tickLower, p.tickUpper);
+            (amounts0[i], amounts1[i]) = _untaken(p.key, p.tickLower, p.tickUpper);
         }
     }
 
@@ -477,7 +477,7 @@ contract Fountain is IUnlockCallback {
      *      Uniswap's feeGrowthInside delta formula and uses unchecked
      *      subtraction to handle X128 wraparound.
      */
-    function _pendingFees(PoolKey memory key, int24 tickLower, int24 tickUpper)
+    function _untaken(PoolKey memory key, int24 tickLower, int24 tickUpper)
         private
         view
         returns (uint256 amount0, uint256 amount1)
