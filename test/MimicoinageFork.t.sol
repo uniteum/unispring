@@ -40,7 +40,7 @@ interface IV4Quoter {
  * @notice Fork test against mainnet state. Deploys a fresh Fountain and a
  *         fresh Mimicoinage against the real PoolManagerLookup and Coinage
  *         factory, then launches mimics and reads the resulting pool
- *         state. Fee collection runs through {Fountain.collect} directly —
+ *         state. Fee take runs through {Fountain.take} directly —
  *         Mimicoinage is a thin wrapper and exposes only the
  *         mimic→position mapping needed to resolve ids.
  *
@@ -192,10 +192,10 @@ contract MimicoinageForkTest is ForkBase {
 
     /**
      * @notice A swap accrues fees on the input side of the position; Fountain
-     *         routes them to its taker (the bot) on {collect}. Verifies both
+     *         routes them to its taker (the bot) on {take}. Verifies both
      *         the {Fountain.pendingFees} forecast and the actual transfer.
      */
-    function test_CollectRoutesFeesToTaker() public {
+    function test_TakeRoutesFeesToTaker() public {
         // mimic sorts below ffffff → mimic is currency0, ffffff is currency1.
         // A zeroForOne=false swap spends currency1 (ffffff), so fees accrue on currency1.
         (IERC20Metadata mimic, uint256 positionId) = mimicoinage.launch(IERC20Metadata(ffffff), "mimicFF");
@@ -215,24 +215,24 @@ contract MimicoinageForkTest is ForkBase {
         uint256 expected = pending1[0];
         uint256 takerBefore = IERC20(ffffff).balanceOf(address(bot));
 
-        bot.collect(positionId);
+        bot.take(positionId);
 
         assertEq(
             IERC20(ffffff).balanceOf(address(bot)) - takerBefore, expected, "TAKER received != pendingFees forecast"
         );
 
         (pending0, pending1) = fountain.pendingFees(ids);
-        assertEq(pending0[0], 0, "residual currency0 fees after collect");
-        assertEq(pending1[0], 0, "residual currency1 fees after collect");
+        assertEq(pending0[0], 0, "residual currency0 fees after take");
+        assertEq(pending1[0], 0, "residual currency1 fees after take");
     }
 
     /**
-     * @notice Batch collect sweeps several mimic positions in one unlock. Two
+     * @notice Batch take sweeps several mimic positions in one unlock. Two
      *         mimics accrue fees on opposite currencies (ffffff as currency1
-     *         vs zeros as currency0); a single {Fountain.collect} pushes both
+     *         vs zeros as currency0); a single {Fountain.take} pushes both
      *         forecasts to the taker.
      */
-    function test_CollectBatchRoutesFeesToTaker() public {
+    function test_TakeBatchRoutesFeesToTaker() public {
         (IERC20Metadata hiMimic, uint256 hiId) = mimicoinage.launch(IERC20Metadata(ffffff), "mimicFF");
         (IERC20Metadata loMimic, uint256 loId) = mimicoinage.launch(IERC20Metadata(zeros), "mimicZZ");
 
@@ -259,13 +259,13 @@ contract MimicoinageForkTest is ForkBase {
         uint256 ffffffBefore = IERC20(ffffff).balanceOf(address(bot));
         uint256 zerosBefore = IERC20(zeros).balanceOf(address(bot));
 
-        bot.collectBatch(ids);
+        bot.takeBatch(ids);
 
         assertEq(IERC20(ffffff).balanceOf(address(bot)) - ffffffBefore, pending1[0], "bot ffffff delta != hi pending1");
         assertEq(IERC20(zeros).balanceOf(address(bot)) - zerosBefore, pending0[1], "bot zeros delta != lo pending0");
 
         (pending0, pending1) = fountain.pendingFees(ids);
-        assertEq(pending0[0] + pending1[0] + pending0[1] + pending1[1], 0, "residual fees after batch collect");
+        assertEq(pending0[0] + pending1[0] + pending0[1] + pending1[1], 0, "residual fees after batch take");
     }
 
     /**

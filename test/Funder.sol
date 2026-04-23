@@ -9,10 +9,10 @@ import {console} from "forge-std/console.sol";
  * @title Funder
  * @notice Test persona that is both the {Fountain.taker} of its own clone
  *         (fee recipient) and the party that pokes {Fountain.fund} and
- *         {Fountain.collect}. Fund is permissionless so these roles do
+ *         {Fountain.take}. Fund is permissionless so these roles do
  *         not have to coincide, but fusing them here keeps the flow
  *         simple: `bot.fund(...)` approves + funds, and fees land on
- *         `bot`'s balance on `bot.collect(...)`.
+ *         `bot`'s balance on `bot.take(...)`.
  */
 contract Funder {
     string public name;
@@ -48,16 +48,16 @@ contract Funder {
     }
 
     /**
-     * @notice Collect a single position's fees through the Fountain.
+     * @notice Take a single position's fees through the Fountain.
      */
-    function collect(uint256 id) external {
-        fountain.collect(id);
+    function take(uint256 id) external {
+        fountain.take(id);
     }
 
     /**
-     * @notice Batch-collect several positions in one unlock.
+     * @notice Batch-take several positions in one unlock.
      */
-    function collectBatch(uint256[] memory ids) external {
-        fountain.collect(ids);
+    function takeBatch(uint256[] memory ids) external {
+        fountain.take(ids);
     }
 }

@@ -20,7 +20,7 @@ import {ModifyLiquidityParams} from "v4-core/types/PoolOperation.sol";
 
 /**
  * @dev Record of a single Fountain-owned liquidity position. Stored in the
- *      {Fountain.positions} registry so {Fountain.collect} can reconstruct
+ *      {Fountain.positions} registry so {Fountain.take} can reconstruct
  *      the position without re-deriving it from call inputs.
  */
 struct Position {
@@ -39,7 +39,7 @@ interface IFountainActions {
     function fund(PoolKey calldata key, int24[] calldata userTicks, uint256[] calldata amounts, bool tokenIsCurrency0)
         external;
 
-    function collect(uint256[] calldata ids) external;
+    function take(uint256[] calldata ids) external;
 }
 
 /**
@@ -57,7 +57,7 @@ interface IFountainActions {
  *         {taker} in storage. Each clone's taker is the `msg.sender` that
  *         called {make}; one clone exists per taker address.
  * @dev    Positions are permanent — no function on this contract decreases
- *         or unwinds liquidity. {collect} forwards accrued swap fees to the
+ *         or unwinds liquidity. {take} forwards accrued swap fees to the
  *         clone's {taker}.
  * @dev    Fixed pool parameters: {FEE} = 100 (0.01%), no hooks. Tick
  *         spacing is caller-specified so the same Fountain can shape
@@ -97,7 +97,7 @@ contract Fountain is IUnlockCallback {
     IPoolManager public immutable POOL_MANAGER;
 
     /**
-     * @notice Recipient of swap fees collected by {collect}. Has no other
+     * @notice Recipient of swap fees taken by {take}. Has no other
      *         authority: cannot decrease liquidity, cannot unwind positions,
      *         cannot pause. Set per-clone in {zzInit} to the `msg.sender`
      *         that called {make}; zero on the prototype.
@@ -131,9 +131,9 @@ contract Fountain is IUnlockCallback {
     );
 
     /**
-     * @notice Emitted when {collect} forwards fees for one position to {taker}.
+     * @notice Emitted when {take} forwards fees for one position to {taker}.
      */
-    event Collected(uint256 indexed positionId, PoolId indexed poolId, uint256 amount0, uint256 amount1);
+    event Taken(uint256 indexed positionId, PoolId indexed poolId, uint256 amount0, uint256 amount1);
 
     /**
      * @notice Emitted when {make} deploys a new clone.
@@ -195,7 +195,7 @@ contract Fountain is IUnlockCallback {
     error PoolPreInitialized(uint160 sqrtPriceX96);
 
     /**
-     * @notice Thrown when {collect} references a position index that does not exist.
+     * @notice Thrown when {take} references a position index that does not exist.
      */
     error UnknownPosition(uint256 positionId);
 
@@ -289,22 +289,22 @@ contract Fountain is IUnlockCallback {
     }
 
     /**
-     * @notice Collect accrued swap fees for a single position and forward
+     * @notice Take accrued swap fees for a single position and forward
      *         them to {taker}.
      */
-    function collect(uint256 positionId) external {
+    function take(uint256 positionId) external {
         uint256[] memory ids = new uint256[](1);
         ids[0] = positionId;
-        _collectMany(ids);
+        _takeMany(ids);
     }
 
     /**
-     * @notice Collect accrued swap fees for several positions in a single
+     * @notice Take accrued swap fees for several positions in a single
      *         unlock and forward them to {taker}. Reverts with
      *         {UnknownPosition} if any id is out of range.
      */
-    function collect(uint256[] calldata ids) external {
-        _collectMany(ids);
+    function take(uint256[] calldata ids) external {
+        _takeMany(ids);
     }
 
     /**
@@ -331,8 +331,8 @@ contract Fountain is IUnlockCallback {
     }
 
     /**
-     * @notice Return uncollected swap fees owed to each referenced position.
-     *         Values match what {collect} would transfer to {taker} if
+     * @notice Return untaken swap fees owed to each referenced position.
+     *         Values match what {take} would transfer to {taker} if
      *         called now. Amounts are ordered by each position's pool
      *         currencies: `amounts0[i]` is for position `ids[i]`'s
      *         `currency0`.
@@ -356,7 +356,7 @@ contract Fountain is IUnlockCallback {
     /**
      * @inheritdoc IUnlockCallback
      * @dev Selector-dispatches on {IFountainActions}: either funds a batch
-     *      of positions or iterates a batch of ids for fee collection.
+     *      of positions or iterates a batch of ids for fee take.
      */
     function unlockCallback(bytes calldata data) external returns (bytes memory) {
         if (msg.sender != address(POOL_MANAGER)) revert InvalidUnlockCaller();
@@ -365,11 +365,11 @@ contract Fountain is IUnlockCallback {
             (PoolKey memory key, int24[] memory userTicks, uint256[] memory amounts, bool tokenIsCurrency0) =
                 abi.decode(data[4:], (PoolKey, int24[], uint256[], bool));
             _fundAll(key, userTicks, amounts, tokenIsCurrency0);
-        } else if (selector == IFountainActions.collect.selector) {
+        } else if (selector == IFountainActions.take.selector) {
             uint256[] memory ids = abi.decode(data[4:], (uint256[]));
             for (uint256 i = 0; i < ids.length; i++) {
                 Position storage p = positions[ids[i]];
-                _collect(ids[i], p.key, p.tickLower, p.tickUpper);
+                _take(ids[i], p.key, p.tickLower, p.tickUpper);
             }
         } else {
             revert UnknownSelector(selector);
@@ -379,15 +379,15 @@ contract Fountain is IUnlockCallback {
 
     /**
      * @dev Validate ids against the registry and dispatch a single unlock
-     *      that collects all of them.
+     *      that takes all of them.
      */
-    function _collectMany(uint256[] memory ids) private {
+    function _takeMany(uint256[] memory ids) private {
         if (ids.length == 0) return;
         uint256 length = positions.length;
         for (uint256 i = 0; i < ids.length; i++) {
             if (ids[i] >= length) revert UnknownPosition(ids[i]);
         }
-        POOL_MANAGER.unlock(abi.encodeCall(IFountainActions.collect, (ids)));
+        POOL_MANAGER.unlock(abi.encodeCall(IFountainActions.take, (ids)));
     }
 
     /**
@@ -452,10 +452,10 @@ contract Fountain is IUnlockCallback {
     }
 
     /**
-     * @dev Collect fees from one Fountain-owned position via a zero-delta
+     * @dev Take fees from one Fountain-owned position via a zero-delta
      *      modifyLiquidity and forward them to {taker}.
      */
-    function _collect(uint256 id, PoolKey memory key, int24 tickLower, int24 tickUpper) private {
+    function _take(uint256 id, PoolKey memory key, int24 tickLower, int24 tickUpper) private {
         (, BalanceDelta feesAccrued) = POOL_MANAGER.modifyLiquidity(
             key,
             ModifyLiquidityParams({tickLower: tickLower, tickUpper: tickUpper, liquidityDelta: 0, salt: bytes32(0)}),
@@ -469,11 +469,11 @@ contract Fountain is IUnlockCallback {
         uint256 amount1 = fee1 > 0 ? uint256(uint128(fee1)) : 0;
         if (amount0 > 0) POOL_MANAGER.take(key.currency0, taker, amount0);
         if (amount1 > 0) POOL_MANAGER.take(key.currency1, taker, amount1);
-        emit Collected(id, key.toId(), amount0, amount1);
+        emit Taken(id, key.toId(), amount0, amount1);
     }
 
     /**
-     * @dev Compute uncollected fees for a Fountain-owned position. Mirrors
+     * @dev Compute untaken fees for a Fountain-owned position. Mirrors
      *      Uniswap's feeGrowthInside delta formula and uses unchecked
      *      subtraction to handle X128 wraparound.
      */

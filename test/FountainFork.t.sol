@@ -21,7 +21,7 @@ import {PoolKey} from "v4-core/types/PoolKey.sol";
  *         the real PoolManager resolved through the Uniteum
  *         `PoolManagerLookup`, then exercises funding, pre-initialization
  *         guards, validation, the position registry, fee accrual, and
- *         collection across both tick-flip orientations and a native-ETH
+ *         take across both tick-flip orientations and a native-ETH
  *         quote.
  *
  *         The {TestToken} deployed in setUp sits between the `zeros` (low)
@@ -335,7 +335,7 @@ contract FountainForkTest is ForkBase {
     }
 
     // ----------------------------------------------------------------------
-    // Pending fees + collect
+    // Pending fees + take
     // ----------------------------------------------------------------------
 
     function test_PendingFeesZeroBeforeSwap() public {
@@ -354,7 +354,7 @@ contract FountainForkTest is ForkBase {
         fountain.pendingFees(ids);
     }
 
-    function test_CollectSinglePosition_NoFlipCase() public {
+    function test_TakeSinglePosition_NoFlipCase() public {
         // token < ffffff (no flip): token=currency0. Buyer spends currency1
         // (ffffff) to receive currency0 (token) → zeroForOne=false.
         // Fees accrue on currency1 (ffffff).
@@ -377,14 +377,14 @@ contract FountainForkTest is ForkBase {
 
         uint256 expected = pending1[0];
         uint256 before = IERC20(ffffff).balanceOf(address(bot));
-        bot.collect(0);
-        assertEq(IERC20(ffffff).balanceOf(address(bot)) - before, expected, "OWNER received pendingFees[1]");
+        bot.take(0);
+        assertEq(IERC20(ffffff).balanceOf(address(bot)) - before, expected, "TAKER received pendingFees[1]");
 
         (pending0, pending1) = fountain.pendingFees(ids);
-        assertEq(pending0[0] + pending1[0], 0, "residual fees after collect");
+        assertEq(pending0[0] + pending1[0], 0, "residual fees after take");
     }
 
-    function test_CollectSinglePosition_FlipCase() public {
+    function test_TakeSinglePosition_FlipCase() public {
         // token > zeros (flip): token=currency1. Buyer spends currency0
         // (zeros) to receive currency1 (token) → zeroForOne=true. Fees
         // accrue on currency0 (zeros).
@@ -407,12 +407,12 @@ contract FountainForkTest is ForkBase {
 
         uint256 expected = pending0[0];
         uint256 before = IERC20(zeros).balanceOf(address(bot));
-        bot.collect(0);
-        assertEq(IERC20(zeros).balanceOf(address(bot)) - before, expected, "OWNER received pendingFees[0]");
+        bot.take(0);
+        assertEq(IERC20(zeros).balanceOf(address(bot)) - before, expected, "TAKER received pendingFees[0]");
     }
 
-    function test_CollectBatchAcrossTwoPools() public {
-        // Batch collects across a flip-case pool (zeros quote) and a no-flip
+    function test_TakeBatchAcrossTwoPools() public {
+        // Batch takes across a flip-case pool (zeros quote) and a no-flip
         // pool (ffffff quote) in one unlock.
         uint256 flipFirst = _fundTwoFlip(); // ids 0, 1 against zeros
         uint256 noFlipFirst = _fundTwoNoFlip(); // ids 2, 3 against ffffff
@@ -445,7 +445,7 @@ contract FountainForkTest is ForkBase {
 
         uint256 ffffffBefore = IERC20(ffffff).balanceOf(address(bot));
         uint256 zerosBefore = IERC20(zeros).balanceOf(address(bot));
-        bot.collectBatch(ids);
+        bot.takeBatch(ids);
 
         assertEq(
             IERC20(ffffff).balanceOf(address(bot)) - ffffffBefore,
@@ -463,28 +463,28 @@ contract FountainForkTest is ForkBase {
         for (uint256 i = 0; i < 4; i++) {
             residual += pending0[i] + pending1[i];
         }
-        assertEq(residual, 0, "no residual fees after batch collect");
+        assertEq(residual, 0, "no residual fees after batch take");
     }
 
-    function test_CollectRevertsOnUnknownPosition() public {
+    function test_TakeRevertsOnUnknownPosition() public {
         vm.expectRevert(abi.encodeWithSelector(Fountain.UnknownPosition.selector, uint256(99)));
-        bot.collect(99);
+        bot.take(99);
     }
 
-    function test_CollectBatchRevertsIfAnyIdUnknown() public {
+    function test_TakeBatchRevertsIfAnyIdUnknown() public {
         _fundTwoFlip();
         uint256[] memory ids = new uint256[](3);
         ids[0] = 0;
         ids[1] = 99;
         ids[2] = 1;
         vm.expectRevert(abi.encodeWithSelector(Fountain.UnknownPosition.selector, uint256(99)));
-        bot.collectBatch(ids);
+        bot.takeBatch(ids);
     }
 
-    function test_EmptyCollectBatchIsNoop() public {
+    function test_EmptyTakeBatchIsNoop() public {
         vm.recordLogs();
-        bot.collectBatch(new uint256[](0));
-        assertEq(vm.getRecordedLogs().length, 0, "empty collectBatch emits nothing");
+        bot.takeBatch(new uint256[](0));
+        assertEq(vm.getRecordedLogs().length, 0, "empty takeBatch emits nothing");
     }
 
     // ----------------------------------------------------------------------

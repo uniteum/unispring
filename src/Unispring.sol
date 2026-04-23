@@ -12,10 +12,10 @@ import {IERC20} from "ierc20/IERC20.sol";
  *         supplied by callers. The hub's own ETH pool is seated single-sided
  *         by {zzInit}; spoke pools are seated single-sided by {fund}.
  * @dev    All V4 plumbing — unlock, modifyLiquidity, liquidity math, fee
- *         collection — lives on {FOUNTAIN}. Unispring only mints/tracks
+ *         take — lives on {FOUNTAIN}. Unispring only mints/tracks
  *         the clone-per-hub key, pre-approves {FOUNTAIN} against pulled
  *         tokens, and delegates to {Fountain.fund}. Pools inherit
- *         {Fountain.FEE} (0.01%) and accrued fees flow to {Fountain.OWNER}.
+ *         {Fountain.FEE} (0.01%) and accrued fees flow to {Fountain.taker}.
  * @dev    Ticks: callers pass V4-native `(tickLower, tickUpper)` in the
  *         log_1.0001(currency1/currency0) convention. For the hub pool the
  *         hub sorts above ETH (currency1), so Unispring translates into
