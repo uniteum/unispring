@@ -1,1 +1,11 @@
-lib/crucible/.mcp.json
+{
+  "mcpServers": {
+    "etherscan": {
+      "type": "http",
+      "url": "https://mcp.etherscan.io/mcp",
+      "headers": {
+        "Authorization": "Bearer ${ETHERSCAN_API_KEY}"
+      }
+    }
+  }
+}
