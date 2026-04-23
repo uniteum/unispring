@@ -22,7 +22,7 @@ contract UnispringProto is Script {
         Fountain fountain = Fountain(vm.envAddress("Fountain"));
 
         console2.log("fountain:", address(fountain));
-        console2.log("owner   :", fountain.OWNER());
+        console2.log("owner   :", fountain.owner());
 
         // Compute the deterministic prototype CREATE2 address.
         bytes memory initCode = abi.encodePacked(type(Unispring).creationCode, abi.encode(fountain));

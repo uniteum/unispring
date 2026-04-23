@@ -26,7 +26,7 @@ contract MimicoinageDeploy is Script {
 
         console2.log("coinage :", address(coinage));
         console2.log("fountain:", address(fountain));
-        console2.log("owner   :", fountain.OWNER());
+        console2.log("owner   :", fountain.owner());
 
         bytes memory initCode = abi.encodePacked(type(Mimicoinage).creationCode, abi.encode(coinage, fountain));
         address predicted = vm.computeCreate2Address(bytes32(0), keccak256(initCode), NICK);

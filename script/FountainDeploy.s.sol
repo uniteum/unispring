@@ -6,12 +6,12 @@ import {IAddressLookup} from "ilookup/IAddressLookup.sol";
 import {Script, console2} from "forge-std/Script.sol";
 
 /**
- * @notice Deploy the Fountain singleton via Nick's CREATE2 deployer.
+ * @notice Deploy the Fountain prototype via Nick's CREATE2 deployer.
+ *         The prototype is a Bitsy factory: clones are deployed per-caller
+ *         via {Fountain.make}. Only the prototype is deployed here.
  * @dev    Configuration comes from environment variables:
  *           PoolManagerLookup — lookup resolving the chain-local Uniswap V4
  *                               PoolManager.
- *           FountainOwner     — recipient of swap fees collected from every
- *                               Fountain-seated position.
  *
  * Usage:
  * forge script script/FountainDeploy.s.sol -f $chain --private-key $tx_key --broadcast --verify --delay 10 --retries 10
@@ -21,13 +21,11 @@ contract FountainDeploy is Script {
 
     function run() external {
         IAddressLookup poolManagerLookup = IAddressLookup(vm.envAddress("PoolManagerLookup"));
-        address owner = vm.envAddress("FountainOwner");
 
         console2.log("poolManagerLookup:", address(poolManagerLookup));
         console2.log("poolManager      :", poolManagerLookup.value());
-        console2.log("owner            :", owner);
 
-        bytes memory initCode = abi.encodePacked(type(Fountain).creationCode, abi.encode(poolManagerLookup, owner));
+        bytes memory initCode = abi.encodePacked(type(Fountain).creationCode, abi.encode(poolManagerLookup));
         address predicted = vm.computeCreate2Address(bytes32(0), keccak256(initCode), NICK);
         console2.log("predicted        :", predicted);
 

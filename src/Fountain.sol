@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
+import {Clones} from "clones/Clones.sol";
 import {IAddressLookup} from "ilookup/IAddressLookup.sol";
 import {IERC20} from "ierc20/IERC20.sol";
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
@@ -51,9 +52,13 @@ interface IFountainActions {
  *         segment; Fountain flips and negates into V4-native tick ranges
  *         when the token sorts above the quote (forcing it into
  *         `currency1`), then funds every segment in a single unlock.
+ * @dev    Bitsy factory: the prototype is permissionless and governance-free;
+ *         clones are deployed per-caller via {make} and carry their own
+ *         {owner} in storage. Each clone's owner is the `msg.sender` that
+ *         called {make}; one clone exists per owner address.
  * @dev    Positions are permanent — no function on this contract decreases
  *         or unwinds liquidity. {collect} forwards accrued swap fees to the
- *         immutable {OWNER}.
+ *         clone's {owner}.
  * @dev    Fixed pool parameters: {FEE} = 100 (0.01%), no hooks. Tick
  *         spacing is caller-specified so the same Fountain can shape
  *         curves in pools of different granularity.
@@ -71,7 +76,7 @@ interface IFountainActions {
 contract Fountain is IUnlockCallback {
     using StateLibrary for IPoolManager;
 
-    string public constant VERSION = "0.2.0";
+    string public constant VERSION = "0.3.0";
 
     /**
      * @notice Pool fee in hundredths of a bip (0.01%).
@@ -79,17 +84,25 @@ contract Fountain is IUnlockCallback {
     uint24 public constant FEE = 100;
 
     /**
+     * @notice The prototype instance. On clones, this points back to the
+     *         original deployment.
+     */
+    Fountain public immutable PROTO = this;
+
+    /**
      * @notice The Uniswap V4 PoolManager, resolved from the `IAddressLookup`
-     *         supplied at construction.
+     *         supplied at construction. Shared by the prototype and every
+     *         clone (baked into the prototype's runtime bytecode).
      */
     IPoolManager public immutable POOL_MANAGER;
 
     /**
      * @notice Recipient of swap fees collected by {collect}. Has no other
      *         authority: cannot decrease liquidity, cannot unwind positions,
-     *         cannot pause. Set at construction and immutable.
+     *         cannot pause. Set per-clone in {zzInit} to the `msg.sender`
+     *         that called {make}; zero on the prototype.
      */
-    address public immutable OWNER;
+    address public owner;
 
     /**
      * @notice All positions seated by this contract, in creation order.
@@ -118,9 +131,14 @@ contract Fountain is IUnlockCallback {
     );
 
     /**
-     * @notice Emitted when {collect} forwards fees for one position to {OWNER}.
+     * @notice Emitted when {collect} forwards fees for one position to {owner}.
      */
     event Collected(uint256 indexed positionId, PoolId indexed poolId, uint256 amount0, uint256 amount1);
+
+    /**
+     * @notice Emitted when {make} deploys a new clone.
+     */
+    event Made(address indexed owner, Fountain indexed home);
 
     /**
      * @notice Thrown when {unlockCallback} is invoked by anyone other than the PoolManager.
@@ -182,13 +200,17 @@ contract Fountain is IUnlockCallback {
     error UnknownPosition(uint256 positionId);
 
     /**
-     * @notice Construct the Fountain.
-     * @param  poolManagerLookup Lookup for the chain-local Uniswap V4 PoolManager.
-     * @param  owner             Recipient of collected swap fees.
+     * @notice Thrown when {zzInit} is called by anyone other than the prototype,
+     *         or when {make} is called on a clone instead of the prototype.
      */
-    constructor(IAddressLookup poolManagerLookup, address owner) {
+    error Unauthorized();
+
+    /**
+     * @notice Construct the Fountain prototype.
+     * @param  poolManagerLookup Lookup for the chain-local Uniswap V4 PoolManager.
+     */
+    constructor(IAddressLookup poolManagerLookup) {
         POOL_MANAGER = IPoolManager(poolManagerLookup.value());
-        OWNER = owner;
     }
 
     /**
@@ -268,7 +290,7 @@ contract Fountain is IUnlockCallback {
 
     /**
      * @notice Collect accrued swap fees for a single position and forward
-     *         them to {OWNER}.
+     *         them to {owner}.
      */
     function collect(uint256 positionId) external {
         uint256[] memory ids = new uint256[](1);
@@ -278,7 +300,7 @@ contract Fountain is IUnlockCallback {
 
     /**
      * @notice Collect accrued swap fees for several positions in a single
-     *         unlock and forward them to {OWNER}. Reverts with
+     *         unlock and forward them to {owner}. Reverts with
      *         {UnknownPosition} if any id is out of range.
      */
     function collect(uint256[] calldata ids) external {
@@ -310,7 +332,7 @@ contract Fountain is IUnlockCallback {
 
     /**
      * @notice Return uncollected swap fees owed to each referenced position.
-     *         Values match what {collect} would transfer to {OWNER} if
+     *         Values match what {collect} would transfer to {owner} if
      *         called now. Amounts are ordered by each position's pool
      *         currencies: `amounts0[i]` is for position `ids[i]`'s
      *         `currency0`.
@@ -431,7 +453,7 @@ contract Fountain is IUnlockCallback {
 
     /**
      * @dev Collect fees from one Fountain-owned position via a zero-delta
-     *      modifyLiquidity and forward them to {OWNER}.
+     *      modifyLiquidity and forward them to {owner}.
      */
     function _collect(uint256 id, PoolKey memory key, int24 tickLower, int24 tickUpper) private {
         (, BalanceDelta feesAccrued) = POOL_MANAGER.modifyLiquidity(
@@ -445,8 +467,8 @@ contract Fountain is IUnlockCallback {
         uint256 amount0 = fee0 > 0 ? uint256(uint128(fee0)) : 0;
         // forge-lint: disable-next-line(unsafe-typecast)
         uint256 amount1 = fee1 > 0 ? uint256(uint128(fee1)) : 0;
-        if (amount0 > 0) POOL_MANAGER.take(key.currency0, OWNER, amount0);
-        if (amount1 > 0) POOL_MANAGER.take(key.currency1, OWNER, amount1);
+        if (amount0 > 0) POOL_MANAGER.take(key.currency0, owner, amount0);
+        if (amount1 > 0) POOL_MANAGER.take(key.currency1, owner, amount1);
         emit Collected(id, key.toId(), amount0, amount1);
     }
 
@@ -492,5 +514,47 @@ contract Fountain is IUnlockCallback {
         // safe: bounds checked on the line above.
         // forge-lint: disable-next-line(unsafe-typecast)
         return uint128(x);
+    }
+
+    /**
+     * @notice Predict the deterministic address of the Fountain owned by
+     *         `owner_`, without deploying.
+     * @param  owner_ The address that would own the Fountain.
+     * @return exists True iff the Fountain has already been deployed.
+     * @return home   The predicted (or actual, if `exists`) clone address.
+     * @return salt   The CREATE2 salt used for the clone.
+     */
+    function made(address owner_) public view returns (bool exists, address home, bytes32 salt) {
+        salt = keccak256(abi.encode(owner_));
+        home = Clones.predictDeterministicAddress(address(PROTO), salt, address(PROTO));
+        exists = home.code.length > 0;
+    }
+
+    /**
+     * @notice Deploy (or return) the Fountain owned by `msg.sender`. One
+     *         Fountain exists per owner address; repeated calls return the
+     *         same clone.
+     * @dev    Must be called on the prototype. Calling on a clone reverts
+     *         with {Unauthorized} — `msg.sender` semantics cannot be
+     *         preserved across clone forwarding.
+     */
+    function make() external returns (Fountain instance) {
+        if (this != PROTO) revert Unauthorized();
+        (bool exists, address home, bytes32 salt) = made(msg.sender);
+        instance = Fountain(home);
+        if (!exists) {
+            Clones.cloneDeterministic(address(PROTO), salt, 0);
+            instance.zzInit(msg.sender);
+            emit Made(msg.sender, instance);
+        }
+    }
+
+    /**
+     * @notice Initializer called by the prototype on a freshly deployed
+     *         clone. Reverts with {Unauthorized} if called by anyone else.
+     */
+    function zzInit(address owner_) public {
+        if (msg.sender != address(PROTO)) revert Unauthorized();
+        owner = owner_;
     }
 }

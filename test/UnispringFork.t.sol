@@ -40,7 +40,9 @@ contract UnispringForkTest is ForkBase {
         super.setUp();
 
         bot = new Funder("bot");
-        fountain = new Fountain(IAddressLookup(PoolManagerLookup), address(bot));
+        Fountain fountainProto = new Fountain(IAddressLookup(PoolManagerLookup));
+        bot.makeFountain(fountainProto);
+        fountain = bot.fountain();
         proto = new Unispring(fountain);
 
         require(ffffff.code.length > 0, "ffffff lepton missing at forked block");
