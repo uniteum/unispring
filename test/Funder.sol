@@ -7,7 +7,7 @@ import {console} from "forge-std/console.sol";
 
 /**
  * @title Funder
- * @notice Test persona that is both the {Fountain.owner} of its own clone
+ * @notice Test persona that is both the {Fountain.taker} of its own clone
  *         (fee recipient) and the party that pokes {Fountain.fund} and
  *         {Fountain.collect}. Fund is permissionless so these roles do
  *         not have to coincide, but fusing them here keeps the flow
@@ -25,7 +25,7 @@ contract Funder {
 
     /**
      * @notice Deploy this Funder's Fountain clone via the prototype. The
-     *         clone's {Fountain.owner} is set to this contract. Called
+     *         clone's {Fountain.taker} is set to this contract. Called
      *         once from test `setUp`.
      */
     function makeFountain(Fountain proto) external {

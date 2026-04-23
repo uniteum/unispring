@@ -65,7 +65,7 @@ contract FountainForkTest is ForkBase {
     // ----------------------------------------------------------------------
 
     function test_ConstructorRegistersImmutables() public view {
-        assertEq(fountain.owner(), address(bot), "owner set at make");
+        assertEq(fountain.taker(), address(bot), "taker set at make");
         assertGt(address(fountain.POOL_MANAGER()).code.length, 0, "POOL_MANAGER resolves to live code");
         assertEq(fountain.FEE(), uint24(100), "FEE constant");
     }

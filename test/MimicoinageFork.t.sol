@@ -192,10 +192,10 @@ contract MimicoinageForkTest is ForkBase {
 
     /**
      * @notice A swap accrues fees on the input side of the position; Fountain
-     *         routes them to its owner (the bot) on {collect}. Verifies both
+     *         routes them to its taker (the bot) on {collect}. Verifies both
      *         the {Fountain.pendingFees} forecast and the actual transfer.
      */
-    function test_CollectRoutesFeesToOwner() public {
+    function test_CollectRoutesFeesToTaker() public {
         // mimic sorts below ffffff → mimic is currency0, ffffff is currency1.
         // A zeroForOne=false swap spends currency1 (ffffff), so fees accrue on currency1.
         (IERC20Metadata mimic, uint256 positionId) = mimicoinage.launch(IERC20Metadata(ffffff), "mimicFF");
@@ -213,12 +213,12 @@ contract MimicoinageForkTest is ForkBase {
         assertGt(pending1[0], 0, "fees should accrue on currency1 (ffffff) after a buy");
 
         uint256 expected = pending1[0];
-        uint256 ownerBefore = IERC20(ffffff).balanceOf(address(bot));
+        uint256 takerBefore = IERC20(ffffff).balanceOf(address(bot));
 
         bot.collect(positionId);
 
         assertEq(
-            IERC20(ffffff).balanceOf(address(bot)) - ownerBefore, expected, "OWNER received != pendingFees forecast"
+            IERC20(ffffff).balanceOf(address(bot)) - takerBefore, expected, "TAKER received != pendingFees forecast"
         );
 
         (pending0, pending1) = fountain.pendingFees(ids);
@@ -230,9 +230,9 @@ contract MimicoinageForkTest is ForkBase {
      * @notice Batch collect sweeps several mimic positions in one unlock. Two
      *         mimics accrue fees on opposite currencies (ffffff as currency1
      *         vs zeros as currency0); a single {Fountain.collect} pushes both
-     *         forecasts to the owner.
+     *         forecasts to the taker.
      */
-    function test_CollectBatchRoutesFeesToOwner() public {
+    function test_CollectBatchRoutesFeesToTaker() public {
         (IERC20Metadata hiMimic, uint256 hiId) = mimicoinage.launch(IERC20Metadata(ffffff), "mimicFF");
         (IERC20Metadata loMimic, uint256 loId) = mimicoinage.launch(IERC20Metadata(zeros), "mimicZZ");
 
