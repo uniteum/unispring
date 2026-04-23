@@ -31,9 +31,9 @@ contract NeutrinoSource {
     NeutrinoSource public immutable PROTO;
 
     /**
-     * @notice The Coinage prototype used to create hub and spoke tokens.
+     * @notice The Unispring prototype used to create fair-launch pools.
      */
-    ICoinage public immutable COINAGE;
+    Unispring public immutable UNISPRING;
 
     /**
      * @notice The NeutrinoChannel prototype cloned per tick range so each range
@@ -42,9 +42,9 @@ contract NeutrinoSource {
     NeutrinoChannel public immutable CHANNEL;
 
     /**
-     * @notice The Unispring prototype used to create fair-launch pools.
+     * @notice The Coinage prototype used to create hub and spoke tokens.
      */
-    Unispring public immutable UNISPRING;
+    ICoinage public immutable COINAGE;
 
     /**
      * @notice The Unispring clone for this clone's hub token, set by {zzInit}.
@@ -75,15 +75,15 @@ contract NeutrinoSource {
 
     /**
      * @notice Construct the prototype.
-     * @param coinage   The Coinage prototype.
-     * @param channel   The NeutrinoChannel prototype.
      * @param unispring The Unispring prototype.
+     * @param channel   The NeutrinoChannel prototype.
+     * @param coinage   The Coinage prototype.
      */
-    constructor(ICoinage coinage, NeutrinoChannel channel, Unispring unispring) {
+    constructor(Unispring unispring, NeutrinoChannel channel, ICoinage coinage) {
         PROTO = this;
-        COINAGE = coinage;
-        CHANNEL = channel;
         UNISPRING = unispring;
+        CHANNEL = channel;
+        COINAGE = coinage;
     }
 
     // ---- Bitsy factory ----

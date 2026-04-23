@@ -53,17 +53,17 @@ contract Mimicoinage {
     string public constant SUFFIX = "x1";
 
     /**
-     * @notice The Coinage factory used to mint the mimic ERC-20.
-     */
-    ICoinage public immutable COINAGE;
-
-    /**
      * @notice The Fountain that holds each mimic's single-tick position
      *         and routes its swap fees to {Fountain.taker}. Callers use
      *         {positionIdOf} to resolve a mimic to its Fountain position
      *         id for direct take / untaken queries.
      */
     Fountain public immutable FOUNTAIN;
+
+    /**
+     * @notice The Coinage factory used to mint the mimic ERC-20.
+     */
+    ICoinage public immutable COINAGE;
 
     /**
      * @notice Original token paired with each mimic, indexed by the mimic
@@ -100,13 +100,13 @@ contract Mimicoinage {
 
     /**
      * @notice Construct the singleton factory.
-     * @param  coinage  The Coinage factory used to mint mimics.
      * @param  fountain The Fountain that will hold mimic positions and
      *                  forward their swap fees.
+     * @param  coinage  The Coinage factory used to mint mimics.
      */
-    constructor(ICoinage coinage, Fountain fountain) {
-        COINAGE = coinage;
+    constructor(Fountain fountain, ICoinage coinage) {
         FOUNTAIN = fountain;
+        COINAGE = coinage;
     }
 
     /**

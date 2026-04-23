@@ -31,7 +31,7 @@ contract NeutrinoSourceProto is Script {
 
         // Compute the deterministic prototype CREATE2 address.
         bytes memory initCode =
-            abi.encodePacked(type(NeutrinoSource).creationCode, abi.encode(coinage, channel, unispring));
+            abi.encodePacked(type(NeutrinoSource).creationCode, abi.encode(unispring, channel, coinage));
         address predictedProto = vm.computeCreate2Address(bytes32(0), keccak256(initCode), NICK);
         console2.log("predicted proto:", predictedProto);
 

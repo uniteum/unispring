@@ -64,7 +64,7 @@ contract MimicoinageForkTest is ForkBase {
         Fountain proto = new Fountain(IAddressLookup(PoolManagerLookup));
         bot.makeFountain(proto);
         fountain = bot.fountain();
-        mimicoinage = new Mimicoinage(Coinage(ICoinage), fountain);
+        mimicoinage = new Mimicoinage(fountain, Coinage(ICoinage));
         router = new SwapRouter(fountain.POOL_MANAGER());
     }
 
