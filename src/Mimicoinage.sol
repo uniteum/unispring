@@ -67,34 +67,34 @@ contract Mimicoinage {
 
     /**
      * @notice Original token paired with each mimic, indexed by the mimic
-     *         token address. Populated by {launch}; zero for unknown mimics.
+     *         token address. Populated by {mimic}; zero for unknown mimics.
      */
     mapping(IERC20 => IERC20) public originalOf;
 
     /**
      * @notice Fountain position id backing each mimic, indexed by the mimic
-     *         token address. Populated by {launch}; meaningful only for
+     *         token address. Populated by {mimic}; meaningful only for
      *         addresses in {originalOf}.
      */
     mapping(IERC20 => uint256) public positionIdOf;
 
     /**
-     * @notice All mimics launched by this factory, in launch order. The
+     * @notice All mimics minted by this factory, in mint order. The
      *         auto-generated getter returns a single element by index; use
      *         {mimicsCount} and {mimicsRange} for bulk reads.
      */
     IERC20Metadata[] public mimics;
 
     /**
-     * @notice Emitted when a mimic token is launched.
+     * @notice Emitted when a mimic token is minted.
      */
-    event Launch(
+    event Mimicked(
         IERC20Metadata indexed mimic, IERC20Metadata indexed original, PoolId indexed poolId, uint256 positionId
     );
 
     /**
      * @notice Thrown when {poolKeyOf} or {poolIdOf} is called with a mimic
-     *         this factory did not launch.
+     *         this factory did not mint.
      */
     error UnknownMimic(IERC20 mimic);
 
@@ -110,7 +110,7 @@ contract Mimicoinage {
     }
 
     /**
-     * @notice The number of mimics launched by this factory.
+     * @notice The number of mimics minted by this factory.
      */
     function mimicsCount() external view returns (uint256) {
         return mimics.length;
@@ -123,7 +123,7 @@ contract Mimicoinage {
      *         returns only the existing tail.
      * @param  offset Index of the first mimic to return.
      * @param  count  Maximum number of mimics to return.
-     * @return slice  The requested mimic tokens, in launch order.
+     * @return slice  The requested mimic tokens, in mint order.
      */
     function mimicsRange(uint256 offset, uint256 count) external view returns (IERC20Metadata[] memory slice) {
         uint256 length = mimics.length;
@@ -137,7 +137,7 @@ contract Mimicoinage {
     }
 
     /**
-     * @notice Whether `token` was launched by this factory as a mimic.
+     * @notice Whether `token` was minted by this factory as a mimic.
      * @param  token Any address.
      * @return True if `token` appears in {originalOf}.
      */
@@ -146,20 +146,20 @@ contract Mimicoinage {
     }
 
     /**
-     * @notice Rebuild the Uniswap V4 {PoolKey} used by `mimic`'s position.
+     * @notice Rebuild the Uniswap V4 {PoolKey} used by `token`'s position.
      *         Useful for direct reads against the PoolManager (e.g. via
      *         `StateLibrary`). Reverts on unknown mimics.
-     * @param  mimic A mimic launched by this factory.
+     * @param  token A mimic minted by this factory.
      * @return key   The pool key with sorted currencies and this factory's
      *               fee/tickSpacing/hooks constants.
      */
-    function poolKeyOf(IERC20 mimic) public view returns (PoolKey memory key) {
-        IERC20 original = originalOf[mimic];
-        if (address(original) == address(0)) revert UnknownMimic(mimic);
-        bool mimicIsToken0 = address(mimic) < address(original);
+    function poolKeyOf(IERC20 token) public view returns (PoolKey memory key) {
+        IERC20 original = originalOf[token];
+        if (address(original) == address(0)) revert UnknownMimic(token);
+        bool mimicIsToken0 = address(token) < address(original);
         key = PoolKey({
-            currency0: Currency.wrap(mimicIsToken0 ? address(mimic) : address(original)),
-            currency1: Currency.wrap(mimicIsToken0 ? address(original) : address(mimic)),
+            currency0: Currency.wrap(mimicIsToken0 ? address(token) : address(original)),
+            currency1: Currency.wrap(mimicIsToken0 ? address(original) : address(token)),
             fee: FEE,
             tickSpacing: TICK_SPACING,
             hooks: IHooks(address(0))
@@ -167,33 +167,33 @@ contract Mimicoinage {
     }
 
     /**
-     * @notice Shortcut for `poolKeyOf(mimic).toId()`. Reverts on unknown
+     * @notice Shortcut for `poolKeyOf(token).toId()`. Reverts on unknown
      *         mimics.
-     * @param  mimic A mimic launched by this factory.
+     * @param  token A mimic minted by this factory.
      * @return id    The derived Uniswap V4 pool id.
      */
-    function poolIdOf(IERC20 mimic) external view returns (PoolId id) {
-        id = poolKeyOf(mimic).toId();
+    function poolIdOf(IERC20 token) external view returns (PoolId id) {
+        id = poolKeyOf(token).toId();
     }
 
     /**
-     * @notice Predict the address of the mimic that {launch} would create
+     * @notice Predict the address of the mimic that {mimic} would create
      *         for `(original, name)`. Lets a UI show the future token
      *         address (and whether it already exists) before any gas is
      *         spent.
      * @param  original The reference token that would be pegged against.
-     * @param  name     Name that would be passed to {launch}.
+     * @param  name     Name that would be passed to {mimic}.
      * @return exists   True if the mimic has already been deployed.
-     * @return mimic    Deterministic address of the mimic.
+     * @return token    Deterministic address of the mimic.
      */
     function predictMimic(IERC20Metadata original, string calldata name)
         external
         view
-        returns (bool exists, address mimic)
+        returns (bool exists, address token)
     {
         uint8 decimals = original.decimals();
         string memory symbol = string.concat(original.symbol(), SUFFIX);
-        (exists, mimic,) = COINAGE.made(address(this), name, symbol, decimals, SUPPLY, bytes32(0));
+        (exists, token,) = COINAGE.made(address(this), name, symbol, decimals, SUPPLY, bytes32(0));
     }
 
     /**
@@ -204,20 +204,20 @@ contract Mimicoinage {
      *         The position is permanent.
      * @param  original   The reference token to peg against.
      * @param  name       Name for the newly minted mimic token.
-     * @return mimic      The newly minted mimic token.
+     * @return token      The newly minted mimic token.
      * @return positionId The Fountain position id seated by this call;
-     *                    also available as {positionIdOf}(`mimic`).
+     *                    also available as {positionIdOf}(`token`).
      */
-    function launch(IERC20Metadata original, string calldata name)
+    function mimic(IERC20Metadata original, string calldata name)
         external
-        returns (IERC20Metadata mimic, uint256 positionId)
+        returns (IERC20Metadata token, uint256 positionId)
     {
         uint8 decimals = original.decimals();
         string memory symbol = string.concat(original.symbol(), SUFFIX);
-        mimic = COINAGE.make(name, symbol, decimals, SUPPLY, bytes32(0));
-        IERC20 mimicErc = IERC20(address(mimic));
+        token = COINAGE.make(name, symbol, decimals, SUPPLY, bytes32(0));
+        IERC20 mimicErc = IERC20(address(token));
         originalOf[mimicErc] = original;
-        mimics.push(mimic);
+        mimics.push(token);
 
         // forge-lint: disable-next-line(erc20-unchecked-transfer)
         mimicErc.approve(address(FOUNTAIN), SUPPLY);
@@ -231,6 +231,6 @@ contract Mimicoinage {
         positionId = FOUNTAIN.offer(mimicErc, address(original), TICK_SPACING, ticks, amounts);
         positionIdOf[mimicErc] = positionId;
 
-        emit Launch(mimic, original, poolKeyOf(mimicErc).toId(), positionId);
+        emit Mimicked(token, original, poolKeyOf(mimicErc).toId(), positionId);
     }
 }

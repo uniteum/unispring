@@ -7,7 +7,7 @@ For any original — USDC, WBTC, USDe — you get a mirror: `USDCx1`, `WBTCx1`,
 unwind.
 
 The factory that creates them is **Mimicoinage** — a singleton with one
-launch function. Each call mints a fresh Mimicoin and seats its entire
+`mimic` function. Each call mints a fresh Mimicoin and seats its entire
 supply into a single-tick V4 pool at price 1. The position is owned by
 the Mimicoinage contract itself and cannot be decreased, withdrawn, or
 destroyed: the contract exposes no function for reducing liquidity. Only

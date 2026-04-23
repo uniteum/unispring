@@ -39,7 +39,7 @@ interface IV4Quoter {
 /**
  * @notice Fork test against mainnet state. Deploys a fresh Fountain and a
  *         fresh Mimicoinage against the real PoolManagerLookup and Coinage
- *         factory, then launches mimics and reads the resulting pool
+ *         factory, then mints mimics and reads the resulting pool
  *         state. Fee take runs through {Fountain.take} directly —
  *         Mimicoinage is a thin wrapper and exposes only the
  *         mimic→position mapping needed to resolve ids.
@@ -68,22 +68,22 @@ contract MimicoinageForkTest is ForkBase {
         router = new SwapRouter(fountain.POOL_MANAGER());
     }
 
-    function test_PredictMimicMatchesLaunch() public {
+    function test_PredictMimicMatchesMimic() public {
         string memory name = "USDCmimic";
         (bool exists, address predicted) = mimicoinage.predictMimic(IERC20Metadata(USDC), name);
         assertFalse(exists, "fresh Mimicoinage cannot have pre-existing mimics");
         assertTrue(predicted != address(0), "predicted address is zero");
 
-        (IERC20Metadata mimic,) = mimicoinage.launch(IERC20Metadata(USDC), name);
-        assertEq(address(mimic), predicted, "launched address differs from prediction");
+        (IERC20Metadata mimic,) = mimicoinage.mimic(IERC20Metadata(USDC), name);
+        assertEq(address(mimic), predicted, "minted address differs from prediction");
     }
 
-    function test_LaunchUSDC() public {
-        (IERC20Metadata mimic,) = mimicoinage.launch(IERC20Metadata(USDC), "USDCmimic");
+    function test_MimicUSDC() public {
+        (IERC20Metadata mimic,) = mimicoinage.mimic(IERC20Metadata(USDC), "USDCmimic");
 
         assertEq(mimic.decimals(), IERC20Metadata(USDC).decimals(), "decimals must match original");
         assertEq(mimic.symbol(), "USDCx1", "symbol must be original.symbol + SUFFIX");
-        assertTrue(mimicoinage.isMimic(IERC20(address(mimic))), "launched token not marked as mimic");
+        assertTrue(mimicoinage.isMimic(IERC20(address(mimic))), "minted token not marked as mimic");
 
         // Pool is initialized at tick 0 (sqrtPriceX96 for tick 0 = 2**96).
         PoolId id = mimicoinage.poolIdOf(IERC20(address(mimic)));
@@ -102,12 +102,12 @@ contract MimicoinageForkTest is ForkBase {
      *         Sanity checks the ordering, then asserts both pools land at
      *         tick 0 with sqrtPriceX96 = 2**96.
      */
-    function test_BothOrderingsLaunchAtIdenticalPrice() public {
+    function test_BothOrderingsMimicAtIdenticalPrice() public {
         require(ffffff.code.length > 0, "ffffff lepton missing at forked block");
         require(zeros.code.length > 0, "zeros lepton missing at forked block");
 
-        (IERC20Metadata hiMimic,) = mimicoinage.launch(IERC20Metadata(ffffff), "mimicFF");
-        (IERC20Metadata loMimic,) = mimicoinage.launch(IERC20Metadata(zeros), "mimicZZ");
+        (IERC20Metadata hiMimic,) = mimicoinage.mimic(IERC20Metadata(ffffff), "mimicFF");
+        (IERC20Metadata loMimic,) = mimicoinage.mimic(IERC20Metadata(zeros), "mimicZZ");
 
         assertLt(uint160(address(hiMimic)), uint160(ffffff), "mimic of high lepton must sort below (token0)");
         assertGt(uint160(address(loMimic)), uint160(zeros), "mimic of low lepton must sort above (token1)");
@@ -132,8 +132,8 @@ contract MimicoinageForkTest is ForkBase {
      *         should match to sub-bp precision.
      */
     function test_QuotedOutputsMatchAcrossOrdering() public {
-        (IERC20Metadata hiMimic,) = mimicoinage.launch(IERC20Metadata(ffffff), "mimicFF");
-        (IERC20Metadata loMimic,) = mimicoinage.launch(IERC20Metadata(zeros), "mimicZZ");
+        (IERC20Metadata hiMimic,) = mimicoinage.mimic(IERC20Metadata(ffffff), "mimicFF");
+        (IERC20Metadata loMimic,) = mimicoinage.mimic(IERC20Metadata(zeros), "mimicZZ");
 
         PoolKey memory hiKey = mimicoinage.poolKeyOf(IERC20(address(hiMimic)));
         PoolKey memory loKey = mimicoinage.poolKeyOf(IERC20(address(loMimic)));
@@ -165,8 +165,8 @@ contract MimicoinageForkTest is ForkBase {
      *         stateless, so this executes real swaps via persona traders.
      */
     function test_SequentialBuysMatchAcrossOrdering() public {
-        (IERC20Metadata hiMimic,) = mimicoinage.launch(IERC20Metadata(ffffff), "mimicFF");
-        (IERC20Metadata loMimic,) = mimicoinage.launch(IERC20Metadata(zeros), "mimicZZ");
+        (IERC20Metadata hiMimic,) = mimicoinage.mimic(IERC20Metadata(ffffff), "mimicFF");
+        (IERC20Metadata loMimic,) = mimicoinage.mimic(IERC20Metadata(zeros), "mimicZZ");
 
         PoolKey memory hiKey = mimicoinage.poolKeyOf(IERC20(address(hiMimic)));
         PoolKey memory loKey = mimicoinage.poolKeyOf(IERC20(address(loMimic)));
@@ -198,7 +198,7 @@ contract MimicoinageForkTest is ForkBase {
     function test_TakeRoutesFeesToTaker() public {
         // mimic sorts below ffffff → mimic is currency0, ffffff is currency1.
         // A zeroForOne=false swap spends currency1 (ffffff), so fees accrue on currency1.
-        (IERC20Metadata mimic, uint256 positionId) = mimicoinage.launch(IERC20Metadata(ffffff), "mimicFF");
+        (IERC20Metadata mimic, uint256 positionId) = mimicoinage.mimic(IERC20Metadata(ffffff), "mimicFF");
         PoolKey memory key = mimicoinage.poolKeyOf(IERC20(address(mimic)));
 
         uint128 amountIn = 1e18;
@@ -231,8 +231,8 @@ contract MimicoinageForkTest is ForkBase {
      *         forecasts to the taker.
      */
     function test_TakeBatchRoutesFeesToTaker() public {
-        (IERC20Metadata hiMimic, uint256 hiId) = mimicoinage.launch(IERC20Metadata(ffffff), "mimicFF");
-        (IERC20Metadata loMimic, uint256 loId) = mimicoinage.launch(IERC20Metadata(zeros), "mimicZZ");
+        (IERC20Metadata hiMimic, uint256 hiId) = mimicoinage.mimic(IERC20Metadata(ffffff), "mimicFF");
+        (IERC20Metadata loMimic, uint256 loId) = mimicoinage.mimic(IERC20Metadata(zeros), "mimicZZ");
 
         PoolKey memory hiKey = mimicoinage.poolKeyOf(IERC20(address(hiMimic)));
         PoolKey memory loKey = mimicoinage.poolKeyOf(IERC20(address(loMimic)));
@@ -286,36 +286,36 @@ contract MimicoinageForkTest is ForkBase {
 
     /**
      * @notice If the PoolKey was already initialized at the 1:1 genesis price
-     *         (by someone else beating us to it benignly), {launch} skips the
+     *         (by someone else beating us to it benignly), {mimic} skips the
      *         re-init and completes normally.
      */
-    function test_LaunchIdempotentAtGenesisPrice() public {
+    function test_MimicIdempotentAtGenesisPrice() public {
         (, address predicted) = mimicoinage.predictMimic(IERC20Metadata(ffffff), "mimicFF");
         PoolKey memory key = _predictedPoolKey(IERC20Metadata(ffffff), "mimicFF");
         fountain.POOL_MANAGER().initialize(key, TickMath.getSqrtPriceAtTick(0));
 
-        (IERC20Metadata mimic,) = mimicoinage.launch(IERC20Metadata(ffffff), "mimicFF");
-        assertEq(address(mimic), predicted, "launched address != predicted");
+        (IERC20Metadata mimic,) = mimicoinage.mimic(IERC20Metadata(ffffff), "mimicFF");
+        assertEq(address(mimic), predicted, "minted address != predicted");
         assertTrue(mimicoinage.isMimic(IERC20(address(mimic))), "mimic not registered");
     }
 
     /**
      * @notice A griefer that pre-initializes the target PoolKey at any price
-     *         other than tick 0 blocks {launch} with {Fountain.PoolPreInitialized}.
-     *         The workaround is to re-launch with a different `name`, which
+     *         other than tick 0 blocks {mimic} with {Fountain.PoolPreInitialized}.
+     *         The workaround is to re-mint with a different `name`, which
      *         produces a fresh mimic address and a fresh PoolKey.
      */
-    function test_LaunchRevertsOnPreInitializedPool() public {
+    function test_MimicRevertsOnPreInitializedPool() public {
         PoolKey memory key = _predictedPoolKey(IERC20Metadata(ffffff), "mimicFF");
         uint160 griefSqrt = TickMath.getSqrtPriceAtTick(100);
         fountain.POOL_MANAGER().initialize(key, griefSqrt);
 
         vm.expectRevert(abi.encodeWithSelector(Fountain.PoolPreInitialized.selector, griefSqrt));
-        mimicoinage.launch(IERC20Metadata(ffffff), "mimicFF");
+        mimicoinage.mimic(IERC20Metadata(ffffff), "mimicFF");
 
-        // Re-launching under a different name yields a different PoolKey and succeeds.
-        (IERC20Metadata escaped,) = mimicoinage.launch(IERC20Metadata(ffffff), "mimicFF2");
-        assertTrue(mimicoinage.isMimic(IERC20(address(escaped))), "rescue launch under new name failed");
+        // Re-minting under a different name yields a different PoolKey and succeeds.
+        (IERC20Metadata escaped,) = mimicoinage.mimic(IERC20Metadata(ffffff), "mimicFF2");
+        assertTrue(mimicoinage.isMimic(IERC20(address(escaped))), "rescue mint under new name failed");
     }
 
     /**
@@ -325,10 +325,10 @@ contract MimicoinageForkTest is ForkBase {
      *         rots silently if broken.
      */
     function test_MimicsRangeClampBranches() public {
-        (IERC20Metadata m0,) = mimicoinage.launch(IERC20Metadata(ffffff), "mimicFF");
-        (IERC20Metadata m1,) = mimicoinage.launch(IERC20Metadata(zeros), "mimicZZ");
-        (IERC20Metadata m2,) = mimicoinage.launch(IERC20Metadata(USDC), "USDCmimic");
-        assertEq(mimicoinage.mimicsCount(), 3, "count after three launches");
+        (IERC20Metadata m0,) = mimicoinage.mimic(IERC20Metadata(ffffff), "mimicFF");
+        (IERC20Metadata m1,) = mimicoinage.mimic(IERC20Metadata(zeros), "mimicZZ");
+        (IERC20Metadata m2,) = mimicoinage.mimic(IERC20Metadata(USDC), "USDCmimic");
+        assertEq(mimicoinage.mimicsCount(), 3, "count after three mints");
 
         // Full slice.
         IERC20Metadata[] memory all = mimicoinage.mimicsRange(0, 3);
@@ -357,7 +357,7 @@ contract MimicoinageForkTest is ForkBase {
     }
 
     /**
-     * @dev Rebuild the {PoolKey} {launch} will compute for `(original, name)`
+     * @dev Rebuild the {PoolKey} {mimic} will compute for `(original, name)`
      *      using the predicted mimic CREATE2 address — lets a test pre-init
      *      the target pool before the mimic exists.
      */
