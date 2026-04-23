@@ -319,39 +319,39 @@ contract MimicoinageForkTest is ForkBase {
     }
 
     /**
-     * @notice Exercise every branch of {mimicsRange}: exact slice, tail
+     * @notice Exercise every branch of {mimicsSlice}: exact slice, tail
      *         clamp (`end > length`), offset past end (`offset >= length`),
      *         and empty count. Covers the enumeration + clamp math that
      *         rots silently if broken.
      */
-    function test_MimicsRangeClampBranches() public {
+    function test_MimicsSliceClampBranches() public {
         (IERC20Metadata m0,) = mimicoinage.mimic(IERC20Metadata(ffffff), "mimicFF");
         (IERC20Metadata m1,) = mimicoinage.mimic(IERC20Metadata(zeros), "mimicZZ");
         (IERC20Metadata m2,) = mimicoinage.mimic(IERC20Metadata(USDC), "USDCmimic");
         assertEq(mimicoinage.mimicsCount(), 3, "count after three mints");
 
         // Full slice.
-        IERC20Metadata[] memory all = mimicoinage.mimicsRange(0, 3);
+        IERC20Metadata[] memory all = mimicoinage.mimicsSlice(0, 3);
         assertEq(all.length, 3, "full slice length");
         assertEq(address(all[0]), address(m0), "all[0]");
         assertEq(address(all[1]), address(m1), "all[1]");
         assertEq(address(all[2]), address(m2), "all[2]");
 
         // Tail clamp: end > length → returns existing tail only.
-        IERC20Metadata[] memory tail = mimicoinage.mimicsRange(1, 10);
+        IERC20Metadata[] memory tail = mimicoinage.mimicsSlice(1, 10);
         assertEq(tail.length, 2, "tail clamp length");
         assertEq(address(tail[0]), address(m1), "tail[0]");
         assertEq(address(tail[1]), address(m2), "tail[1]");
 
         // Offset at end -> empty.
-        assertEq(mimicoinage.mimicsRange(3, 5).length, 0, "offset == length should be empty");
+        assertEq(mimicoinage.mimicsSlice(3, 5).length, 0, "offset == length should be empty");
         // Offset past end -> empty.
-        assertEq(mimicoinage.mimicsRange(10, 5).length, 0, "offset past length should be empty");
+        assertEq(mimicoinage.mimicsSlice(10, 5).length, 0, "offset past length should be empty");
         // Zero count -> empty.
-        assertEq(mimicoinage.mimicsRange(0, 0).length, 0, "count == 0 should be empty");
+        assertEq(mimicoinage.mimicsSlice(0, 0).length, 0, "count == 0 should be empty");
 
         // Middle single element.
-        IERC20Metadata[] memory mid = mimicoinage.mimicsRange(1, 1);
+        IERC20Metadata[] memory mid = mimicoinage.mimicsSlice(1, 1);
         assertEq(mid.length, 1, "middle slice length");
         assertEq(address(mid[0]), address(m1), "mid[0]");
     }

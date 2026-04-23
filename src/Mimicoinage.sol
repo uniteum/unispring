@@ -81,7 +81,7 @@ contract Mimicoinage {
     /**
      * @notice All mimics minted by this factory, in mint order. The
      *         auto-generated getter returns a single element by index; use
-     *         {mimicsCount} and {mimicsRange} for bulk reads.
+     *         {mimicsCount} and {mimicsSlice} for bulk reads.
      */
     IERC20Metadata[] public mimics;
 
@@ -125,7 +125,7 @@ contract Mimicoinage {
      * @param  count  Maximum number of mimics to return.
      * @return slice  The requested mimic tokens, in mint order.
      */
-    function mimicsRange(uint256 offset, uint256 count) external view returns (IERC20Metadata[] memory slice) {
+    function mimicsSlice(uint256 offset, uint256 count) external view returns (IERC20Metadata[] memory slice) {
         uint256 length = mimics.length;
         if (offset >= length) return new IERC20Metadata[](0);
         uint256 end = offset + count;
