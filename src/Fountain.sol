@@ -36,7 +36,7 @@ struct Position {
  *      type-check arguments and derive selectors at compile time.
  */
 interface IFountainActions {
-    function fund(PoolKey calldata key, int24[] calldata userTicks, uint256[] calldata amounts, bool tokenIsCurrency0)
+    function offer(PoolKey calldata key, int24[] calldata userTicks, uint256[] calldata amounts, bool tokenIsCurrency0)
         external;
 
     function take(uint256[] calldata ids) external;
@@ -51,7 +51,7 @@ interface IFountainActions {
  *         Unispring and Mimicoinage) and assign a token amount to each
  *         segment; Fountain flips and negates into V4-native tick ranges
  *         when the token sorts above the quote (forcing it into
- *         `currency1`), then funds every segment in a single unlock.
+ *         `currency1`), then seats every segment in a single unlock.
  * @dev    Bitsy factory: the prototype is permissionless and governance-free;
  *         clones are deployed per-caller via {make} and carry their own
  *         {taker} in storage. Each clone's taker is the `msg.sender` that
@@ -112,17 +112,17 @@ contract Fountain is IUnlockCallback {
     Position[] public positions;
 
     /**
-     * @notice Emitted when a {fund} call seats a contiguous batch of
+     * @notice Emitted when an {offer} call seats a contiguous batch of
      *         positions.
-     * @param  funder           The address that called {fund}.
-     * @param  token            The token whose supply funds the positions.
+     * @param  offerer          The address that called {offer}.
+     * @param  token            The token whose supply seats the positions.
      * @param  quote            The quote currency (zero for native ETH).
      * @param  poolId           The Uniswap V4 pool id.
      * @param  firstPositionId  Index of the first position in the batch.
      * @param  positionCount    Number of positions in the batch.
      */
-    event Funded(
-        address indexed funder,
+    event Offered(
+        address indexed offerer,
         IERC20 indexed token,
         address quote,
         PoolId indexed poolId,
@@ -156,7 +156,7 @@ contract Fountain is IUnlockCallback {
     error TickAmountLengthMismatch(uint256 ticksLength, uint256 amountsLength);
 
     /**
-     * @notice Thrown when {fund} is called with no positions (fewer than two ticks).
+     * @notice Thrown when {offer} is called with no positions (fewer than two ticks).
      */
     error NoPositions();
 
@@ -187,7 +187,7 @@ contract Fountain is IUnlockCallback {
 
     /**
      * @notice Thrown when the pool exists at a price other than the starting
-     *         price this {fund} call would have initialized it to. Pools are
+     *         price this {offer} call would have initialized it to. Pools are
      *         permanent once initialized in V4, so recovery is not possible
      *         on the affected {PoolKey}; adjust `tickSpacing` or the quote
      *         to produce a different pool.
@@ -214,17 +214,18 @@ contract Fountain is IUnlockCallback {
     }
 
     /**
-     * @notice Seat a bonding curve for `token` paired against `quote`. The
-     *         `ticks` array partitions a "token/quote" price range into
-     *         N = `amounts.length` segments; `amounts[i]` funds the segment
-     *         bounded by `ticks[i]` and `ticks[i + 1]` single-sided in
-     *         `token`. Caller must have approved this contract for the sum
+     * @notice Offer `token` for sale at the ticks you set, paired against
+     *         `quote`. The `ticks` array partitions a "token/quote" price
+     *         range into N = `amounts.length` segments; `amounts[i]` seats
+     *         the segment bounded by `ticks[i]` and `ticks[i + 1]`
+     *         single-sided in `token`. Trading fees accrue to this clone's
+     *         {taker}. Caller must have approved this contract for the sum
      *         of `amounts`.
      * @dev    The lowest tick `ticks[0]` is treated as the pool's starting
      *         price: if the pool does not yet exist it is initialized at
      *         that price; if it already exists its price must match
      *         exactly, else {PoolPreInitialized} reverts.
-     * @param  token           The token whose supply funds the positions.
+     * @param  token           The token whose supply seats the positions.
      * @param  quote           The quote currency (zero for native ETH).
      * @param  tickSpacing     Tick spacing of the target pool. All ticks
      *                         must be multiples of this value.
@@ -236,7 +237,7 @@ contract Fountain is IUnlockCallback {
      *                         call; positions in this batch are at ids
      *                         `firstPositionId .. firstPositionId + N - 1`.
      */
-    function fund(IERC20 token, address quote, int24 tickSpacing, int24[] calldata ticks, uint256[] calldata amounts)
+    function offer(IERC20 token, address quote, int24 tickSpacing, int24[] calldata ticks, uint256[] calldata amounts)
         external
         returns (uint256 firstPositionId)
     {
@@ -283,9 +284,9 @@ contract Fountain is IUnlockCallback {
         }
 
         firstPositionId = positions.length;
-        POOL_MANAGER.unlock(abi.encodeCall(IFountainActions.fund, (key, ticks, amounts, tokenIsCurrency0)));
+        POOL_MANAGER.unlock(abi.encodeCall(IFountainActions.offer, (key, ticks, amounts, tokenIsCurrency0)));
 
-        emit Funded(msg.sender, token, quote, poolId, firstPositionId, n);
+        emit Offered(msg.sender, token, quote, poolId, firstPositionId, n);
     }
 
     /**
@@ -355,16 +356,16 @@ contract Fountain is IUnlockCallback {
 
     /**
      * @inheritdoc IUnlockCallback
-     * @dev Selector-dispatches on {IFountainActions}: either funds a batch
+     * @dev Selector-dispatches on {IFountainActions}: either seats a batch
      *      of positions or iterates a batch of ids for fee take.
      */
     function unlockCallback(bytes calldata data) external returns (bytes memory) {
         if (msg.sender != address(POOL_MANAGER)) revert InvalidUnlockCaller();
         bytes4 selector = bytes4(data[:4]);
-        if (selector == IFountainActions.fund.selector) {
+        if (selector == IFountainActions.offer.selector) {
             (PoolKey memory key, int24[] memory userTicks, uint256[] memory amounts, bool tokenIsCurrency0) =
                 abi.decode(data[4:], (PoolKey, int24[], uint256[], bool));
-            _fundAll(key, userTicks, amounts, tokenIsCurrency0);
+            _offerAll(key, userTicks, amounts, tokenIsCurrency0);
         } else if (selector == IFountainActions.take.selector) {
             uint256[] memory ids = abi.decode(data[4:], (uint256[]));
             for (uint256 i = 0; i < ids.length; i++) {
@@ -393,7 +394,7 @@ contract Fountain is IUnlockCallback {
     /**
      * @dev Seat every segment of the caller-described curve in one unlock.
      *      User segment [userTicks[i], userTicks[i+1]) with amount[i]
-     *      funds a V4 position at [userTicks[i], userTicks[i+1]) when the
+     *      seats a V4 position at [userTicks[i], userTicks[i+1]) when the
      *      token is currency0 (identity mapping; matches Unispring and
      *      Mimicoinage), or at [-userTicks[i+1], -userTicks[i]) when the
      *      token is currency1 (flipping under V4's price inversion). Net
@@ -402,7 +403,7 @@ contract Fountain is IUnlockCallback {
      *      each position has zero delta (single-sided), so no settlement
      *      is needed for the quote currency.
      */
-    function _fundAll(PoolKey memory key, int24[] memory userTicks, uint256[] memory amounts, bool tokenIsCurrency0)
+    function _offerAll(PoolKey memory key, int24[] memory userTicks, uint256[] memory amounts, bool tokenIsCurrency0)
         private
     {
         uint256 n = amounts.length;

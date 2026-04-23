@@ -228,7 +228,7 @@ contract Mimicoinage {
         uint256[] memory amounts = new uint256[](1);
         amounts[0] = SUPPLY;
 
-        positionId = FOUNTAIN.fund(mimicErc, address(original), TICK_SPACING, ticks, amounts);
+        positionId = FOUNTAIN.offer(mimicErc, address(original), TICK_SPACING, ticks, amounts);
         positionIdOf[mimicErc] = positionId;
 
         emit Launch(mimic, original, poolKeyOf(mimicErc).toId(), positionId);

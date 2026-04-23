@@ -8,10 +8,10 @@ import {console} from "forge-std/console.sol";
 /**
  * @title Funder
  * @notice Test persona that is both the {Fountain.taker} of its own clone
- *         (fee recipient) and the party that pokes {Fountain.fund} and
- *         {Fountain.take}. Fund is permissionless so these roles do
+ *         (fee recipient) and the party that pokes {Fountain.offer} and
+ *         {Fountain.take}. Offer is permissionless so these roles do
  *         not have to coincide, but fusing them here keeps the flow
- *         simple: `bot.fund(...)` approves + funds, and fees land on
+ *         simple: `bot.offer(...)` approves + offers, and fees land on
  *         `bot`'s balance on `bot.take(...)`.
  */
 contract Funder {
@@ -33,9 +33,9 @@ contract Funder {
     }
 
     /**
-     * @notice Approve the Fountain for the sum of `amounts` then fund.
+     * @notice Approve the Fountain for the sum of `amounts` then offer.
      */
-    function fund(IERC20 token, address quote, int24 tickSpacing, int24[] memory ticks, uint256[] memory amounts)
+    function offer(IERC20 token, address quote, int24 tickSpacing, int24[] memory ticks, uint256[] memory amounts)
         external
         returns (uint256 firstPositionId)
     {
@@ -44,7 +44,7 @@ contract Funder {
             total += amounts[i];
         }
         token.approve(address(fountain), total);
-        firstPositionId = fountain.fund(token, quote, tickSpacing, ticks, amounts);
+        firstPositionId = fountain.offer(token, quote, tickSpacing, ticks, amounts);
     }
 
     /**

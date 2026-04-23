@@ -14,7 +14,7 @@ import {IERC20} from "ierc20/IERC20.sol";
  * @dev    All V4 plumbing — unlock, modifyLiquidity, liquidity math, fee
  *         take — lives on {FOUNTAIN}. Unispring only mints/tracks
  *         the clone-per-hub key, pre-approves {FOUNTAIN} against pulled
- *         tokens, and delegates to {Fountain.fund}. Pools inherit
+ *         tokens, and delegates to {Fountain.offer}. Pools inherit
  *         {Fountain.FEE} (0.01%) and accrued fees flow to {Fountain.taker}.
  * @dev    Ticks: callers pass V4-native `(tickLower, tickUpper)` in the
  *         log_1.0001(currency1/currency0) convention. For the hub pool the
@@ -209,7 +209,7 @@ contract Unispring {
             quote = hub;
         }
 
-        positionId = FOUNTAIN.fund(token, quote, 1, ticks, amounts);
+        positionId = FOUNTAIN.offer(token, quote, 1, ticks, amounts);
         emit Funded(msg.sender, token, positionId, supply, tickLower, tickUpper);
     }
 }

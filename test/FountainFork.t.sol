@@ -19,7 +19,7 @@ import {PoolKey} from "v4-core/types/PoolKey.sol";
 /**
  * @notice Fork test against mainnet state. Deploys a fresh Fountain against
  *         the real PoolManager resolved through the Uniteum
- *         `PoolManagerLookup`, then exercises funding, pre-initialization
+ *         `PoolManagerLookup`, then exercises offering, pre-initialization
  *         guards, validation, the position registry, fee accrual, and
  *         take across both tick-flip orientations and a native-ETH
  *         quote.
@@ -71,15 +71,15 @@ contract FountainForkTest is ForkBase {
     }
 
     // ----------------------------------------------------------------------
-    // Fund — happy path (flip + no-flip + native ETH)
+    // Offer — happy path (flip + no-flip + native ETH)
     // ----------------------------------------------------------------------
 
-    function test_FundSingleSegment_NoFlipCase() public {
+    function test_OfferSingleSegment_NoFlipCase() public {
         // token < ffffff → token is currency0, no flip; V4 ticks = user ticks.
         int24[] memory ticks = _twoTicks(100, 500);
         uint256[] memory amounts = _oneAmount(SEGMENT_AMOUNT);
         _mint(SEGMENT_AMOUNT);
-        uint256 firstId = bot.fund(IERC20(address(token)), ffffff, TICK_SPACING, ticks, amounts);
+        uint256 firstId = bot.offer(IERC20(address(token)), ffffff, TICK_SPACING, ticks, amounts);
 
         assertEq(firstId, 0, "first position id");
         assertEq(fountain.positionsCount(), 1, "one position created");
@@ -94,12 +94,12 @@ contract FountainForkTest is ForkBase {
         assertEq(sqrtPriceX96, TickMath.getSqrtPriceAtTick(100), "starting price = ticks[0]");
     }
 
-    function test_FundSingleSegment_FlipCase() public {
+    function test_OfferSingleSegment_FlipCase() public {
         // token > zeros → token is currency1, flip: V4 = [-ticks[1], -ticks[0]).
         int24[] memory ticks = _twoTicks(100, 500);
         uint256[] memory amounts = _oneAmount(SEGMENT_AMOUNT);
         _mint(SEGMENT_AMOUNT);
-        bot.fund(IERC20(address(token)), zeros, TICK_SPACING, ticks, amounts);
+        bot.offer(IERC20(address(token)), zeros, TICK_SPACING, ticks, amounts);
 
         Position memory p = _positionAt(0);
         assertEq(Currency.unwrap(p.key.currency0), zeros, "zeros is currency0");
@@ -111,12 +111,12 @@ contract FountainForkTest is ForkBase {
         assertEq(sqrtPriceX96, TickMath.getSqrtPriceAtTick(-100), "starting price = -ticks[0]");
     }
 
-    function test_FundSingleSegment_NativeETH() public {
+    function test_OfferSingleSegment_NativeETH() public {
         // ETH = address(0) → token > quote, flip: V4 = [-ticks[1], -ticks[0]).
         int24[] memory ticks = _twoTicks(100, 500);
         uint256[] memory amounts = _oneAmount(SEGMENT_AMOUNT);
         _mint(SEGMENT_AMOUNT);
-        bot.fund(IERC20(address(token)), address(0), TICK_SPACING, ticks, amounts);
+        bot.offer(IERC20(address(token)), address(0), TICK_SPACING, ticks, amounts);
 
         Position memory p = _positionAt(0);
         assertEq(Currency.unwrap(p.key.currency0), address(0), "ETH is currency0");
@@ -128,7 +128,7 @@ contract FountainForkTest is ForkBase {
         assertEq(sqrtPriceX96, TickMath.getSqrtPriceAtTick(-100), "starting price = -ticks[0]");
     }
 
-    function test_FundMultiSegment_NoFlipCase() public {
+    function test_OfferMultiSegment_NoFlipCase() public {
         // token < ffffff → no flip; V4 ranges = user ranges.
         int24[] memory ticks = new int24[](4);
         ticks[0] = 100;
@@ -142,7 +142,7 @@ contract FountainForkTest is ForkBase {
         uint256 total = 6e18;
         _mint(total);
 
-        bot.fund(IERC20(address(token)), ffffff, TICK_SPACING, ticks, amounts);
+        bot.offer(IERC20(address(token)), ffffff, TICK_SPACING, ticks, amounts);
         assertEq(fountain.positionsCount(), 3, "three positions");
 
         Position memory p0 = _positionAt(0);
@@ -165,7 +165,7 @@ contract FountainForkTest is ForkBase {
         assertGt(inPoolManager, (total * 999) / 1000, "most supply in PoolManager");
     }
 
-    function test_FundMultiSegment_FlipCase() public {
+    function test_OfferMultiSegment_FlipCase() public {
         // token > zeros → flip; V4 range [-ticks[i+1], -ticks[i]).
         int24[] memory ticks = new int24[](4);
         ticks[0] = 100;
@@ -178,7 +178,7 @@ contract FountainForkTest is ForkBase {
         amounts[2] = 3e18;
         _mint(6e18);
 
-        bot.fund(IERC20(address(token)), zeros, TICK_SPACING, ticks, amounts);
+        bot.offer(IERC20(address(token)), zeros, TICK_SPACING, ticks, amounts);
         assertEq(fountain.positionsCount(), 3);
 
         Position memory p0 = _positionAt(0);
@@ -199,7 +199,7 @@ contract FountainForkTest is ForkBase {
     // Pool initialization guard
     // ----------------------------------------------------------------------
 
-    function test_FundIdempotentWhenPreInitAtCorrectPrice() public {
+    function test_OfferIdempotentWhenPreInitAtCorrectPrice() public {
         int24[] memory ticks = _twoTicks(100, 500);
         uint256[] memory amounts = _oneAmount(SEGMENT_AMOUNT);
         PoolKey memory key = _keyFor(ffffff, TICK_SPACING);
@@ -207,11 +207,11 @@ contract FountainForkTest is ForkBase {
         fountain.POOL_MANAGER().initialize(key, TickMath.getSqrtPriceAtTick(100));
 
         _mint(SEGMENT_AMOUNT);
-        bot.fund(IERC20(address(token)), ffffff, TICK_SPACING, ticks, amounts);
-        assertEq(fountain.positionsCount(), 1, "fund succeeded after matching pre-init");
+        bot.offer(IERC20(address(token)), ffffff, TICK_SPACING, ticks, amounts);
+        assertEq(fountain.positionsCount(), 1, "offer succeeded after matching pre-init");
     }
 
-    function test_FundRevertsOnPreInitializedAtWrongPrice() public {
+    function test_OfferRevertsOnPreInitializedAtWrongPrice() public {
         int24[] memory ticks = _twoTicks(100, 500);
         uint256[] memory amounts = _oneAmount(SEGMENT_AMOUNT);
         PoolKey memory key = _keyFor(ffffff, TICK_SPACING);
@@ -220,48 +220,48 @@ contract FountainForkTest is ForkBase {
 
         _mint(SEGMENT_AMOUNT);
         vm.expectRevert(abi.encodeWithSelector(Fountain.PoolPreInitialized.selector, griefSqrt));
-        bot.fund(IERC20(address(token)), ffffff, TICK_SPACING, ticks, amounts);
+        bot.offer(IERC20(address(token)), ffffff, TICK_SPACING, ticks, amounts);
     }
 
     // ----------------------------------------------------------------------
-    // Fund — validation errors
+    // Offer — validation errors
     // ----------------------------------------------------------------------
 
-    function test_FundRevertsOnNoPositions() public {
+    function test_OfferRevertsOnNoPositions() public {
         int24[] memory ticks = new int24[](0);
         uint256[] memory amounts = new uint256[](0);
         vm.expectRevert(Fountain.NoPositions.selector);
-        bot.fund(IERC20(address(token)), ffffff, TICK_SPACING, ticks, amounts);
+        bot.offer(IERC20(address(token)), ffffff, TICK_SPACING, ticks, amounts);
     }
 
-    function test_FundRevertsOnLengthMismatch() public {
+    function test_OfferRevertsOnLengthMismatch() public {
         int24[] memory ticks = _twoTicks(100, 500);
         uint256[] memory amounts = new uint256[](2);
         amounts[0] = 1e18;
         amounts[1] = 1e18;
         vm.expectRevert(abi.encodeWithSelector(Fountain.TickAmountLengthMismatch.selector, uint256(2), uint256(2)));
-        bot.fund(IERC20(address(token)), ffffff, TICK_SPACING, ticks, amounts);
+        bot.offer(IERC20(address(token)), ffffff, TICK_SPACING, ticks, amounts);
     }
 
-    function test_FundRevertsOnTickOutOfRange() public {
+    function test_OfferRevertsOnTickOutOfRange() public {
         int24[] memory ticks = new int24[](2);
         ticks[0] = 100;
         ticks[1] = TickMath.MAX_TICK + 1;
         uint256[] memory amounts = _oneAmount(SEGMENT_AMOUNT);
         vm.expectRevert(abi.encodeWithSelector(Fountain.TickOutOfRange.selector, TickMath.MAX_TICK + 1));
-        bot.fund(IERC20(address(token)), ffffff, TICK_SPACING, ticks, amounts);
+        bot.offer(IERC20(address(token)), ffffff, TICK_SPACING, ticks, amounts);
     }
 
-    function test_FundRevertsOnTickNotAligned() public {
+    function test_OfferRevertsOnTickNotAligned() public {
         int24[] memory ticks = new int24[](2);
         ticks[0] = 5;
         ticks[1] = 100;
         uint256[] memory amounts = _oneAmount(SEGMENT_AMOUNT);
         vm.expectRevert(abi.encodeWithSelector(Fountain.TickNotAligned.selector, int24(5), int24(10)));
-        bot.fund(IERC20(address(token)), ffffff, int24(10), ticks, amounts);
+        bot.offer(IERC20(address(token)), ffffff, int24(10), ticks, amounts);
     }
 
-    function test_FundRevertsOnTicksNotAscending() public {
+    function test_OfferRevertsOnTicksNotAscending() public {
         int24[] memory ticks = new int24[](3);
         ticks[0] = 100;
         ticks[1] = 300;
@@ -270,10 +270,10 @@ contract FountainForkTest is ForkBase {
         amounts[0] = 1e18;
         amounts[1] = 1e18;
         vm.expectRevert(abi.encodeWithSelector(Fountain.TicksNotAscending.selector, uint256(2), int24(300), int24(200)));
-        bot.fund(IERC20(address(token)), ffffff, TICK_SPACING, ticks, amounts);
+        bot.offer(IERC20(address(token)), ffffff, TICK_SPACING, ticks, amounts);
     }
 
-    function test_FundRevertsOnTicksEqual() public {
+    function test_OfferRevertsOnTicksEqual() public {
         int24[] memory ticks = new int24[](3);
         ticks[0] = 100;
         ticks[1] = 100;
@@ -282,10 +282,10 @@ contract FountainForkTest is ForkBase {
         amounts[0] = 1e18;
         amounts[1] = 1e18;
         vm.expectRevert(abi.encodeWithSelector(Fountain.TicksNotAscending.selector, uint256(1), int24(100), int24(100)));
-        bot.fund(IERC20(address(token)), ffffff, TICK_SPACING, ticks, amounts);
+        bot.offer(IERC20(address(token)), ffffff, TICK_SPACING, ticks, amounts);
     }
 
-    function test_FundRevertsOnZeroAmount() public {
+    function test_OfferRevertsOnZeroAmount() public {
         int24[] memory ticks = new int24[](3);
         ticks[0] = 100;
         ticks[1] = 200;
@@ -294,24 +294,24 @@ contract FountainForkTest is ForkBase {
         amounts[0] = 1e18;
         amounts[1] = 0;
         vm.expectRevert(abi.encodeWithSelector(Fountain.ZeroAmount.selector, uint256(1)));
-        bot.fund(IERC20(address(token)), ffffff, TICK_SPACING, ticks, amounts);
+        bot.offer(IERC20(address(token)), ffffff, TICK_SPACING, ticks, amounts);
     }
 
     // ----------------------------------------------------------------------
     // Position registry views
     // ----------------------------------------------------------------------
 
-    function test_MultipleFundsAppendToRegistry() public {
-        uint256 firstFlipId = _fundTwoFlip();
+    function test_MultipleOffersAppendToRegistry() public {
+        uint256 firstFlipId = _offerTwoFlip();
         assertEq(firstFlipId, 0, "first flip batch starts at 0");
-        uint256 firstNoFlipId = _fundTwoNoFlip();
+        uint256 firstNoFlipId = _offerTwoNoFlip();
         assertEq(firstNoFlipId, 2, "second batch appended after first");
         assertEq(fountain.positionsCount(), 4, "four positions total");
     }
 
     function test_PositionsRangeClampBranches() public {
-        _fundTwoFlip();
-        _fundTwoNoFlip();
+        _offerTwoFlip();
+        _offerTwoNoFlip();
         assertEq(fountain.positionsCount(), 4);
 
         // Full slice.
@@ -339,7 +339,7 @@ contract FountainForkTest is ForkBase {
     // ----------------------------------------------------------------------
 
     function test_UntakenZeroBeforeSwap() public {
-        _fundTwoFlip();
+        _offerTwoFlip();
         uint256[] memory ids = new uint256[](2);
         ids[0] = 0;
         ids[1] = 1;
@@ -361,7 +361,7 @@ contract FountainForkTest is ForkBase {
         int24[] memory ticks = _twoTicks(100, 500);
         uint256[] memory amounts = _oneAmount(SEGMENT_AMOUNT);
         _mint(SEGMENT_AMOUNT);
-        bot.fund(IERC20(address(token)), ffffff, TICK_SPACING, ticks, amounts);
+        bot.offer(IERC20(address(token)), ffffff, TICK_SPACING, ticks, amounts);
 
         PoolKey memory key = _keyFor(ffffff, TICK_SPACING);
         Trader alice = new Trader("alice", router);
@@ -391,7 +391,7 @@ contract FountainForkTest is ForkBase {
         int24[] memory ticks = _twoTicks(100, 500);
         uint256[] memory amounts = _oneAmount(SEGMENT_AMOUNT);
         _mint(SEGMENT_AMOUNT);
-        bot.fund(IERC20(address(token)), zeros, TICK_SPACING, ticks, amounts);
+        bot.offer(IERC20(address(token)), zeros, TICK_SPACING, ticks, amounts);
 
         PoolKey memory key = _keyFor(zeros, TICK_SPACING);
         Trader bobby = new Trader("bobby", router);
@@ -414,8 +414,8 @@ contract FountainForkTest is ForkBase {
     function test_TakeBatchAcrossTwoPools() public {
         // Batch takes across a flip-case pool (zeros quote) and a no-flip
         // pool (ffffff quote) in one unlock.
-        uint256 flipFirst = _fundTwoFlip(); // ids 0, 1 against zeros
-        uint256 noFlipFirst = _fundTwoNoFlip(); // ids 2, 3 against ffffff
+        uint256 flipFirst = _offerTwoFlip(); // ids 0, 1 against zeros
+        uint256 noFlipFirst = _offerTwoNoFlip(); // ids 2, 3 against ffffff
         assertEq(flipFirst, 0);
         assertEq(noFlipFirst, 2);
 
@@ -472,7 +472,7 @@ contract FountainForkTest is ForkBase {
     }
 
     function test_TakeBatchRevertsIfAnyIdUnknown() public {
-        _fundTwoFlip();
+        _offerTwoFlip();
         uint256[] memory ids = new uint256[](3);
         ids[0] = 0;
         ids[1] = 99;
@@ -508,7 +508,7 @@ contract FountainForkTest is ForkBase {
         amounts[1] = 1e18;
         amounts[2] = 1e18;
         _mint(3e18);
-        bot.fund(IERC20(address(token)), zeros, TICK_SPACING, ticks, amounts);
+        bot.offer(IERC20(address(token)), zeros, TICK_SPACING, ticks, amounts);
         PoolKey memory key = _keyFor(zeros, TICK_SPACING);
 
         // Starting V4 tick is -100 (top of position 0 at V4 [-200, -100)).
@@ -539,7 +539,7 @@ contract FountainForkTest is ForkBase {
     // Helpers
     // ----------------------------------------------------------------------
 
-    function _fundTwoFlip() internal returns (uint256 firstId) {
+    function _offerTwoFlip() internal returns (uint256 firstId) {
         // token > zeros → flip case.
         int24[] memory ticks = new int24[](3);
         ticks[0] = 100;
@@ -549,10 +549,10 @@ contract FountainForkTest is ForkBase {
         amounts[0] = 1e18;
         amounts[1] = 2e18;
         _mint(3e18);
-        firstId = bot.fund(IERC20(address(token)), zeros, TICK_SPACING, ticks, amounts);
+        firstId = bot.offer(IERC20(address(token)), zeros, TICK_SPACING, ticks, amounts);
     }
 
-    function _fundTwoNoFlip() internal returns (uint256 firstId) {
+    function _offerTwoNoFlip() internal returns (uint256 firstId) {
         // token < ffffff → no-flip case.
         int24[] memory ticks = new int24[](3);
         ticks[0] = 100;
@@ -562,7 +562,7 @@ contract FountainForkTest is ForkBase {
         amounts[0] = 1e18;
         amounts[1] = 2e18;
         _mint(3e18);
-        firstId = bot.fund(IERC20(address(token)), ffffff, TICK_SPACING, ticks, amounts);
+        firstId = bot.offer(IERC20(address(token)), ffffff, TICK_SPACING, ticks, amounts);
     }
 
     function _twoTicks(int24 a, int24 b) internal pure returns (int24[] memory ticks) {
