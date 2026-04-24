@@ -200,7 +200,7 @@ contract NeutrinoSource {
         NeutrinoChannel channel = CHANNEL.make(tickLower, tickUpper);
         token = channel.mint(COINAGE, name, symbol, decimals, supply, salt);
         token.approve(address(spring), supply);
-        spring.fund(Currency.wrap(address(token)), supply, tickLower, tickUpper);
+        spring.offer(Currency.wrap(address(token)), supply, tickLower, tickUpper);
         emit Launch(token, supply, tickLower, tickUpper);
     }
 }

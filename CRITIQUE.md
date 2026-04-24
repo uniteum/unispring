@@ -22,10 +22,10 @@ numbered so we can refer to them in commits and PRs.
    and routed `ETH → hub → spoke` trades pay the same 0.01% at both
    hops (0.02% total across the two-hop).
 
-4. **Permissionless, re-callable `fund`.** No operator, no reward, no
+4. **Permissionless, re-callable `offer`.** No operator, no reward, no
    trust — anyone can lock more permanent liquidity on any pool at any
    time. Positions grow monotonically because there is no unwind path, so
-   every `fund` call strictly adds to the locked supply. Patterns that
+   every `offer` call strictly adds to the locked supply. Patterns that
    fall out (staged emissions, ladder launches, community top-ups) don't
    require any governance or admin role.
 
@@ -36,7 +36,7 @@ numbered so we can refer to them in commits and PRs.
 
 ## Concerns (address these)
 
-1. **Unispring membership is a weak trust signal on its own.** `fund` is
+1. **Unispring membership is a weak trust signal on its own.** `offer` is
    permissionless, so "this token is in Unispring" only tells you its
    supply is floor-locked — it says nothing about the token's bytecode
    (could be fee-on-transfer, rebasing, blacklisting, upgradeable, or

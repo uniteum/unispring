@@ -75,7 +75,7 @@ initial price is set exactly at `tickLower`. Two consequences follow:
   against. The floor is enforced by the **absence** of liquidity, not
   by a hook or custom curve.
 
-`tickLower` is chosen by the funder at `fund()` time and is permanent.
+`tickLower` is chosen by the funder at `offer()` time and is permanent.
 
 ### Price dynamics
 
@@ -96,13 +96,13 @@ cannot withdraw principal, cannot modify ticks.
 Fees are not reinvested and not paid out to LPs (there are no LPs —
 every position is permanently owned by a `Fountain` clone with no
 withdraw path). The depth of a pool is whatever was funded plus
-whatever follow-on `fund` calls add.
+whatever follow-on `offer` calls add.
 
 ### Bitsy factory, per-hub clones
 
 Unispring is a prototype plus a family of deterministic clones, one
 per `(hub, tickLower, tickUpper)` triple. Each clone pairs its single
-hub against any number of spokes via `fund()`. Clones share no state.
+hub against any number of spokes via `offer()`. Clones share no state.
 
 No clone has:
 
@@ -191,7 +191,7 @@ neutrinoSource.launch(name, symbol, decimals, supply, salt, tickLower, tickUpper
 
 Bare-bones flow (no Coinage wrapper): deploy an ERC-20 whose address
 sorts below the hub, transfer any amount to a `Unispring` clone, then
-call `clone.fund(token, supply, tickLower, tickUpper)`. Same end state,
+call `clone.offer(token, supply, tickLower, tickUpper)`. Same end state,
 no mint step.
 
 ### Token ordering and the floor
@@ -278,7 +278,7 @@ for salt in 0, 1, 2, ...:
 ```
 
 and then calls `neutrinoSource.launch(name, symbol, decimals, supply,
-salt, tickLower, tickUpper)` with the winning salt. `Unispring.fund`
+salt, tickLower, tickUpper)` with the winning salt. `Unispring.offer`
 reverts with `SpokeMustSortBelowHub(token)` if the constraint isn't
 met.
 
@@ -318,16 +318,16 @@ address on every chain it is launched to.
 
 ## Patterns
 
-`fund` is permissionless and can be called any number of times against
+`offer` is permissionless and can be called any number of times against
 the same pool, by anyone, using their own tokens. Every position is
 permanent. A few useful patterns fall out of that:
 
 - **Staged emissions.** Fund an initial single-sided range covering
-  early buyers; once price moves through it, call `fund` again with
+  early buyers; once price moves through it, call `offer` again with
   fresh supply at a higher range. Turns a one-shot launch into a
   ladder with no admin key.
 - **Multi-tier launch ladder.** Split the initial supply across
-  several `fund` calls at different tick ranges to shape the offering
+  several `offer` calls at different tick ranges to shape the offering
   curve — some supply cheap, some expensive. A single range can't
   express "sell 30% below price X, 70% above" cleanly.
 - **Permanent supply removal.** A holder who wants to sink tokens
@@ -342,13 +342,13 @@ permanent. A few useful patterns fall out of that:
   unbounded pumps.
 - **Re-arming a sold-out position.** Once the original single-sided
   range is fully crossed, the position is inert as a further seller.
-  A fresh `fund` at a new range restarts distribution at the new
+  A fresh `offer` at a new range restarts distribution at the new
   market price. Third parties can also LP directly into the same pool
   via the PoolManager, or open a parallel pool at a different fee
   tier — see DESIGN.md §14 for the full catalog of post-buyout
   options.
 
-Re-funds are doubly constrained. First, Fountain requires the batch's
+Re-offers are doubly constrained. First, Fountain requires the batch's
 starting tick to correspond exactly to the current pool price — if
 it doesn't, the call reverts with `PoolPreInitialized`. Second, for
 the batch to seat single-sided, the range must sit entirely on the
@@ -356,7 +356,7 @@ side being added: for a spoke (currency0-sided) that means
 `ticks[0]` equals the current pool tick and the range extends
 upward; for the hub (currency1-sided) that means `ticks[0]` equals
 the current pool tick and the (user-semantic) range extends downward.
-In-range or wrong-side re-funds revert. See DESIGN.md §9 for the full
+In-range or wrong-side re-offers revert. See DESIGN.md §9 for the full
 argument.
 
 ## Comparison

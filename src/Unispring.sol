@@ -11,7 +11,7 @@ import {Currency} from "v4-core/types/Currency.sol";
  * @notice Clone-per-hub factory that seats fair-launch pools on {FOUNTAIN}.
  *         Each clone owns a single hub token and pairs it against spokes
  *         supplied by callers. The hub's own ETH pool is seated single-sided
- *         by {zzInit}; spoke pools are seated single-sided by {fund}.
+ *         by {zzInit}; spoke pools are seated single-sided by {offer}.
  * @dev    All V4 plumbing — unlock, modifyLiquidity, liquidity math, fee
  *         take — lives on {FOUNTAIN}. Unispring only mints/tracks
  *         the clone-per-hub key, pre-approves {FOUNTAIN} against pulled
@@ -27,7 +27,7 @@ import {Currency} from "v4-core/types/Currency.sol";
  *         liquidity check uses the half-open convention
  *         `tickLower <= currentTick < tickUpper`; its token-composition
  *         check is closed on both ends. See README §Token ordering.)
- * @dev    Pure factory. Once {fund} settles, the position is permanent and
+ * @dev    Pure factory. Once {offer} settles, the position is permanent and
  *         this contract has no authority to unwind it or modify the pool —
  *         no owner, no upgrade path, no admin keys. All post-launch swap
  *         behavior belongs to the Uniswap V4 PoolManager and whatever DEX
@@ -66,7 +66,7 @@ contract Unispring {
     /**
      * @notice Emitted when a pool is initialized, paired against the hub (or
      *         ETH for the hub pool itself), and funded.
-     * @param funder     The address that called {fund}. Equals this clone's
+     * @param offerer    The address that called {offer}. Equals this clone's
      *                   own address on the hub-pool seed call from {zzInit}.
      * @param token      The spoke currency (or the hub, for {zzInit}).
      *                   `Currency.wrap(address(0))` for a native-ETH spoke.
@@ -75,8 +75,8 @@ contract Unispring {
      * @param tickLower  V4-native lower tick of the funded position.
      * @param tickUpper  V4-native upper tick of the funded position.
      */
-    event Funded(
-        address indexed funder,
+    event Offered(
+        address indexed offerer,
         Currency indexed token,
         uint256 indexed positionId,
         uint256 supply,
@@ -157,7 +157,7 @@ contract Unispring {
      *         balance held at this address. Callable only by {PROTO}.
      * @dev    See DESIGN.md §7 for the mirror-geometry rationale (the position
      *         is inactive at spot until a bootstrap ETH→hub swap crosses
-     *         `tickUpper` downward) and §11 for the `this.fund` idiom.
+     *         `tickUpper` downward) and §11 for the `this.offer` idiom.
      */
     function zzInit(IERC20 hub_, int24 tickLower, int24 tickUpper) external {
         if (msg.sender != address(PROTO)) revert Unauthorized();
@@ -165,7 +165,7 @@ contract Unispring {
         uint256 supply = hub_.balanceOf(address(this));
         // forge-lint: disable-next-line(erc20-unchecked-transfer)
         hub_.approve(address(this), supply);
-        this.fund(Currency.wrap(address(hub_)), supply, tickLower, tickUpper);
+        this.offer(Currency.wrap(address(hub_)), supply, tickLower, tickUpper);
     }
 
     /**
@@ -188,7 +188,7 @@ contract Unispring {
      * @param  tickUpper  V4-native upper tick.
      * @return positionId The {FOUNTAIN} position id seated by this call.
      */
-    function fund(Currency token, uint256 supply, int24 tickLower, int24 tickUpper)
+    function offer(Currency token, uint256 supply, int24 tickLower, int24 tickUpper)
         external
         payable
         returns (uint256 positionId)
@@ -226,6 +226,6 @@ contract Unispring {
         }
 
         positionId = FOUNTAIN.offer{value: msg.value}(token, quote, 1, ticks, amounts);
-        emit Funded(msg.sender, token, positionId, supply, tickLower, tickUpper);
+        emit Offered(msg.sender, token, positionId, supply, tickLower, tickUpper);
     }
 }

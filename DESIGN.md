@@ -72,9 +72,9 @@ or recovered from the PoolManager / Fountain on demand.
 this pool use." All of that duplicated state the PoolManager already owns:
 
 - Does the pool exist? — `getSlot0` returns `sqrtPriceX96 == 0` for
-  uninitialized pools; `fund` uses that to decide whether to call
+  uninitialized pools; `offer` uses that to decide whether to call
   `initialize`.
-- What tick range? — caller supplies it at every `fund`. Positions are
+- What tick range? — caller supplies it at every `offer`. Positions are
   keyed by `(owner, tickLower, tickUpper, salt)` in the PoolManager, so
   the PoolManager is the authoritative store.
 
@@ -82,8 +82,8 @@ Removing that mapping state killed two ambiguities: mixing the hub address
 into the same mapping as spokes, and a `floor[token] == 0` value that
 conflated "unregistered" with "registered with floor 0."
 
-**Cost.** Callers must remember their own tick range across multiple `fund`
-calls on the same pool. The `Funded` event carries it for indexers.
+**Cost.** Callers must remember their own tick range across multiple `offer`
+calls on the same pool. The `Offered` event carries it for indexers.
 
 ---
 
@@ -190,8 +190,8 @@ single-sided-at-lower-bound spoke math to work, spokes must become
 hub address. A hub starting with `f...` means almost every possible spoke
 address sorts below it without needing to mine the spoke address.
 
-This also stabilizes the single-sided fund formula. If spoke/hub sides
-swapped case-by-case, `fund` would need branching logic to figure out
+This also stabilizes the single-sided offer formula. If spoke/hub sides
+swapped case-by-case, `offer` would need branching logic to figure out
 which side to fund and which tick boundary to seed at. With enforced
 ordering there is exactly one currency0-sided formula and one
 currency1-sided formula, selected by the `currency0Sided` flag in the
@@ -204,9 +204,9 @@ cost, not an ongoing constraint.
 
 ---
 
-## 9. `fund` is permissionless and re-callable
+## 9. `offer` is permissionless and re-callable
 
-**Choice.** Any address can call `fund(token, supply, tickLower, tickUpper)`
+**Choice.** Any address can call `offer(token, supply, tickLower, tickUpper)`
 any number of times on the same clone, with any token, paying its own
 supply. No access control, no rate limit, no first-caller privilege.
 
@@ -224,17 +224,17 @@ tokens — not the contract's balance. There is no self-allowance leak from
 `zzInit`: the initial self-approval is fully consumed by the seed
 transfer.
 
-Re-funding is doubly constrained. First, Fountain's `offer` treats
+Re-offering is doubly constrained. First, Fountain's `offer` treats
 `ticks[0]` as the batch's starting price: if the pool is already
 initialized, that starting price must match the current pool
 `sqrtPriceX96` exactly or `PoolPreInitialized` reverts. In practice
-this means `ticks[0]` on a re-fund must equal the current pool tick.
+this means `ticks[0]` on a re-offer must equal the current pool tick.
 Second, v4's single-sided math requires the range to sit entirely on
 the side being funded: currency0-sided extends upward from the current
 tick, currency1-sided extends downward (in user-tick semantics) from
-the current tick. Wrong-side or starting-price-mismatch re-funds
-revert. These constraints are a feature — they prevent re-funds from
-bleeding value out of existing positions, and force every re-fund to
+the current tick. Wrong-side or starting-price-mismatch re-offers
+revert. These constraints are a feature — they prevent re-offers from
+bleeding value out of existing positions, and force every re-offer to
 start at the current market price rather than carving a gap above or
 below spot.
 
@@ -245,25 +245,25 @@ only with *their own* tokens. The cost is borne by the griefer.
 
 ## 10. Spoke isolation against malicious tokens
 
-**Choice.** `fund` accepts any ERC-20 as the spoke token. A misbehaving
+**Choice.** `offer` accepts any ERC-20 as the spoke token. A misbehaving
 spoke (fee-on-transfer, rebasing, blacklisting, revert-on-transfer,
 ERC777-style transfer hooks) can break its own pool but cannot compromise
 the hub or any other spoke.
 
 **Why the isolation holds.**
 
-1. **Per-pool operations run only one token's code.** A `fund` call
+1. **Per-pool operations run only one token's code.** An `offer` call
    touches exactly one spoke; there is no cross-pool iteration and no
    shared balance across spokes.
 2. **V4's single-locker model blocks transfer-hook reentrancy.** Each
    `POOL_MANAGER.unlock` installs the clone as the sole locker for the
    duration of `unlockCallback`. A malicious token's transfer hook cannot
-   re-enter `fund` / `zzInit` (both call `unlock`, which reverts on
+   re-enter `offer` / `zzInit` (both call `unlock`, which reverts on
    nested entry) and cannot call the PoolManager directly because
    `modifyLiquidity` / `take` require `msg.sender == locker`.
 3. **Atomic unwind on bad transfers.** Fee-on-transfer,
    revert-on-transfer, or under-delivery causes `settle` to underpay or
-   revert, which unwinds the entire `fund` atomically. No partial state
+   revert, which unwinds the entire `offer` atomically. No partial state
    survives a broken token.
 
 **Residual consequence.** A malicious spoke's own pool may end up with
@@ -273,13 +273,13 @@ pool.
 
 ---
 
-## 11. `zzInit` uses `this.fund` for the self-seed
+## 11. `zzInit` uses `this.offer` for the self-seed
 
 **Choice.** `zzInit` does `hub_.approve(address(this), supply)` and then
-`this.fund(hub_, supply, tickLower, tickUpper)` — invoking `fund` as an
+`this.offer(hub_, supply, tickLower, tickUpper)` — invoking `offer` as an
 external call on its own address rather than an internal helper.
 
-**Why.** `fund` does `token.transferFrom(msg.sender, address(this), supply)`
+**Why.** `offer` does `token.transferFrom(msg.sender, address(this), supply)`
 as its first step. With an internal call, `msg.sender` would be PROTO (the
 original `zzInit` caller), which holds no hub balance. The external
 self-call rewrites `msg.sender` to `address(this)` — the clone itself —
@@ -341,7 +341,7 @@ do at that point — a catalog of the emergent market around a spent
 Unispring position. Complements the "Re-arming a sold-out position"
 bullet in README §Patterns.
 
-**Above `tickUpper` via `fund`.** The canonical path. A follow-on `fund`
+**Above `tickUpper` via `offer`.** The canonical path. A follow-on `offer`
 call with `tickLower ≥ currentTick` adds a new permanent single-sided
 spoke position at higher prices. Permissionless and re-callable (§9),
 so anyone — original funder, treasury, random holder — can extend the
@@ -352,9 +352,9 @@ can call `POOL_MANAGER.modifyLiquidity` against the Unispring PoolKey
 without going through Unispring. That position aggregates additively
 with anything Unispring deposited — same pool, same fee, same tick
 grid, no "competition" between positions. The meaningful distinction
-against `fund` is *ownership*: a direct V4 position is owned by
+against `offer` is *ownership*: a direct V4 position is owned by
 `msg.sender` and is withdrawable, and its share of the 0.01% swap
-fee is collectible by that owner; a `fund` position is owned by
+fee is collectible by that owner; an `offer` position is owned by
 Fountain with no exit path and its fees flow to Fountain's `taker`.
 
 **Above `tickUpper` via a parallel pool at a different fee.** A
@@ -364,7 +364,7 @@ across both. In any tick range where the Unispring pool has depth,
 cost-minimizing routing prefers the cheaper fee; a higher-fee pool
 overlapping Unispring's live range loses the flow. *Above* the spent
 `tickUpper` the Unispring pool has no depth, so a parallel pool has
-that range to itself until someone re-funds the Unispring side. That
+that range to itself until someone re-offers on the Unispring side. That
 window is the one regime where a parallel pool has clean economic
 room.
 
@@ -380,7 +380,7 @@ seller back across the boundary consumes it and reactivates the
 original position. A spoke pool therefore alternates between "active at
 spot inside `[tickLower, tickUpper]`" and "saturated at `tickUpper`
 awaiting the next sell." The saturated state is a waiting state, not a
-dead state — which is why re-funds and parallel pools above `tickUpper`
+dead state — which is why re-offers and parallel pools above `tickUpper`
 are optional enhancements, not required repairs.
 
 ---

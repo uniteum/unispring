@@ -18,7 +18,7 @@ import {Currency} from "v4-core/types/Currency.sol";
  *         fresh Unispring prototype against the real PoolManager, then
  *         exercises the clone-per-hub factory: hub pool seated by {zzInit}
  *         (ETH/hub, hub above ETH → flip case in Fountain), spoke pools
- *         seated by {fund} (spoke/hub, spoke below hub → identity).
+ *         seated by {offer} (spoke/hub, spoke below hub → identity).
  *
  *         Run with:
  *           forge test --match-contract UnispringForkTest -f mainnet -vv
@@ -100,10 +100,10 @@ contract UnispringForkTest is ForkBase {
     }
 
     // ----------------------------------------------------------------------
-    // fund — spoke pool paired against hub
+    // offer — spoke pool paired against hub
     // ----------------------------------------------------------------------
 
-    function test_FundSpokeSeatsPositionAgainstHub() public {
+    function test_OfferSpokeSeatsPositionAgainstHub() public {
         Unispring clone = _makeHub();
 
         TestToken spoke = _makeToken("Spoke", "SPK", 18);
@@ -113,7 +113,7 @@ contract UnispringForkTest is ForkBase {
         spoke.mint(address(this), supply);
         spoke.approve(address(clone), supply);
 
-        uint256 positionId = clone.fund(Currency.wrap(address(spoke)), supply, tickLower, tickUpper);
+        uint256 positionId = clone.offer(Currency.wrap(address(spoke)), supply, tickLower, tickUpper);
 
         assertEq(positionId, 1, "spoke is the second position");
         assertEq(fountain.positionsCount(), 2, "hub + spoke");
@@ -144,7 +144,7 @@ contract UnispringForkTest is ForkBase {
      *         and verify ETH lands in the PoolManager via the native-settle
      *         path on a fresh position id.
      */
-    function test_FundSeatsNativeETHSpokeAgainstHub() public {
+    function test_OfferSeatsNativeETHSpokeAgainstHub() public {
         Unispring clone = _makeHub();
 
         uint256 supply = 1_000_000 ether;
@@ -155,7 +155,7 @@ contract UnispringForkTest is ForkBase {
         vm.deal(address(this), supply);
         uint256 pmBefore = address(fountain.POOL_MANAGER()).balance;
 
-        uint256 positionId = clone.fund{value: supply}(Currency.wrap(address(0)), supply, tickLower, tickUpper);
+        uint256 positionId = clone.offer{value: supply}(Currency.wrap(address(0)), supply, tickLower, tickUpper);
 
         assertEq(positionId, 1, "spoke is the second position");
         assertEq(fountain.positionsCount(), 2, "hub + spoke");
@@ -176,7 +176,7 @@ contract UnispringForkTest is ForkBase {
      *         with {Fountain.NativeValueMismatch} when forwarded a non-zero
      *         `msg.value`.
      */
-    function test_FundRevertsWhenERC20SpokeSentNativeValue() public {
+    function test_OfferRevertsWhenERC20SpokeSentNativeValue() public {
         Unispring clone = _makeHub();
         TestToken spoke = _makeToken("Spoke", "SPK", 18);
         uint256 supply = 1 ether;
@@ -184,36 +184,36 @@ contract UnispringForkTest is ForkBase {
         spoke.approve(address(clone), supply);
         vm.deal(address(this), 1);
         vm.expectRevert(abi.encodeWithSelector(Fountain.NativeValueMismatch.selector, uint256(0), uint256(1)));
-        clone.fund{value: 1}(Currency.wrap(address(spoke)), supply, -120_000, TickMath.MAX_TICK - 1);
+        clone.offer{value: 1}(Currency.wrap(address(spoke)), supply, -120_000, TickMath.MAX_TICK - 1);
     }
 
     // ----------------------------------------------------------------------
-    // fund — validation
+    // offer — validation
     // ----------------------------------------------------------------------
 
-    function test_FundRevertsOnSpokeAboveHub() public {
+    function test_OfferRevertsOnSpokeAboveHub() public {
         // Use a low-address hub so almost any spoke sorts above it.
         Unispring clone = _makeHubAt(zeros);
         Currency bogusSpoke = Currency.wrap(ffffff);
 
         vm.expectRevert(abi.encodeWithSelector(Unispring.SpokeMustSortBelowHub.selector, Currency.unwrap(bogusSpoke)));
-        clone.fund(bogusSpoke, 0, -100, 100);
+        clone.offer(bogusSpoke, 0, -100, 100);
     }
 
-    function test_FundRevertsOnInvertedTicks() public {
+    function test_OfferRevertsOnInvertedTicks() public {
         Unispring clone = _makeHub();
         TestToken spoke = _makeToken("Spoke", "SPK", 18);
 
         vm.expectRevert(abi.encodeWithSelector(Unispring.TickLowerNotBelowUpper.selector, int24(100), int24(50)));
-        clone.fund(Currency.wrap(address(spoke)), 0, 100, 50);
+        clone.offer(Currency.wrap(address(spoke)), 0, 100, 50);
     }
 
-    function test_FundRevertsOnEqualTicks() public {
+    function test_OfferRevertsOnEqualTicks() public {
         Unispring clone = _makeHub();
         TestToken spoke = _makeToken("Spoke", "SPK", 18);
 
         vm.expectRevert(abi.encodeWithSelector(Unispring.TickLowerNotBelowUpper.selector, int24(100), int24(100)));
-        clone.fund(Currency.wrap(address(spoke)), 0, 100, 100);
+        clone.offer(Currency.wrap(address(spoke)), 0, 100, 100);
     }
 
     function test_ZzInitRevertsIfNotCalledByProto() public {

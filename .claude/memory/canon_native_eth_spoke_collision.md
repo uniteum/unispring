@@ -4,19 +4,19 @@ description: A Unispring native-ETH spoke seats into the same V4 pool as the hub
 type: project
 ---
 
-In Unispring, `fund(token, ...)` picks the quote currency by checking
+In Unispring, `offer(token, ...)` picks the quote currency by checking
 `token == hub`: if not the hub, the quote is the hub. So a native-ETH
 spoke (`token = Currency.wrap(address(0))`) against an ERC-20 hub
 produces the pool key `(ETH, hub)` — the exact same currency pair as
 the hub's own ETH pool that `zzInit` already initialized.
 
-Concretely: `zzInit` calls `fund(hub, supply, HUB_TICK_LOWER,
+Concretely: `zzInit` calls `offer(hub, supply, HUB_TICK_LOWER,
 HUB_TICK_UPPER)` with `isHub = true`, which negates and swaps the user
 ticks (`ticks[0] = -tickUpper`, `ticks[1] = -tickLower`) and pairs
 against ETH. After Fountain's flip-handling (hub > ETH so hub becomes
 currency1), the V4 pool initializes at tick `HUB_TICK_UPPER`.
 
-A subsequent ETH-as-spoke `fund` call hits the same pool. ETH
+A subsequent ETH-as-spoke `offer` call hits the same pool. ETH
 < hub so no flip; Fountain initializes at `tickLower` user-tick. The
 two prices only match when `tickLower == HUB_TICK_UPPER`. Any other
 spoke `tickLower` reverts with `Fountain.PoolPreInitialized` because
