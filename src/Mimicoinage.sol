@@ -66,15 +66,24 @@ contract Mimicoinage {
     ICoinage public immutable COINAGE;
 
     /**
-     * @notice Original token paired with each mimic, indexed by the mimic
-     *         token address. Populated by {mimic}; zero for unknown mimics.
+     * @notice Original currency paired with each mimic, indexed by the mimic
+     *         token address. Populated by {mimic}; meaningful only for
+     *         mimics that satisfy {isMimic} (since `Currency.wrap(address(0))`
+     *         is itself a valid native-ETH original).
      */
-    mapping(IERC20 => IERC20) public originalOf;
+    mapping(IERC20 => Currency) public originalOf;
+
+    /**
+     * @notice Whether `token` was minted by this factory as a mimic.
+     *         Populated by {mimic}; the auto-generated getter doubles as
+     *         the public existence check.
+     */
+    mapping(IERC20 => bool) public isMimic;
 
     /**
      * @notice Fountain position id backing each mimic, indexed by the mimic
      *         token address. Populated by {mimic}; meaningful only for
-     *         addresses in {originalOf}.
+     *         mimics that satisfy {isMimic}.
      */
     mapping(IERC20 => uint256) public positionIdOf;
 
@@ -87,10 +96,13 @@ contract Mimicoinage {
 
     /**
      * @notice Emitted when a mimic token is minted.
+     * @param  mimic       The newly minted ERC-20.
+     * @param  original    The original currency the mimic is pegged against
+     *                     (`Currency.wrap(address(0))` for native ETH).
+     * @param  poolId      The Uniswap V4 pool id seated for this mimic.
+     * @param  positionId  The Fountain position id holding the mimic supply.
      */
-    event Mimicked(
-        IERC20Metadata indexed mimic, IERC20Metadata indexed original, PoolId indexed poolId, uint256 positionId
-    );
+    event Mimicked(IERC20Metadata indexed mimic, Currency indexed original, PoolId indexed poolId, uint256 positionId);
 
     /**
      * @notice Thrown when {poolKeyOf} or {poolIdOf} is called with a mimic
@@ -137,15 +149,6 @@ contract Mimicoinage {
     }
 
     /**
-     * @notice Whether `token` was minted by this factory as a mimic.
-     * @param  token Any address.
-     * @return True if `token` appears in {originalOf}.
-     */
-    function isMimic(IERC20 token) external view returns (bool) {
-        return address(originalOf[token]) != address(0);
-    }
-
-    /**
      * @notice Rebuild the Uniswap V4 {PoolKey} used by `token`'s position.
      *         Useful for direct reads against the PoolManager (e.g. via
      *         `StateLibrary`). Reverts on unknown mimics.
@@ -154,12 +157,13 @@ contract Mimicoinage {
      *               fee/tickSpacing/hooks constants.
      */
     function poolKeyOf(IERC20 token) public view returns (PoolKey memory key) {
-        IERC20 original = originalOf[token];
-        if (address(original) == address(0)) revert UnknownMimic(token);
-        bool mimicIsToken0 = address(token) < address(original);
+        if (!isMimic[token]) revert UnknownMimic(token);
+        Currency mimicCurrency = Currency.wrap(address(token));
+        Currency original = originalOf[token];
+        bool mimicIsToken0 = mimicCurrency < original;
         key = PoolKey({
-            currency0: Currency.wrap(mimicIsToken0 ? address(token) : address(original)),
-            currency1: Currency.wrap(mimicIsToken0 ? address(original) : address(token)),
+            currency0: mimicIsToken0 ? mimicCurrency : original,
+            currency1: mimicIsToken0 ? original : mimicCurrency,
             fee: FEE,
             tickSpacing: TICK_SPACING,
             hooks: IHooks(address(0))
@@ -181,18 +185,14 @@ contract Mimicoinage {
      *         for `(original, name)`. Lets a UI show the future token
      *         address (and whether it already exists) before any gas is
      *         spent.
-     * @param  original The reference token that would be pegged against.
+     * @param  original The reference currency that would be pegged against
+     *                  (`Currency.wrap(address(0))` for native ETH).
      * @param  name     Name that would be passed to {mimic}.
      * @return exists   True if the mimic has already been deployed.
      * @return token    Deterministic address of the mimic.
      */
-    function predictMimic(IERC20Metadata original, string calldata name)
-        external
-        view
-        returns (bool exists, address token)
-    {
-        uint8 decimals = original.decimals();
-        string memory symbol = string.concat(original.symbol(), SUFFIX);
+    function predictMimic(Currency original, string calldata name) external view returns (bool exists, address token) {
+        (uint8 decimals, string memory symbol) = _mimicMetadata(original);
         (exists, token,) = COINAGE.made(address(this), name, symbol, decimals, SUPPLY, bytes32(0));
     }
 
@@ -202,21 +202,24 @@ contract Mimicoinage {
      *         segment spans user ticks `[0, 1)`; Fountain handles the
      *         V4-native tick flip when the mimic sorts above `original`.
      *         The position is permanent.
-     * @param  original   The reference token to peg against.
+     * @param  original   The reference currency to peg against
+     *                    (`Currency.wrap(address(0))` for native ETH; the
+     *                    mimic is minted with 18 decimals and `"ETH"` as
+     *                    its symbol prefix in that case).
      * @param  name       Name for the newly minted mimic token.
      * @return token      The newly minted mimic token.
      * @return positionId The Fountain position id seated by this call;
      *                    also available as {positionIdOf}(`token`).
      */
-    function mimic(IERC20Metadata original, string calldata name)
+    function mimic(Currency original, string calldata name)
         external
         returns (IERC20Metadata token, uint256 positionId)
     {
-        uint8 decimals = original.decimals();
-        string memory symbol = string.concat(original.symbol(), SUFFIX);
+        (uint8 decimals, string memory symbol) = _mimicMetadata(original);
         token = COINAGE.make(name, symbol, decimals, SUPPLY, bytes32(0));
         IERC20 mimicErc = IERC20(address(token));
         originalOf[mimicErc] = original;
+        isMimic[mimicErc] = true;
         mimics.push(token);
 
         // forge-lint: disable-next-line(erc20-unchecked-transfer)
@@ -228,11 +231,26 @@ contract Mimicoinage {
         uint256[] memory amounts = new uint256[](1);
         amounts[0] = SUPPLY;
 
-        positionId = FOUNTAIN.offer(
-            Currency.wrap(address(mimicErc)), Currency.wrap(address(original)), TICK_SPACING, ticks, amounts
-        );
+        positionId = FOUNTAIN.offer(Currency.wrap(address(mimicErc)), original, TICK_SPACING, ticks, amounts);
         positionIdOf[mimicErc] = positionId;
 
         emit Mimicked(token, original, poolKeyOf(mimicErc).toId(), positionId);
+    }
+
+    /**
+     * @dev Resolve the decimals and symbol-prefix used to mint a mimic of
+     *      `original`. Native ETH (`address(0)`) has no on-chain metadata,
+     *      so the mimic uses 18 decimals and `"ETH"` as its symbol prefix
+     *      to match the conventional human-unit semantics.
+     */
+    function _mimicMetadata(Currency original) private view returns (uint8 decimals, string memory symbol) {
+        if (original.isAddressZero()) {
+            decimals = 18;
+            symbol = string.concat("ETH", SUFFIX);
+        } else {
+            IERC20Metadata orig = IERC20Metadata(Currency.unwrap(original));
+            decimals = orig.decimals();
+            symbol = string.concat(orig.symbol(), SUFFIX);
+        }
     }
 }

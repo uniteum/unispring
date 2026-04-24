@@ -67,7 +67,8 @@ contract Unispring {
      * @notice Emitted when a pool is initialized, paired against the hub (or
      *         ETH for the hub pool itself), and funded.
      * @param funder     The address that called {fund} (or PROTO for {zzInit}).
-     * @param token      The spoke token (or the hub, for {zzInit}).
+     * @param token      The spoke currency (or the hub, for {zzInit}).
+     *                   `Currency.wrap(address(0))` for a native-ETH spoke.
      * @param positionId The {FOUNTAIN} position id seated by this call.
      * @param supply     The fixed supply funded into the pool.
      * @param tickLower  V4-native lower tick of the funded position.
@@ -75,7 +76,7 @@ contract Unispring {
      */
     event Funded(
         address indexed funder,
-        IERC20 indexed token,
+        Currency indexed token,
         uint256 indexed positionId,
         uint256 supply,
         int24 tickLower,
@@ -161,59 +162,65 @@ contract Unispring {
         uint256 supply = hub_.balanceOf(address(this));
         // forge-lint: disable-next-line(erc20-unchecked-transfer)
         hub_.approve(address(this), supply);
-        this.fund(hub_, supply, tickLower, tickUpper);
+        this.fund(Currency.wrap(address(hub_)), supply, tickLower, tickUpper);
     }
 
     /**
-     * @notice Lock `supply` tokens into a single-sided V4 position paired
+     * @notice Lock `supply` of `token` into a single-sided V4 position paired
      *         against {hub} (or ETH when `token` is the hub). Permissionless —
-     *         anyone can pair any ERC-20, any number of times.
-     * @dev    Spokes must sort strictly below {hub} (become `currency0`).
-     *         Caller must approve this contract for `supply` tokens. See
-     *         DESIGN.md §9 for the permissionless + re-call semantics, §10
-     *         for the spoke-isolation argument, and README §Patterns for
-     *         common re-funding use cases.
-     * @param  token      The token to pair. The hub itself pairs against ETH;
-     *                    any other token pairs against {hub}.
+     *         anyone can pair any currency, any number of times.
+     * @dev    Spokes must sort strictly below {hub} (become `currency0`); a
+     *         native-ETH spoke (`Currency.wrap(address(0))`) always satisfies
+     *         this. For ERC-20 spokes the caller must approve this contract
+     *         for `supply` tokens; for a native-ETH spoke the caller must
+     *         send `supply` as `msg.value`. See DESIGN.md §9 for the
+     *         permissionless + re-call semantics, §10 for the spoke-isolation
+     *         argument, and README §Patterns for common re-funding use cases.
+     * @param  token      The currency to pair. The hub itself pairs against ETH;
+     *                    any other currency pairs against {hub}.
      * @param  supply     Amount of `token` to pull from the caller and lock.
      * @param  tickLower  V4-native lower tick; strictly below `tickUpper`.
      * @param  tickUpper  V4-native upper tick.
      * @return positionId The {FOUNTAIN} position id seated by this call.
      */
-    function fund(IERC20 token, uint256 supply, int24 tickLower, int24 tickUpper)
+    function fund(Currency token, uint256 supply, int24 tickLower, int24 tickUpper)
         external
+        payable
         returns (uint256 positionId)
     {
         if (tickLower >= tickUpper) revert TickLowerNotBelowUpper(tickLower, tickUpper);
 
-        address tokenAddr = address(token);
+        address tokenAddr = Currency.unwrap(token);
         bool isHub = tokenAddr == hub;
         if (!isHub && tokenAddr >= hub) revert SpokeMustSortBelowHub(tokenAddr);
 
-        // forge-lint: disable-next-line(erc20-unchecked-transfer)
-        token.transferFrom(msg.sender, address(this), supply);
-        // forge-lint: disable-next-line(erc20-unchecked-transfer)
-        token.approve(address(FOUNTAIN), supply);
+        if (!token.isAddressZero()) {
+            IERC20 erc = IERC20(tokenAddr);
+            // forge-lint: disable-next-line(erc20-unchecked-transfer)
+            erc.transferFrom(msg.sender, address(this), supply);
+            // forge-lint: disable-next-line(erc20-unchecked-transfer)
+            erc.approve(address(FOUNTAIN), supply);
+        }
 
         int24[] memory ticks = new int24[](2);
         uint256[] memory amounts = new uint256[](1);
         amounts[0] = supply;
-        address quote;
+        Currency quote;
         if (isHub) {
             // Hub sorts above ETH (currency1). Fountain takes ticks in
             // log(quote/token) semantics and negates for the flip case;
             // negate-and-swap here to preserve Unispring's V4-native range.
             ticks[0] = -tickUpper;
             ticks[1] = -tickLower;
-            quote = address(0);
+            quote = Currency.wrap(address(0));
         } else {
             // Spoke sorts below hub (currency0): identity mapping.
             ticks[0] = tickLower;
             ticks[1] = tickUpper;
-            quote = hub;
+            quote = Currency.wrap(hub);
         }
 
-        positionId = FOUNTAIN.offer(Currency.wrap(address(token)), Currency.wrap(quote), 1, ticks, amounts);
+        positionId = FOUNTAIN.offer{value: msg.value}(token, quote, 1, ticks, amounts);
         emit Funded(msg.sender, token, positionId, supply, tickLower, tickUpper);
     }
 }

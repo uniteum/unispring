@@ -4,6 +4,7 @@ pragma solidity ^0.8.30;
 import {Clones} from "clones/Clones.sol";
 import {ICoinage} from "ierc20/ICoinage.sol";
 import {IERC20Metadata} from "ierc20/IERC20Metadata.sol";
+import {Currency} from "v4-core/types/Currency.sol";
 
 import {NeutrinoChannel} from "./NeutrinoChannel.sol";
 import {Unispring} from "./Unispring.sol";
@@ -197,7 +198,7 @@ contract NeutrinoSource {
         NeutrinoChannel channel = CHANNEL.make(tickLower, tickUpper);
         token = channel.mint(COINAGE, name, symbol, decimals, supply, salt);
         token.approve(address(spring), supply);
-        spring.fund(token, supply, tickLower, tickUpper);
+        spring.fund(Currency.wrap(address(token)), supply, tickLower, tickUpper);
         emit Launch(token, supply, tickLower, tickUpper);
     }
 }

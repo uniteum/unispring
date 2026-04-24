@@ -113,7 +113,7 @@ contract UnispringForkTest is ForkBase {
         spoke.mint(address(this), supply);
         spoke.approve(address(clone), supply);
 
-        uint256 positionId = clone.fund(IERC20(address(spoke)), supply, tickLower, tickUpper);
+        uint256 positionId = clone.fund(Currency.wrap(address(spoke)), supply, tickLower, tickUpper);
 
         assertEq(positionId, 1, "spoke is the second position");
         assertEq(fountain.positionsCount(), 2, "hub + spoke");
@@ -140,9 +140,9 @@ contract UnispringForkTest is ForkBase {
     function test_FundRevertsOnSpokeAboveHub() public {
         // Use a low-address hub so almost any spoke sorts above it.
         Unispring clone = _makeHubAt(zeros);
-        IERC20 bogusSpoke = IERC20(ffffff);
+        Currency bogusSpoke = Currency.wrap(ffffff);
 
-        vm.expectRevert(abi.encodeWithSelector(Unispring.SpokeMustSortBelowHub.selector, address(bogusSpoke)));
+        vm.expectRevert(abi.encodeWithSelector(Unispring.SpokeMustSortBelowHub.selector, Currency.unwrap(bogusSpoke)));
         clone.fund(bogusSpoke, 0, -100, 100);
     }
 
@@ -151,7 +151,7 @@ contract UnispringForkTest is ForkBase {
         TestToken spoke = _makeToken("Spoke", "SPK", 18);
 
         vm.expectRevert(abi.encodeWithSelector(Unispring.TickLowerNotBelowUpper.selector, int24(100), int24(50)));
-        clone.fund(IERC20(address(spoke)), 0, 100, 50);
+        clone.fund(Currency.wrap(address(spoke)), 0, 100, 50);
     }
 
     function test_FundRevertsOnEqualTicks() public {
@@ -159,7 +159,7 @@ contract UnispringForkTest is ForkBase {
         TestToken spoke = _makeToken("Spoke", "SPK", 18);
 
         vm.expectRevert(abi.encodeWithSelector(Unispring.TickLowerNotBelowUpper.selector, int24(100), int24(100)));
-        clone.fund(IERC20(address(spoke)), 0, 100, 100);
+        clone.fund(Currency.wrap(address(spoke)), 0, 100, 100);
     }
 
     function test_ZzInitRevertsIfNotCalledByProto() public {
