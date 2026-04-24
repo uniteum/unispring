@@ -1,19 +1,19 @@
 # Unispring
 
 Fair-launch token factory on Uniswap V4 — permanent liquidity, built-in
-price floor, zero maker capital, zero fees.
+price floor, zero maker capital.
 
 ## Overview
 
 Unispring creates tokens that are immediately tradeable on Uniswap V4
 with fair-launch economics and a permanent price floor.
 
-In a single transaction, the protocol:
+In a single transaction, the `NeutrinoSource` wrapper:
 
-1. Mints a fixed-supply ERC-20 token via [Lepton](https://github.com/uniteum/lepton)
+1. Mints a fixed-supply ERC-20 token via [Coinage](https://github.com/uniteum/lepton)
 2. Initializes a Uniswap V4 pool against the hub token
 3. Deposits 100% of the supply as a single-sided concentrated position
-4. Locks the position permanently in the singleton factory
+4. Locks the position permanently in a `Fountain` clone
 
 No allocation. No presale. No operator. **No capital from the maker.**
 The only way to acquire tokens is buying them from the pool.
@@ -49,8 +49,9 @@ them are reachable in two hops — sell A for hub, buy B with hub —
 giving the entire family of Unispring tokens native routability through
 Uniswap's standard aggregator paths.
 
-The hub is a constructor parameter on the factory. The canonical
-deployment uses [Uniteum 1](https://uniteum.one/uniteum-1/) as its hub.
+The hub is the key of each Unispring clone: one clone per
+`(hub, tickLower, tickUpper)` triple. The canonical deployment uses
+[Uniteum 1](https://uniteum.one/uniteum-1/) as its hub.
 
 ## Design
 
@@ -64,72 +65,80 @@ The maker participates by buying from the pool like everyone else.
 
 ### Price floor
 
-The seeded position spans `[tickFloor, MAX_TICK]`, and the pool's
-initial price is set exactly at `tickFloor`. Two consequences follow:
+The seeded position spans `[tickLower, tickUpper]`, and the pool's
+initial price is set exactly at `tickLower`. Two consequences follow:
 
 - The position is single-sided in the new token, requiring zero hub
   tokens to seed.
-- Below `tickFloor` there is no liquidity at all. Sells cannot push the
+- Below `tickLower` there is no liquidity at all. Sells cannot push the
   price past it because there is nothing on the other side to fill
   against. The floor is enforced by the **absence** of liquidity, not
   by a hook or custom curve.
 
-`tickFloor` is chosen by the maker at `make()` time and is permanent.
+`tickLower` is chosen by the funder at `fund()` time and is permanent.
 
 ### Price dynamics
 
 As tokens are bought out of the pool, price rises along the
 concentrated-liquidity curve and hub tokens accumulate in the position.
 Selling returns tokens to the pool and lowers the price — but never
-below the floor. There is no upper bound; the position extends to
-`MAX_TICK`.
+below the floor. The position extends from `tickLower` to `tickUpper`,
+both chosen by the funder at fund time.
 
-### Zero fee
+### Low fee
 
-Pools are created with `fee = 0`. There is no swap fee, so there are no
-fees to compound, no caller-reward function, and no operator role of any
-kind. The factory exists only to mint, seed, and lock — once `make()`
-returns, the pool needs nothing further.
+Pools are created at `fee = 100` (0.01%, Uniswap's lowest canonical
+tier). Swap fees accrue inside the position and are claimable by a
+single `taker` address — the `msg.sender` that first called
+`Fountain.make()`. `taker` has no other authority: it cannot pause,
+cannot withdraw principal, cannot modify ticks.
 
-This is a deliberate trade-off: cheaper trading and a smaller contract
-surface, at the cost of any fee-driven liquidity deepening over time.
-The depth of the position is fixed at the supply that was minted.
+Fees are not reinvested and not paid out to LPs (there are no LPs —
+every position is permanently owned by a `Fountain` clone with no
+withdraw path). The depth of a pool is whatever was funded plus
+whatever follow-on `fund` calls add.
 
-### Singleton factory
+### Bitsy factory, per-hub clones
 
-Unispring is a single contract on chain. It is the maker, owner, and
-custodian of every position it creates. Positions are keyed by
-Uniswap V4 `PoolId`, so all per-token state lives in mappings rather
-than per-token clones.
+Unispring is a prototype plus a family of deterministic clones, one
+per `(hub, tickLower, tickUpper)` triple. Each clone pairs its single
+hub against any number of spokes via `fund()`. Clones share no state.
 
-The factory has:
+No clone has:
 
-- No owner
-- No upgrade path
-- No way to withdraw any position
-- No governance parameters
+- An owner
+- An upgrade path
+- A way to withdraw any position
+- Any governance parameters
 
-Once a token is made, its rules are fixed.
+Positions themselves live one level deeper, on a `Fountain` — a
+separate contract that owns every V4 position Unispring seats. Once
+a token is funded, its rules are fixed.
 
 ### Immutability
 
 Uniswap V4's `PoolManager` is immutable — no admin keys, no upgrade
-proxy. Lepton is immutable. Unispring is immutable. A token deployed
-through this stack inherits immutability from end to end.
+proxy. Lepton (the ERC-20 implementation Coinage deploys) is immutable.
+Fountain, Unispring, NeutrinoChannel, and NeutrinoSource are all
+immutable. A token deployed through this stack inherits immutability
+from end to end.
 
 ### Trust boundaries
 
-Unispring, NeutrinoSource, and NeutrinoChannel are **factories**. Their
-job is to mint a token, initialize a pool, and lock a single-sided
+NeutrinoSource, NeutrinoChannel, and Unispring are **factories**.
+Their job is to mint a token, initialize a pool, and lock a single-sided
 position. Once that work is done, none of them has any authority over
-what they created — they cannot pause a token, reclaim a position,
-change a fee, or route a trade. The ongoing behavior of a launched
-token is split between two contracts that the factories do not control:
+what they created. Fountain owns the position that results, but exposes
+no method to withdraw, collect principal, or modify ticks — only the
+fee-forward path to `taker`.
+
+The ongoing behavior of a launched token is split across:
 
 | After launch, ...                  | ... is governed by                                                |
 |:-----------------------------------|:------------------------------------------------------------------|
 | Token transfers, approvals, supply | Lepton (the ERC-20 implementation)                                |
 | Swap math, pool state, liquidity   | The Uniswap V4 PoolManager — plus any DEX router that reaches it  |
+| Accrued swap fees                  | Fountain (forwards to `taker` on demand; no other authority)      |
 
 Concretely:
 
@@ -141,37 +150,49 @@ Concretely:
   clone at `make()`, then on each `launch()` mints a spoke and hands
   it to Unispring for funding. The clone retains no claim on either
   token or on the pool.
-- **Unispring** funds a permanent single-sided position via
-  `PoolManager.modifyLiquidity`. The position has no owner in any
-  meaningful sense — Unispring holds the nominal position key but
-  exposes no method to withdraw, collect, or modify it.
+- **Unispring** pre-approves Fountain against the pulled tokens and
+  calls `Fountain.offer()` to seat a permanent single-sided position.
+  The clone retains no claim on the position.
+- **Fountain** holds every seated position in a registry keyed by
+  position id. It exposes `take` (forwards accrued fees to `taker`)
+  but no decrease-liquidity path — principal is locked forever.
 
 So the security surface a maker or holder needs to reason about is
-narrow: **Lepton** (does the ERC-20 behave correctly?) and **Uniswap
-V4** (does the pool honor its stated math?). The factories above them
-are one-shot and step aside.
+narrow: **Lepton** (does the ERC-20 behave correctly?), **Fountain**
+(are the positions really permanent?), and **Uniswap V4** (does the
+pool honor its stated math?). The factories above them are one-shot
+and step aside.
 
 ## How it works
 
+One-shot fair launch via NeutrinoSource:
+
 ```
-make(name, symbol, supply, tickFloor, salt)
+neutrinoSource.launch(name, symbol, decimals, supply, salt, tickLower, tickUpper)
         │
         ▼
-┌──────────────────────────────┐
-│  Lepton mints fixed supply    │
-│  at a CREATE2 address that    │
-│  sorts strictly below the hub │
-│  Initialize V4 pool at floor  │
-│  Deposit 100% as single-sided │
-│  position [floor, MAX_TICK]   │
-│  Position locked in factory   │
-└──────────────────────────────┘
+┌──────────────────────────────────┐
+│  Coinage mints fixed supply      │
+│  at a CREATE2 address that       │
+│  sorts strictly below the hub    │
+│  Transfer supply to Unispring    │
+│  clone; clone calls Fountain     │
+│  Fountain initializes V4 pool    │
+│  at `tickLower`, seats supply    │
+│  single-sided in [lower, upper)  │
+│  Position locked in Fountain     │
+└──────────────────────────────────┘
         │
         ▼
   Token is live on Uniswap V4 —
   tradeable on any frontend or
   aggregator immediately
 ```
+
+Bare-bones flow (no Coinage wrapper): deploy an ERC-20 whose address
+sorts below the hub, transfer any amount to a `Unispring` clone, then
+call `clone.fund(token, supply, tickLower, tickUpper)`. Same end state,
+no mint step.
 
 ### Token ordering and the floor
 
@@ -216,17 +237,17 @@ range ends up in the intersection.
 Unispring wants to deposit the entire supply of the new token into a
 position that is (a) active at spot — so quoters and aggregators can
 route through it immediately — and (b) holds only the new token — so
-the maker doesn't need to supply any hub.
+the funder doesn't need to supply any hub.
 
 Those two requirements *can* both be satisfied, but only at the **lower
 boundary** of a range, where the conventions align. So the position
 must be shaped so that the new token sits on the side corresponding to
 that lower-boundary seed: the new token must be `currency0`, the range
-must be `[tickFloor, MAX_TICK]`, and the pool must be initialized at
-exactly `sqrtPrice(tickFloor)`.
+must be `[tickLower, tickUpper]` with `tickLower` as the floor, and
+the pool must be initialized at exactly `sqrtPrice(tickLower)`.
 
 The mirror configuration — new token as `currency1`, seeded at the
-upper boundary of `[MIN_TICK, -tickFloor]` — looks symmetric but
+upper boundary of `[MIN_TICK, -tickLower]` — looks symmetric but
 isn't. At `currentTick == tickUpper` the position is single-sided in
 `currency1` (correct) but contributes zero active liquidity (wrong).
 Swap math can eventually cross the boundary on the first trade and
@@ -245,56 +266,55 @@ ensuring `newToken < hub`.
 
 #### Enforcing the ordering via salt mining
 
-Lepton accepts a caller-supplied `salt` for its CREATE2 deployment,
+Coinage accepts a caller-supplied `salt` for its CREATE2 deployment,
 and exposes a pure `made()` view so addresses can be predicted
 off-chain without spending gas. The maker runs a small loop:
 
 ```
 for salt in 0, 1, 2, ...:
-    addr = lepton.made(maker, name, symbol, supply, salt).home
+    addr = coinage.made(deployer, name, symbol, decimals, supply, salt).home
     if addr < hub:
         break
 ```
 
-and then calls `unispring.make(name, symbol, supply, tickFloor, salt)`
-with the winning salt. Unispring recomputes the address via Lepton's
-deterministic deployment and reverts with
-`NewTokenMustSortBelowHub(newToken)` if the constraint isn't met.
+and then calls `neutrinoSource.launch(name, symbol, decimals, supply,
+salt, tickLower, tickUpper)` with the winning salt. `Unispring.fund`
+reverts with `SpokeMustSortBelowHub(token)` if the constraint isn't
+met.
 
 The expected number of salts to try is
 `addressSpace / (addressSpace - hubValue)` — i.e. the smaller the hub
 address, the more tries. This is why the canonical hub is deployed at
 an address with several leading `f` bytes: it makes the search
-succeed on the first try for almost every `(name, symbol, supply)`
-combination, so in practice callers submit `salt = 0` and never think
-about it. The cost of mining a "big" hub address is paid **once**,
-at hub deployment, and amortized across every Unispring token that
-will ever be created.
+succeed on the first try for almost every `(name, symbol, decimals,
+supply)` combination, so in practice callers submit `salt = 0` and
+never think about it. The cost of mining a "big" hub address is paid
+**once**, at hub deployment, and amortized across every Unispring
+token that will ever be created.
 
 #### Summary
 
-The position is `[tickFloor, MAX_TICK]`. The pool's initial tick is
-exactly `tickFloor`. The new token is `currency0`, the hub is
+The position spans `[tickLower, tickUpper]`. The pool's initial tick
+is exactly `tickLower`. The new token is `currency0`, the hub is
 `currency1`. This is the only configuration that is simultaneously
-single-sided in the new token, active at spot, and free for the maker.
+single-sided in the new token, active at spot, and free for the funder.
 The floor is enforced by the **absence** of liquidity below
-`tickFloor`: sells cannot push price past it because there is nothing
+`tickLower`: sells cannot push price past it because there is nothing
 on the other side to fill against. No hook, no custom curve, no
 operator — just a position whose lower boundary is a wall.
 
 ### Design constants
 
-| Constant       | Value | Notes |
-|:---------------|:------|:------|
-| `FEE`          | `100` | Uniswap's LOWEST canonical tier (0.01%); required for discovery by `smart-order-router`'s fallback enumeration. |
-| `TICK_SPACING` | `1`   | Canonical pairing for the LOWEST tier; maximum granularity at the floor. |
-| `HUB`          | `0xfFFFfF29e3C82351E7AaBE4C221dEfed6a803D5D` | Uniteum 1, same address on every chain. Mined with a high-`f` prefix so Lepton salt search almost always terminates at `salt = 0`. |
-| `COINAGE`      | `0x14ae57AeD6AC1cd48Fa811Ed885Ab4a4c5e28C42` | Lepton, same address on every chain. |
-| `POOL_MANAGER` | immutable | Uniswap V4 PoolManager, resolved at construction from an `IAddressLookup` passed in as a constructor argument. |
+| Constant                 | Value   | Notes |
+|:-------------------------|:--------|:------|
+| `Fountain.FEE`           | `100`   | Uniswap's LOWEST canonical tier (0.01%); required for discovery by `smart-order-router`'s fallback enumeration. Swap fees accrue to Fountain's `taker`. |
+| Spoke `tickSpacing`      | caller-supplied | Unispring passes `tickSpacing = 1` to Fountain today (maximum granularity at the floor). |
+| `Fountain.POOL_MANAGER`  | immutable | Uniswap V4 PoolManager, resolved at Fountain construction from an `IAddressLookup`. |
+| `Unispring.FOUNTAIN`     | immutable | The Fountain every Unispring pool is seated on; chosen by whoever deployed the Unispring prototype. |
 
-Unispring takes no constructor arguments. The bytecode is identical on
-every chain it is deployed to, which lets it be deployed to a single
-deterministic CREATE2 address everywhere.
+Each protocol contract is bytecode-addressed via CREATE2 through a
+shared `CREATE2_FACTORY`, so the same prototype deploys at the same
+address on every chain it is launched to.
 
 ## Patterns
 
@@ -323,16 +343,21 @@ permanent. A few useful patterns fall out of that:
 - **Re-arming a sold-out position.** Once the original single-sided
   range is fully crossed, the position is inert as a further seller.
   A fresh `fund` at a new range restarts distribution at the new
-  market price. Third parties can also LP directly into the same
-  zero-fee pool or open a parallel pool at a non-zero fee tier above
-  the spent `tickUpper`; see DESIGN.md §14 for the full catalog of
-  post-buyout options.
+  market price. Third parties can also LP directly into the same pool
+  via the PoolManager, or open a parallel pool at a different fee
+  tier — see DESIGN.md §14 for the full catalog of post-buyout
+  options.
 
-Re-funds only settle when the new range sits entirely on the
-single-sided side being added. For the hub (currency1-sided), `tickUpper`
-must be at or below the current pool tick. For a spoke (currency0-sided),
-`tickLower` must be at or above the current tick. In-range or wrong-side
-re-funds revert at `settle`. See DESIGN.md §9 for the full argument.
+Re-funds are doubly constrained. First, Fountain requires the batch's
+starting tick to correspond exactly to the current pool price — if
+it doesn't, the call reverts with `PoolPreInitialized`. Second, for
+the batch to seat single-sided, the range must sit entirely on the
+side being added: for a spoke (currency0-sided) that means
+`ticks[0]` equals the current pool tick and the range extends
+upward; for the hub (currency1-sided) that means `ticks[0]` equals
+the current pool tick and the (user-semantic) range extends downward.
+In-range or wrong-side re-funds revert. See DESIGN.md §9 for the full
+argument.
 
 ## Comparison
 
@@ -347,7 +372,7 @@ re-funds revert at `settle`. See DESIGN.md §9 for the full argument.
 | Chainlink dependency | No | Yes | No |
 | Contracts required | 1 | 4 | 1 |
 | Ongoing costs | None | Chainlink + gas | None |
-| Swap fee | None | None | None |
+| Swap fee | None | None | 0.01% (to Fountain taker) |
 | Cross-token routing | N/A | Via Uniswap | Two-hop via hub |
 
 ## Build

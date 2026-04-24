@@ -8,28 +8,30 @@ is the way it is, not just what it does. Companion document to
 
 ---
 
-## 1. Direct `IPoolManager` calls instead of v4-periphery
+## 1. Direct `IPoolManager` calls via Fountain instead of v4-periphery
 
-**Choice.** Unispring inherits `IUnlockCallback` and talks to the
-`PoolManager` directly. No `v4-periphery`, no `PositionManager`, no
-`LiquidityAmounts`.
+**Choice.** Unispring delegates all V4 plumbing to `Fountain`, which
+inherits `IUnlockCallback` and talks to the `PoolManager` directly. No
+`v4-periphery`, no `PositionManager`, no `LiquidityAmounts`.
 
 **Why.** The core invariant is *the liquidity is owned by nobody*.
 `PositionManager` wraps each position as an ERC-721: whoever holds the NFT
 can transfer it, withdraw, or collect fees. Going through periphery would
-mean Unispring nominally *owns* NFTs and has to implement custody, which
+mean Fountain nominally *owns* NFTs and has to implement custody, which
 defeats the "locked forever" guarantee socially even if code never exposes
 the token.
 
-Calling `PoolManager.modifyLiquidity` from inside `unlockCallback` creates a
-position keyed by `(owner = clone, tickLower, tickUpper, salt = 0)` with no
-NFT, no transfer path, and no collect function anyone else can reach.
-Permanence enforced at the lowest level.
+Fountain calls `PoolManager.modifyLiquidity` from inside its own
+`unlockCallback`, creating a position keyed by `(owner = fountainClone,
+tickLower, tickUpper, salt = 0)` with no NFT, no transfer path, and no
+collect function anyone else can reach. Principal permanence is enforced
+at the lowest level — Fountain exposes `take` (forwards accrued fees to
+`taker`) but no decrease-liquidity path.
 
 **Cost.** The unlock / sync / settle choreography lives inline in
-`unlockCallback`, and `_liquidity0` / `_liquidity1` reimplement the two
-single-sided concentrated-liquidity formulas. About twenty lines of math;
-the dependency isn't worth it.
+Fountain's `unlockCallback`, and `_liquidity0` / `_liquidity1` reimplement
+the two single-sided concentrated-liquidity formulas. About twenty lines
+of math; the dependency isn't worth it.
 
 ---
 
@@ -62,8 +64,8 @@ deterministic from the triple and returned by `made` before deploy.
 ## 3. Minimal state per clone
 
 **Choice.** Each clone stores exactly one mutable variable: `hub` (address),
-set once by `zzInit`. Everything else is immutable (`PROTO`, `POOL_MANAGER`,
-`FEE`) or recovered from the PoolManager on demand.
+set once by `zzInit`. Everything else is immutable (`PROTO`, `FOUNTAIN`)
+or recovered from the PoolManager / Fountain on demand.
 
 **Why.** Earlier drafts kept `hubPool`, `poolToken[PoolId]`, and
 `floor[address]` mappings to track "which pools exist" and "what range does
@@ -101,30 +103,33 @@ depth.
 
 **Cost.** The hub is a single point of dependency. Its reputation is
 hostage to every spoke that registers against it (see CRITIQUE concern 1
-for the Lepton-launcher mitigation).
+for the NeutrinoSource-launcher mitigation).
 
 ---
 
-## 5. Zero-fee pools, `tickSpacing = 1`
+## 5. 0.01% fee pools, `tickSpacing = 1`
 
-**Choice.** `FEE = 0` and `tickSpacing = 1` for every pool.
+**Choice.** Unispring seats every pool through a `Fountain` whose
+`FEE = 100` (0.01%, Uniswap's lowest canonical tier). Unispring passes
+`tickSpacing = 1`.
 
-**Why.** No fees means no fee-compounding machinery — no plow, no reward
-dilemma, no operator role. The position's value is exactly the supply that
-funded it; it doesn't drift upward by accumulation. When a pool grows, it
-grows because someone calls `fund` again (see README §Patterns), not
-because of internal skimming.
+**Why.** The lowest canonical fee tier is what `smart-order-router`'s
+fallback enumeration discovers automatically, so a fresh Unispring pool
+is routable by every aggregator the moment it exists. Swap principal
+is locked forever regardless; the 0.01% fee skimmed off the top is
+what Fountain's `taker` collects via `take`. `taker` has no other
+authority — cannot pause, cannot decrease liquidity, cannot modify
+ticks.
 
-Zero-fee swaps are the cheapest possible route through a Unispring pool —
-an aggregator routing `ETH → hub → spoke` pays zero at both hops. Tick
-spacing 1 gives maximum granularity at the floor, so a caller-supplied
-tick lands exactly where specified rather than being rounded to a coarse
-grid.
+Tick spacing 1 gives maximum granularity at the floor, so a funder-
+supplied tick lands exactly where specified rather than being rounded
+to a coarse grid.
 
-**Cost.** No native moat growth. A spoke that no one adds to stays at its
-initial depth forever. Projects that want fee compounding call the
-PoolManager directly with a higher-fee tier — V4 is the substrate,
-Unispring is one recipe on top of it.
+**Cost.** Depth is not self-compounding. A spoke's pool holds exactly
+the supply seated into it; fees flow out to `taker` rather than back
+into the position. Projects that want fee compounding seat liquidity
+through the PoolManager directly at a higher-fee tier — V4 is the
+substrate, Unispring is one recipe on top of it.
 
 ---
 
@@ -219,14 +224,19 @@ tokens — not the contract's balance. There is no self-allowance leak from
 `zzInit`: the initial self-approval is fully consumed by the seed
 transfer.
 
-Re-funding is constrained by v4's single-sided math: the new range must
-sit entirely on the side being funded. For the hub (currency1-sided),
-`tickUpper` must be at or below the current pool tick. For a spoke
-(currency0-sided), `tickLower` must be at or above the current tick.
-In-range or wrong-side re-funds revert at `settle` because only one
-currency is transferred but `modifyLiquidity` demands both. These
-constraints are a feature — they prevent re-funds from bleeding value out
-of existing positions.
+Re-funding is doubly constrained. First, Fountain's `offer` treats
+`ticks[0]` as the batch's starting price: if the pool is already
+initialized, that starting price must match the current pool
+`sqrtPriceX96` exactly or `PoolPreInitialized` reverts. In practice
+this means `ticks[0]` on a re-fund must equal the current pool tick.
+Second, v4's single-sided math requires the range to sit entirely on
+the side being funded: currency0-sided extends upward from the current
+tick, currency1-sided extends downward (in user-tick semantics) from
+the current tick. Wrong-side or starting-price-mismatch re-funds
+revert. These constraints are a feature — they prevent re-funds from
+bleeding value out of existing positions, and force every re-fund to
+start at the current market price rather than carving a gap above or
+below spot.
 
 **Cost.** A griefer can permanently lock tokens at ill-placed ticks, but
 only with *their own* tokens. The cost is borne by the griefer.
@@ -279,32 +289,40 @@ load-bearing reason; keeping a single funding code path is secondary.
 
 ---
 
-## 12. Unlock callback has a single code path
+## 12. Unlock callback has two code paths
 
-**Choice.** `unlockCallback` decodes the payload as a plain tuple and
-funds the position inline. There is no action enum, no tagged union — one
-operation only.
+**Choice.** Unispring no longer touches the unlock context directly;
+`Fountain.unlockCallback` handles it. The callback dispatches on one of
+two selectors from the internal `IFountainActions` interface: `offer`
+(seat a batch of single-sided segments) or `take` (forward accrued
+fees on a batch of positions to `taker`). Unispring only ever reaches
+the `offer` path — Unispring itself has no fee-take entry point, so
+`taker` calls `Fountain.take` directly to claim fees.
 
-**Why.** Unispring has exactly one operation that needs the unlock
-context: funding a single-sided position. Both entry points (`fund` and
-the `zzInit` → `this.fund` re-entry) reach the callback with the same
-payload shape. A `currency0Sided` boolean selects hub-side vs spoke-side
-math without changing the control flow.
+**Why.** Selector dispatch keeps both operations in a single
+`unlockCallback`, since both require the unlock lock but do
+fundamentally different things with it. A `tokenIsCurrency0` boolean
+in the `offer` payload selects hub-side vs spoke-side math without
+changing the control flow; the flip between V4-native ticks and
+Fountain's user-facing "token/quote" tick convention is handled in
+the same place.
 
 ---
 
 ## 13. Permanence: no unwind path
 
-**Choice.** There is no function to remove liquidity, collect principal,
-or unwind a position. `unlockCallback` only handles the add-liquidity
-direction.
+**Choice.** There is no function anywhere in the stack to remove
+liquidity, collect principal, or unwind a position. Fountain's
+`unlockCallback` only handles the add-liquidity direction (and a
+zero-delta `modifyLiquidity` for fee collection, which leaves
+liquidity untouched).
 
 **Why.** Permanence is the whole point. The lack of a withdraw path is
 why positions are locked forever, why integrators can treat Unispring
 pools as terminal rather than revocable, and why no "admin can rug"
-attack exists. `FEE = 0` means there is also no fee-collection path — no
-reason to call the PoolManager after the initial fund except to add more
-liquidity via another `fund`.
+attack exists. The only value stream out of a funded position is the
+0.01% swap fee collected via `Fountain.take`, which reduces neither
+liquidity nor principal.
 
 **Cost.** A mistake at fund time (wrong range, wrong supply) is
 permanent. Mitigation: the `(hub, tickLower, tickUpper)` clone key means
@@ -335,20 +353,20 @@ without going through Unispring. That position aggregates additively
 with anything Unispring deposited — same pool, same fee, same tick
 grid, no "competition" between positions. The meaningful distinction
 against `fund` is *ownership*: a direct V4 position is owned by
-`msg.sender` and is withdrawable; a `fund` position is owned by the
-clone with no exit path. Both earn zero (fee = 0), so the economic
-rationale for direct LP is staged distribution *with an out*, not
-yield.
+`msg.sender` and is withdrawable, and its share of the 0.01% swap
+fee is collectible by that owner; a `fund` position is owned by
+Fountain with no exit path and its fees flow to Fountain's `taker`.
 
-**Above `tickUpper` via a parallel pool at non-zero fee.** A distinct
-PoolKey `(currency0, currency1, fee > 0, ...)` is a distinct venue.
-Aggregators enumerate standard fee tiers and route across both. In any
-tick range where the zero-fee pool has depth, cost-minimizing routing
-prefers it; a fee-bearing pool overlapping Unispring's live range loses
-the flow. *Above* the spent `tickUpper` the zero-fee pool has no
-depth, so a fee-bearing pool has that range to itself until someone
-re-funds the zero-fee side. That window is the one regime where a
-parallel pool has economic room.
+**Above `tickUpper` via a parallel pool at a different fee.** A
+distinct PoolKey `(currency0, currency1, fee ≠ 100, ...)` is a
+distinct venue. Aggregators enumerate standard fee tiers and route
+across both. In any tick range where the Unispring pool has depth,
+cost-minimizing routing prefers the cheaper fee; a higher-fee pool
+overlapping Unispring's live range loses the flow. *Above* the spent
+`tickUpper` the Unispring pool has no depth, so a parallel pool has
+that range to itself until someone re-funds the Unispring side. That
+window is the one regime where a parallel pool has clean economic
+room.
 
 **Below `tickLower`.** Dead capital. The floor is enforced by absence
 of liquidity (§6), and V4's swap math cannot cross an empty tick
@@ -371,16 +389,18 @@ are optional enhancements, not required repairs.
 
 Things Unispring deliberately does **not** try to do:
 
-- **Multiple fee tiers.** Zero-fee only. See §5.
+- **Multiple fee tiers.** Fountain fixes `FEE = 100` (0.01%) for every
+  pool. See §5.
 - **Custom hooks.** The `hooks` field in every Unispring PoolKey is
   `address(0)`. Hooks would fragment the liquidity graph and re-open the
   "which pool is canonical for this pair" question.
 - **Governance.** No owner, no admin, no upgrade, no timelock.
-- **Fee skimming / LP rewards.** No fees exist to skim.
+- **Fee routing to holders.** Swap fees flow to Fountain's `taker`,
+  not to any automatic rebate to holders or depositors.
 - **Withdraw / unwind path.** See §13.
-- **Token minting.** Hub and spokes are deployed externally (see the
-  Lepton launcher). Unispring takes existing tokens and locks them as
-  LP.
+- **Token minting.** Hub and spokes are deployed externally (see
+  NeutrinoSource / NeutrinoChannel / Coinage). Unispring takes
+  existing tokens and locks them as LP.
 
 Unispring is a single opinionated recipe. Projects that want something
 different use V4 directly.

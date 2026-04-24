@@ -16,10 +16,11 @@ numbered so we can refer to them in commits and PRs.
    the token literally cannot trade below `tickLower`. Property of the tick
    range, not a hook — no governance surface to attack.
 
-3. **Hub-and-spoke routing discipline.** Every spoke is hub-paired at the
-   zero-fee tier, so a single liquidity graph emerges and SOR's fallback
-   enumeration finds everything. No fragmentation by default, and routed
-   `ETH → hub → spoke` trades pay zero fees at both hops.
+3. **Hub-and-spoke routing discipline.** Every spoke is hub-paired at
+   the 0.01% tier, so a single liquidity graph emerges and SOR's
+   fallback enumeration finds everything. No fragmentation by default,
+   and routed `ETH → hub → spoke` trades pay the same 0.01% at both
+   hops (0.02% total across the two-hop).
 
 4. **Permissionless, re-callable `fund`.** No operator, no reward, no
    trust — anyone can lock more permanent liquidity on any pool at any
@@ -41,18 +42,18 @@ numbered so we can refer to them in commits and PRs.
    (could be fee-on-transfer, rebasing, blacklisting, upgradeable, or
    hold a hidden mint).
 
-   **Proposed fix:** a launcher contract that, in a single transaction,
-   (a) calls [Lepton](../lepton/src/Lepton.sol) to mint a fresh
-   fixed-supply clone, and (b) seeds the entire supply into Unispring via
-   `fund`. Tokens that emerge from this launcher carry a strong composite
-   guarantee: vanilla Lepton bytecode (no mint, no blacklist, no
-   fee-on-transfer, no upgrade) + entire supply locked behind a Unispring
-   floor + nobody holds any of it post-seed. Front-ends and indexers can
-   trust the launcher address as a whitelist rather than trusting
+   **Status: implemented as `NeutrinoSource`.** `NeutrinoSource.launch`
+   calls Coinage (deploying a vanilla Lepton ERC-20: no mint, no
+   blacklist, no fee-on-transfer, no upgrade) and immediately funds the
+   entire supply into this clone's Unispring. Tokens that emerge from
+   a NeutrinoSource launch carry the composite guarantee: vanilla
+   Lepton bytecode + entire supply locked behind a Unispring floor +
+   nobody holds any of it post-seed. Front-ends and indexers can trust
+   the NeutrinoSource address as a whitelist rather than trusting raw
    Unispring membership.
 
    Unispring itself stays permissionless — the trust layer lives one
-   level up, in the launcher.
+   level up, in NeutrinoSource.
 
 2. **Hub bootstrap is a two-step dance.** `make` triggers `zzInit`, which
    leaves the hub/ETH pool inactive at spot until someone does an
@@ -62,11 +63,15 @@ numbered so we can refer to them in commits and PRs.
    racing in sees a confusing state. Consider fusing the two, or making
    the race more visible to integrators beyond DESIGN.md §7.
 
-3. **No native moat growth.** `FEE = 0` means pools never accumulate
-   fees, so a pool's depth is whatever was funded plus whatever future
-   `fund` calls add. A neglected spoke — no community, no follow-on
-   funding — stays at its launch depth forever. That's by design
-   (DESIGN.md §5), but it places the entire burden of depth-building on
-   social coordination rather than mechanics. Worth flagging because it
-   changes the success criteria for a launch: "seeded and abandoned" is
-   a much weaker outcome here than in a fee-accruing pool.
+3. **Fees flow to a `taker`, not to the pool.** `FEE = 100` generates
+   revenue, but the accrued fees stream to Fountain's `taker` address
+   via `Fountain.take` instead of compounding back into the position
+   (positions are permanent and Fountain exposes no increase path tied
+   to fee growth). A pool's *principal depth* is therefore whatever was
+   funded plus whatever future `fund` calls add — fees don't thicken
+   it. That's by design (DESIGN.md §5 and §13), but it's worth
+   flagging: a neglected spoke with no community and no follow-on
+   funding stays at its launch depth forever, and the fee stream
+   enriches the taker rather than the holders. The success criteria
+   for a Unispring launch include both "who keeps re-funding?" and
+   "what does the taker do with accrued fees?"

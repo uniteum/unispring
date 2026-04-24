@@ -21,8 +21,11 @@ import {IERC20} from "ierc20/IERC20.sol";
  *         hub sorts above ETH (currency1), so Unispring translates into
  *         Fountain's log(quote/token) user-tick semantics by negating and
  *         swapping; spoke pools (spoke sorts below hub as currency0) pass
- *         through identity. Either way, the V4 position lands at
- *         `[tickLower, tickUpper)` in V4-native terms.
+ *         through identity. Either way, the V4 position is seated at
+ *         `[tickLower, tickUpper]` in V4-native terms. (V4's active-
+ *         liquidity check uses the half-open convention
+ *         `tickLower <= currentTick < tickUpper`; its token-composition
+ *         check is closed on both ends. See README §Token ordering.)
  * @dev    Pure factory. Once {fund} settles, the position is permanent and
  *         this contract has no authority to unwind it or modify the pool —
  *         no owner, no upgrade path, no admin keys. All post-launch swap

@@ -9,10 +9,12 @@ unwind.
 The factory that creates them is **Mimicoinage** — a singleton with one
 `mimic` function. Each call mints a fresh Mimicoin and seats its entire
 supply into a single-tick V4 pool at price 1. The position is owned by
-the Mimicoinage contract itself and cannot be decreased, withdrawn, or
-destroyed: the contract exposes no function for reducing liquidity. Only
-accrued swap fees (at 0.01%) can be collected — permissionless to trigger,
-always forwarded to the factory owner.
+a `Fountain` clone (the pool backend Mimicoinage delegates to), not by
+Mimicoinage itself. Neither contract can decrease, withdraw, or destroy
+the position — Fountain exposes no reduce-liquidity path. Only accrued
+swap fees (at 0.01%) can be collected, via `Fountain.take` —
+permissionless to trigger, always forwarded to the Fountain clone's
+`taker` (the `msg.sender` that first called `Fountain.make()`).
 
 ## How the peg works
 
@@ -28,8 +30,9 @@ less than `0.9999 × original`. With 10²⁷ raw mimic units seeded, the pool
 cannot be drained by any quantity of original that exists.
 
 Because the position is permanent and no party can decrease it, the
-backing is as durable as the pool itself. The owner's only stream of
-value from a launched Mimicoin is the ongoing 0.01% fee on swap volume.
+backing is as durable as the pool itself. The Fountain `taker`'s only
+stream of value from a launched Mimicoin is the ongoing 0.01% fee on
+swap volume.
 
 ## What it's for
 
@@ -50,7 +53,7 @@ value from a launched Mimicoin is the ongoing 0.01% fee on swap volume.
   issuance.
 - **Not an oracle.** If the original depegs from its own reference
   asset, the Mimicoin tracks the original, not the reference.
-- **Not a yield source for the owner beyond fees.** The owner cannot
+- **Not a yield source beyond fees.** The Fountain `taker` cannot
   harvest the accumulated original by unwinding — only the 0.01% fee
   stream is extractable.
 
@@ -58,4 +61,4 @@ value from a launched Mimicoin is the ongoing 0.01% fee on swap volume.
 
 A Mimicoin is a real ERC-20 with a hard 1-bp price corridor around any
 original token, collateralized by real originals in a permanent V4
-position that no one — including the factory owner — can unwind.
+position that no one — including the Fountain `taker` — can unwind.
