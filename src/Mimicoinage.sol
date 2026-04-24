@@ -12,13 +12,14 @@ import {PoolKey} from "v4-core/types/PoolKey.sol";
 /**
  * @title Mimicoinage
  * @notice Thin factory that mints an ERC-20 pegged 1:1 against an original
- *         token and seats its entire supply as a single-tick segment in
- *         {FOUNTAIN}. All fee machinery — {Fountain.take},
+ *         currency (ERC-20 or native ETH) and seats its entire supply as a
+ *         single-tick segment in {FOUNTAIN}. All fee machinery — {Fountain.take},
  *         {Fountain.untaken}, {Fountain.owner} — lives on Fountain;
  *         Mimicoinage only records the mimic→position mapping and exposes
  *         the pool parameters needed to look up pool state.
- * @dev    The mimic token carries the original's decimals so the raw price
- *         of 1 at tick 0 corresponds to a 1:1 human-unit peg. Each position
+ * @dev    The mimic token carries the original's decimals (18 for native
+ *         ETH) so the raw price of 1 at tick 0 corresponds to a 1:1
+ *         human-unit peg. Each position
  *         uses {FEE} = 100 (0.01%), {TICK_SPACING} = 1, and no hook. The
  *         user-semantic range is `[0, 1)`; Fountain flips and negates into
  *         V4-native ticks internally when the mimic sorts above the

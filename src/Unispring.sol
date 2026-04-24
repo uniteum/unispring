@@ -66,7 +66,8 @@ contract Unispring {
     /**
      * @notice Emitted when a pool is initialized, paired against the hub (or
      *         ETH for the hub pool itself), and funded.
-     * @param funder     The address that called {fund} (or PROTO for {zzInit}).
+     * @param funder     The address that called {fund}. Equals this clone's
+     *                   own address on the hub-pool seed call from {zzInit}.
      * @param token      The spoke currency (or the hub, for {zzInit}).
      *                   `Currency.wrap(address(0))` for a native-ETH spoke.
      * @param positionId The {FOUNTAIN} position id seated by this call.
@@ -90,7 +91,9 @@ contract Unispring {
 
     /**
      * @notice Thrown when the spoke token does not sort strictly below {hub}.
-     * @dev    Mine a different spoke salt until the deterministic address
+     * @dev    Only applies to ERC-20 spokes; a native-ETH spoke
+     *         (`address(0)`) always sorts below {hub}. For ERC-20 spokes,
+     *         mine a different spoke salt until the deterministic address
      *         sorts below {hub}. See DESIGN.md §6 for why the ordering is
      *         required.
      */
@@ -178,7 +181,9 @@ contract Unispring {
      *         argument, and README §Patterns for common re-funding use cases.
      * @param  token      The currency to pair. The hub itself pairs against ETH;
      *                    any other currency pairs against {hub}.
-     * @param  supply     Amount of `token` to pull from the caller and lock.
+     * @param  supply     Amount of `token` to lock. Pulled from the caller
+     *                    via `transferFrom` for ERC-20s; must arrive as
+     *                    `msg.value` for a native-ETH spoke.
      * @param  tickLower  V4-native lower tick; strictly below `tickUpper`.
      * @param  tickUpper  V4-native upper tick.
      * @return positionId The {FOUNTAIN} position id seated by this call.

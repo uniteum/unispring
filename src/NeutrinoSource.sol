@@ -38,7 +38,9 @@ contract NeutrinoSource {
 
     /**
      * @notice The NeutrinoChannel prototype cloned per tick range so each range
-     *         produces a distinct Coinage deployer (and therefore hub) address.
+     *         produces a distinct Coinage deployer — and therefore a distinct
+     *         minted-token address — for both hubs (minted by {make}) and
+     *         spokes (minted by {launch}).
      */
     NeutrinoChannel public immutable CHANNEL;
 

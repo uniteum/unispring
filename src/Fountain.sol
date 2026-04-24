@@ -45,10 +45,11 @@ interface IFountainActions {
 
 /**
  * @title Fountain
- * @notice Shapes a bonding curve for an externally-supplied ERC-20 token by
- *         seating multiple permanent, single-sided V4 positions against a
- *         quote currency (ERC-20 or native ETH). Callers partition a price
- *         range with an ascending array of V4-native ticks (matching
+ * @notice Shapes a bonding curve for an externally-supplied token (ERC-20
+ *         or native ETH) by seating multiple permanent, single-sided V4
+ *         positions against a quote currency (ERC-20 or native ETH).
+ *         Callers partition a price range with an ascending array of
+ *         V4-native ticks (matching
  *         Unispring and Mimicoinage) and assign a token amount to each
  *         segment; Fountain flips and negates into V4-native tick ranges
  *         when the token sorts above the quote (forcing it into
