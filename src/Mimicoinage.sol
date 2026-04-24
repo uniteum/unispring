@@ -35,16 +35,6 @@ contract Mimicoinage {
     uint128 public constant SUPPLY = 10 ** 27;
 
     /**
-     * @notice Pool fee in hundredths of a bip (0.01%).
-     */
-    uint24 public constant FEE = 100;
-
-    /**
-     * @notice Pool tick spacing — one tick wide for maximum concentration.
-     */
-    int24 public constant TICK_SPACING = 1;
-
-    /**
      * @notice Symbol suffix appended to the original token's symbol.
      */
     string public constant SUFFIX = "x1";
