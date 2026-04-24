@@ -141,7 +141,7 @@ contract Fountain is IUnlockCallback, Ownable {
     /**
      * @notice Emitted when {make} deploys a new clone.
      */
-    event Made(address indexed owner, Fountain indexed home);
+    event Made(address indexed owner, uint256 indexed variant, Fountain indexed home);
 
     /**
      * @notice Thrown when {unlockCallback} is invoked by anyone other than the PoolManager.
@@ -537,34 +537,36 @@ contract Fountain is IUnlockCallback, Ownable {
 
     /**
      * @notice Predict the deterministic address of the Fountain owned by
-     *         `owner_`, without deploying.
-     * @param  owner_ The address that would own the Fountain.
-     * @return exists True iff the Fountain has already been deployed.
-     * @return home   The predicted (or actual, if `exists`) clone address.
-     * @return salt   The CREATE2 salt used for the clone.
+     *         `owner_` under `variant`, without deploying.
+     * @param  owner_  The address that would own the Fountain.
+     * @param  variant Discriminator letting one owner hold multiple Fountains.
+     * @return exists  True iff the Fountain has already been deployed.
+     * @return home    The predicted (or actual, if `exists`) clone address.
+     * @return salt    The CREATE2 salt used for the clone.
      */
-    function made(address owner_) public view returns (bool exists, address home, bytes32 salt) {
-        salt = keccak256(abi.encode(owner_));
+    function made(address owner_, uint256 variant) public view returns (bool exists, address home, bytes32 salt) {
+        salt = keccak256(abi.encode(owner_, variant));
         home = Clones.predictDeterministicAddress(address(PROTO), salt, address(PROTO));
         exists = home.code.length > 0;
     }
 
     /**
-     * @notice Deploy (or return) the Fountain owned by `msg.sender`. One
-     *         Fountain exists per owner address; repeated calls return the
-     *         same clone.
+     * @notice Deploy (or return) the Fountain owned by `msg.sender` under
+     *         `variant`. One Fountain exists per (owner, variant) pair;
+     *         repeated calls with the same variant return the same clone.
      * @dev    Must be called on the prototype. Calling on a clone reverts
      *         with {Unauthorized} — `msg.sender` semantics cannot be
      *         preserved across clone forwarding.
+     * @param  variant Discriminator letting one owner hold multiple Fountains.
      */
-    function make() external returns (Fountain instance) {
+    function make(uint256 variant) external returns (Fountain instance) {
         if (address(this) != address(PROTO)) revert Unauthorized();
-        (bool exists, address home, bytes32 salt) = made(msg.sender);
+        (bool exists, address home, bytes32 salt) = made(msg.sender, variant);
         instance = Fountain(home);
         if (!exists) {
             Clones.cloneDeterministic(address(PROTO), salt, 0);
             instance.zzInit(msg.sender);
-            emit Made(msg.sender, instance);
+            emit Made(msg.sender, variant, instance);
         }
     }
 
