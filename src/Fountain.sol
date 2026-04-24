@@ -80,7 +80,7 @@ interface IFountainActions {
 contract Fountain is IUnlockCallback, Ownable {
     using StateLibrary for IPoolManager;
 
-    string public constant VERSION = "0.3.0";
+    string public constant VERSION = "0.4.0";
 
     /**
      * @notice Pool fee in hundredths of a bip (0.01%).
