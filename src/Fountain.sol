@@ -4,6 +4,7 @@ pragma solidity ^0.8.30;
 import {Clones} from "clones/Clones.sol";
 import {IAddressLookup} from "ilookup/IAddressLookup.sol";
 import {IERC20} from "ierc20/IERC20.sol";
+import {Ownable} from "ownable/Ownable.sol";
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 import {IUnlockCallback} from "v4-core/interfaces/callback/IUnlockCallback.sol";
@@ -54,11 +55,11 @@ interface IFountainActions {
  *         `currency1`), then seats every segment in a single unlock.
  * @dev    Bitsy factory: the prototype is permissionless and governance-free;
  *         clones are deployed per-caller via {make} and carry their own
- *         {taker} in storage. Each clone's taker is the `msg.sender` that
- *         called {make}; one clone exists per taker address.
+ *         {owner} in storage. Each clone's owner is the `msg.sender` that
+ *         called {make}; one clone exists per owner address.
  * @dev    Positions are permanent — no function on this contract decreases
  *         or unwinds liquidity. {take} forwards accrued swap fees to the
- *         clone's {taker}.
+ *         clone's {owner}.
  * @dev    Fixed pool parameters: {FEE} = 100 (0.01%), no hooks. Tick
  *         spacing is caller-specified so the same Fountain can shape
  *         curves in pools of different granularity.
@@ -73,7 +74,7 @@ interface IFountainActions {
  *         is preserved.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
-contract Fountain is IUnlockCallback {
+contract Fountain is IUnlockCallback, Ownable {
     using StateLibrary for IPoolManager;
 
     string public constant VERSION = "0.3.0";
@@ -95,14 +96,6 @@ contract Fountain is IUnlockCallback {
      *         clone (baked into the prototype's runtime bytecode).
      */
     IPoolManager public immutable POOL_MANAGER;
-
-    /**
-     * @notice Recipient of swap fees taken by {take}. Has no other
-     *         authority: cannot decrease liquidity, cannot unwind positions,
-     *         cannot pause. Set per-clone in {zzInit} to the `msg.sender`
-     *         that called {make}; zero on the prototype.
-     */
-    address public taker;
 
     /**
      * @notice All positions seated by this contract, in creation order.
@@ -131,14 +124,14 @@ contract Fountain is IUnlockCallback {
     );
 
     /**
-     * @notice Emitted when {take} forwards fees for one position to {taker}.
+     * @notice Emitted when {take} forwards fees for one position to {owner}.
      */
     event Taken(uint256 indexed positionId, PoolId indexed poolId, uint256 amount0, uint256 amount1);
 
     /**
      * @notice Emitted when {make} deploys a new clone.
      */
-    event Made(address indexed taker, Fountain indexed home);
+    event Made(address indexed owner, Fountain indexed home);
 
     /**
      * @notice Thrown when {unlockCallback} is invoked by anyone other than the PoolManager.
@@ -206,10 +199,12 @@ contract Fountain is IUnlockCallback {
     error Unauthorized();
 
     /**
-     * @notice Construct the Fountain prototype.
+     * @notice Construct the Fountain prototype. The deployer becomes the
+     *         prototype's owner; clones receive their own owner via
+     *         {zzInit} at {make} time.
      * @param  poolManagerLookup Lookup for the chain-local Uniswap V4 PoolManager.
      */
-    constructor(IAddressLookup poolManagerLookup) {
+    constructor(IAddressLookup poolManagerLookup) Ownable(msg.sender) {
         POOL_MANAGER = IPoolManager(poolManagerLookup.value());
     }
 
@@ -219,7 +214,7 @@ contract Fountain is IUnlockCallback {
      *         range into N = `amounts.length` segments; `amounts[i]` seats
      *         the segment bounded by `ticks[i]` and `ticks[i + 1]`
      *         single-sided in `token`. Trading fees accrue to this clone's
-     *         {taker}. Caller must have approved this contract for the sum
+     *         {owner}. Caller must have approved this contract for the sum
      *         of `amounts`.
      * @dev    The lowest tick `ticks[0]` is treated as the pool's starting
      *         price: if the pool does not yet exist it is initialized at
@@ -291,7 +286,7 @@ contract Fountain is IUnlockCallback {
 
     /**
      * @notice Take accrued swap fees for a single position and forward
-     *         them to {taker}.
+     *         them to {owner}.
      */
     function take(uint256 positionId) external {
         uint256[] memory ids = new uint256[](1);
@@ -301,7 +296,7 @@ contract Fountain is IUnlockCallback {
 
     /**
      * @notice Take accrued swap fees for several positions in a single
-     *         unlock and forward them to {taker}. Reverts with
+     *         unlock and forward them to {owner}. Reverts with
      *         {UnknownPosition} if any id is out of range.
      */
     function take(uint256[] calldata ids) external {
@@ -333,7 +328,7 @@ contract Fountain is IUnlockCallback {
 
     /**
      * @notice Return untaken swap fees owed to each referenced position.
-     *         Values match what {take} would transfer to {taker} if
+     *         Values match what {take} would transfer to {owner} if
      *         called now. Amounts are ordered by each position's pool
      *         currencies: `amounts0[i]` is for position `ids[i]`'s
      *         `currency0`.
@@ -454,7 +449,7 @@ contract Fountain is IUnlockCallback {
 
     /**
      * @dev Take fees from one Fountain-owned position via a zero-delta
-     *      modifyLiquidity and forward them to {taker}.
+     *      modifyLiquidity and forward them to {owner}.
      */
     function _take(uint256 id, PoolKey memory key, int24 tickLower, int24 tickUpper) private {
         (, BalanceDelta feesAccrued) = POOL_MANAGER.modifyLiquidity(
@@ -468,8 +463,9 @@ contract Fountain is IUnlockCallback {
         uint256 amount0 = fee0 > 0 ? uint256(uint128(fee0)) : 0;
         // forge-lint: disable-next-line(unsafe-typecast)
         uint256 amount1 = fee1 > 0 ? uint256(uint128(fee1)) : 0;
-        if (amount0 > 0) POOL_MANAGER.take(key.currency0, taker, amount0);
-        if (amount1 > 0) POOL_MANAGER.take(key.currency1, taker, amount1);
+        address recipient = owner();
+        if (amount0 > 0) POOL_MANAGER.take(key.currency0, recipient, amount0);
+        if (amount1 > 0) POOL_MANAGER.take(key.currency1, recipient, amount1);
         emit Taken(id, key.toId(), amount0, amount1);
     }
 
@@ -519,21 +515,21 @@ contract Fountain is IUnlockCallback {
 
     /**
      * @notice Predict the deterministic address of the Fountain owned by
-     *         `taker_`, without deploying.
-     * @param  taker_ The address that would own the Fountain.
+     *         `owner_`, without deploying.
+     * @param  owner_ The address that would own the Fountain.
      * @return exists True iff the Fountain has already been deployed.
      * @return home   The predicted (or actual, if `exists`) clone address.
      * @return salt   The CREATE2 salt used for the clone.
      */
-    function made(address taker_) public view returns (bool exists, address home, bytes32 salt) {
-        salt = keccak256(abi.encode(taker_));
+    function made(address owner_) public view returns (bool exists, address home, bytes32 salt) {
+        salt = keccak256(abi.encode(owner_));
         home = Clones.predictDeterministicAddress(address(PROTO), salt, address(PROTO));
         exists = home.code.length > 0;
     }
 
     /**
      * @notice Deploy (or return) the Fountain owned by `msg.sender`. One
-     *         Fountain exists per taker address; repeated calls return the
+     *         Fountain exists per owner address; repeated calls return the
      *         same clone.
      * @dev    Must be called on the prototype. Calling on a clone reverts
      *         with {Unauthorized} — `msg.sender` semantics cannot be
@@ -552,10 +548,11 @@ contract Fountain is IUnlockCallback {
 
     /**
      * @notice Initializer called by the prototype on a freshly deployed
-     *         clone. Reverts with {Unauthorized} if called by anyone else.
+     *         clone. Sets the clone's owner. Reverts with {Unauthorized}
+     *         if called by anyone other than the prototype.
      */
-    function zzInit(address taker_) public {
+    function zzInit(address owner_) public {
         if (msg.sender != address(PROTO)) revert Unauthorized();
-        taker = taker_;
+        _transferOwnership(owner_);
     }
 }

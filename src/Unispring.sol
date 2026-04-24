@@ -15,7 +15,7 @@ import {IERC20} from "ierc20/IERC20.sol";
  *         take — lives on {FOUNTAIN}. Unispring only mints/tracks
  *         the clone-per-hub key, pre-approves {FOUNTAIN} against pulled
  *         tokens, and delegates to {Fountain.offer}. Pools inherit
- *         {Fountain.FEE} (0.01%) and accrued fees flow to {Fountain.taker}.
+ *         {Fountain.FEE} (0.01%) and accrued fees flow to {Fountain.owner}.
  * @dev    Ticks: callers pass V4-native `(tickLower, tickUpper)` in the
  *         log_1.0001(currency1/currency0) convention. For the hub pool the
  *         hub sorts above ETH (currency1), so Unispring translates into
