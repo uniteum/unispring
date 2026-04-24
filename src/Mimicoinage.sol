@@ -4,10 +4,7 @@ pragma solidity ^0.8.30;
 import {Fountain} from "./Fountain.sol";
 import {ICoinage} from "ierc20/ICoinage.sol";
 import {IERC20Metadata} from "ierc20/IERC20Metadata.sol";
-import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {Currency} from "v4-core/types/Currency.sol";
-import {PoolId} from "v4-core/types/PoolId.sol";
-import {PoolKey} from "v4-core/types/PoolKey.sol";
 
 /**
  * @title Mimicoinage
@@ -94,12 +91,6 @@ contract Mimicoinage {
     event Mimicked(IERC20Metadata indexed mimic, Currency indexed original);
 
     /**
-     * @notice Thrown when {poolKeyOf} or {poolIdOf} is called with a mimic
-     *         this factory did not mint.
-     */
-    error UnknownMimic(IERC20Metadata mimic);
-
-    /**
      * @notice Construct the singleton factory.
      * @param  fountain The Fountain that will hold mimic positions and
      *                  forward their swap fees.
@@ -135,38 +126,6 @@ contract Mimicoinage {
         for (uint256 i = 0; i < slice.length; i++) {
             slice[i] = mimics[offset + i];
         }
-    }
-
-    /**
-     * @notice Rebuild the Uniswap V4 {PoolKey} used by `token`'s position.
-     *         Useful for direct reads against the PoolManager (e.g. via
-     *         `StateLibrary`). Reverts on unknown mimics.
-     * @param  token A mimic minted by this factory.
-     * @return key   The pool key with sorted currencies and this factory's
-     *               fee/tickSpacing/hooks constants.
-     */
-    function poolKeyOf(IERC20Metadata token) public view returns (PoolKey memory key) {
-        if (!isMimic[token]) revert UnknownMimic(token);
-        Currency mimicCurrency = Currency.wrap(address(token));
-        Currency original = originalOf[token];
-        bool mimicIsToken0 = mimicCurrency < original;
-        key = PoolKey({
-            currency0: mimicIsToken0 ? mimicCurrency : original,
-            currency1: mimicIsToken0 ? original : mimicCurrency,
-            fee: FEE,
-            tickSpacing: TICK_SPACING,
-            hooks: IHooks(address(0))
-        });
-    }
-
-    /**
-     * @notice Shortcut for `poolKeyOf(token).toId()`. Reverts on unknown
-     *         mimics.
-     * @param  token A mimic minted by this factory.
-     * @return id    The derived Uniswap V4 pool id.
-     */
-    function poolIdOf(IERC20Metadata token) external view returns (PoolId id) {
-        id = poolKeyOf(token).toId();
     }
 
     /**
