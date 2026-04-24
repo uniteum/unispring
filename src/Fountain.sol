@@ -108,7 +108,7 @@ contract Fountain is IUnlockCallback, Ownable {
     /**
      * @notice All positions seated by this contract, in creation order.
      *         Auto-generated getter returns a single element by index; use
-     *         {positionsCount} and {positionsRange} for bulk reads.
+     *         {positionsCount} and {positionsSlice} for bulk reads.
      */
     Position[] public positions;
 
@@ -333,7 +333,7 @@ contract Fountain is IUnlockCallback, Ownable {
      *         bounds: `offset` at or past the end returns an empty array;
      *         `count` running past the end returns only the existing tail.
      */
-    function positionsRange(uint256 offset, uint256 count) external view returns (Position[] memory slice) {
+    function positionsSlice(uint256 offset, uint256 count) external view returns (Position[] memory slice) {
         uint256 length = positions.length;
         if (offset >= length) return new Position[](0);
         uint256 end = offset + count;

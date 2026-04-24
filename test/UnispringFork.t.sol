@@ -238,7 +238,7 @@ contract UnispringForkTest is ForkBase {
     }
 
     function _positionAt(uint256 i) internal view returns (Position memory) {
-        Position[] memory slice = fountain.positionsRange(i, 1);
+        Position[] memory slice = fountain.positionsSlice(i, 1);
         return slice[0];
     }
 }

@@ -351,28 +351,28 @@ contract FountainForkTest is ForkBase {
         assertEq(fountain.positionsCount(), 4, "four positions total");
     }
 
-    function test_PositionsRangeClampBranches() public {
+    function test_PositionsSliceClampBranches() public {
         _offerTwoFlip();
         _offerTwoNoFlip();
         assertEq(fountain.positionsCount(), 4);
 
         // Full slice.
-        Position[] memory all = fountain.positionsRange(0, 4);
+        Position[] memory all = fountain.positionsSlice(0, 4);
         assertEq(all.length, 4, "full slice length");
 
         // Tail clamp: count runs past the end.
-        Position[] memory tail = fountain.positionsRange(2, 10);
+        Position[] memory tail = fountain.positionsSlice(2, 10);
         assertEq(tail.length, 2, "tail clamp length");
 
         // Offset at end and past end → empty.
-        assertEq(fountain.positionsRange(4, 5).length, 0, "offset == length empty");
-        assertEq(fountain.positionsRange(10, 5).length, 0, "offset past length empty");
+        assertEq(fountain.positionsSlice(4, 5).length, 0, "offset == length empty");
+        assertEq(fountain.positionsSlice(10, 5).length, 0, "offset past length empty");
 
         // Zero count → empty.
-        assertEq(fountain.positionsRange(0, 0).length, 0, "count == 0 empty");
+        assertEq(fountain.positionsSlice(0, 0).length, 0, "count == 0 empty");
 
         // Middle single element.
-        Position[] memory mid = fountain.positionsRange(1, 1);
+        Position[] memory mid = fountain.positionsSlice(1, 1);
         assertEq(mid.length, 1, "middle single-element length");
     }
 
@@ -634,7 +634,7 @@ contract FountainForkTest is ForkBase {
     }
 
     function _positionAt(uint256 i) internal view returns (Position memory) {
-        Position[] memory slice = fountain.positionsRange(i, 1);
+        Position[] memory slice = fountain.positionsSlice(i, 1);
         return slice[0];
     }
 }
