@@ -207,14 +207,10 @@ contract Mimicoinage {
      *                    mimic is minted with 18 decimals and `"ETH"` as
      *                    its symbol prefix in that case).
      * @param  name       Name for the newly minted mimic token.
-     * @return token      The newly minted mimic token.
-     * @return positionId The Fountain position id seated by this call;
-     *                    also available as {positionIdOf}(`token`).
+     * @return token      The newly minted mimic token. Its Fountain position
+     *                    id is available as {positionIdOf}(`token`).
      */
-    function mimic(Currency original, string calldata name)
-        external
-        returns (IERC20Metadata token, uint256 positionId)
-    {
+    function mimic(Currency original, string calldata name) external returns (IERC20Metadata token) {
         (uint8 decimals, string memory symbol) = _mimicMetadata(original);
         token = COINAGE.make(name, symbol, decimals, SUPPLY, bytes32(0));
         IERC20Metadata mimicErc = IERC20Metadata(address(token));
@@ -231,7 +227,7 @@ contract Mimicoinage {
         uint256[] memory amounts = new uint256[](1);
         amounts[0] = SUPPLY;
 
-        positionId = FOUNTAIN.offer(Currency.wrap(address(mimicErc)), original, ticks, amounts);
+        uint256 positionId = FOUNTAIN.offer(Currency.wrap(address(mimicErc)), original, ticks, amounts);
         positionIdOf[mimicErc] = positionId;
 
         emit Mimicked(token, original, poolKeyOf(mimicErc).toId(), positionId);
