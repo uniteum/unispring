@@ -25,7 +25,7 @@ import {Currency} from "v4-core/types/Currency.sol";
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
 contract Mimicoinage {
-    string public constant VERSION = "0.3.0";
+    string public constant VERSION = "0.4.0";
 
     /**
      * @notice Fixed raw supply minted for every mimic token. Sized to stay

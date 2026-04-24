@@ -78,8 +78,6 @@ interface IFountainActions {
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
 contract Fountain is IUnlockCallback, Ownable {
-    using StateLibrary for IPoolManager;
-
     string public constant VERSION = "0.4.0";
 
     /**
@@ -219,6 +217,8 @@ contract Fountain is IUnlockCallback, Ownable {
     constructor(IAddressLookup poolManagerLookup) Ownable(msg.sender) {
         POOL_MANAGER = IPoolManager(poolManagerLookup.value());
     }
+
+    using StateLibrary for IPoolManager;
 
     /**
      * @notice Offer `token` for sale at the ticks you set, paired against
