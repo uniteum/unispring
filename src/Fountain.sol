@@ -61,9 +61,11 @@ interface IFountainActions {
  * @dev    Positions are permanent — no function on this contract decreases
  *         or unwinds liquidity. {take} forwards accrued swap fees to the
  *         clone's {owner}.
- * @dev    Fixed pool parameters: {FEE} = 100 (0.01%), no hooks. Tick
- *         spacing is caller-specified so the same Fountain can shape
- *         curves in pools of different granularity.
+ * @dev    Fixed pool parameters: {FEE} = 100 (0.01%),
+ *         {TICK_SPACING} = 1, no hooks. Spacing 1 gives exact tick
+ *         precision for position bounds and the initial price; the
+ *         extra bitmap-iteration cost on large swaps is negligible
+ *         for Fountain's single-position usage pattern.
  * @dev    Tick convention: callers pass ticks in V4-native semantics
  *         (`log_1.0001(currency1/currency0)` = `log_1.0001(quote/token)`
  *         when the token is `currency0`). When the token sorts below the
@@ -84,6 +86,11 @@ contract Fountain is IUnlockCallback, Ownable {
      * @notice Pool fee in hundredths of a bip (0.01%).
      */
     uint24 public constant FEE = 100;
+
+    /**
+     * @notice Pool tick spacing. Fixed at 1 for exact tick precision.
+     */
+    int24 public constant TICK_SPACING = 1;
 
     /**
      * @notice The prototype instance. On clones, this points back to the
@@ -162,11 +169,6 @@ contract Fountain is IUnlockCallback, Ownable {
     error TickOutOfRange(int24 tick);
 
     /**
-     * @notice Thrown when a tick is not a multiple of `tickSpacing`.
-     */
-    error TickNotAligned(int24 tick, int24 tickSpacing);
-
-    /**
      * @notice Thrown when ticks are not strictly ascending.
      */
     error TicksNotAscending(uint256 index, int24 prev, int24 curr);
@@ -185,8 +187,8 @@ contract Fountain is IUnlockCallback, Ownable {
      * @notice Thrown when the pool exists at a price other than the starting
      *         price this {offer} call would have initialized it to. Pools are
      *         permanent once initialized in V4, so recovery is not possible
-     *         on the affected {PoolKey}; adjust `tickSpacing` or the quote
-     *         to produce a different pool.
+     *         on the affected {PoolKey}; choose a different quote to produce
+     *         a different pool.
      */
     error PoolPreInitialized(uint160 sqrtPriceX96);
 
@@ -236,8 +238,6 @@ contract Fountain is IUnlockCallback, Ownable {
      *                         (`Currency.wrap(address(0))` for native ETH).
      * @param  quote           The quote currency (`Currency.wrap(address(0))`
      *                         for native ETH).
-     * @param  tickSpacing     Tick spacing of the target pool. All ticks
-     *                         must be multiples of this value.
      * @param  ticks           Strictly ascending ticks in "token/quote"
      *                         price semantics. Length N + 1 for N positions.
      * @param  amounts         Per-segment token amounts. Length N, all
@@ -246,13 +246,11 @@ contract Fountain is IUnlockCallback, Ownable {
      *                         call; positions in this batch are at ids
      *                         `firstPositionId .. firstPositionId + N - 1`.
      */
-    function offer(
-        Currency token,
-        Currency quote,
-        int24 tickSpacing,
-        int24[] calldata ticks,
-        uint256[] calldata amounts
-    ) external payable returns (uint256 firstPositionId) {
+    function offer(Currency token, Currency quote, int24[] calldata ticks, uint256[] calldata amounts)
+        external
+        payable
+        returns (uint256 firstPositionId)
+    {
         uint256 n = amounts.length;
         if (n == 0) revert NoPositions();
         if (ticks.length != n + 1) revert TickAmountLengthMismatch(ticks.length, n);
@@ -260,7 +258,6 @@ contract Fountain is IUnlockCallback, Ownable {
         for (uint256 i = 0; i < ticks.length; i++) {
             int24 t = ticks[i];
             if (t < TickMath.MIN_TICK || t > TickMath.MAX_TICK) revert TickOutOfRange(t);
-            if (t % tickSpacing != 0) revert TickNotAligned(t, tickSpacing);
             if (i > 0 && t <= ticks[i - 1]) revert TicksNotAscending(i, ticks[i - 1], t);
         }
 
@@ -284,7 +281,7 @@ contract Fountain is IUnlockCallback, Ownable {
             currency0: tokenIsCurrency0 ? token : quote,
             currency1: tokenIsCurrency0 ? quote : token,
             fee: FEE,
-            tickSpacing: tickSpacing,
+            tickSpacing: TICK_SPACING,
             hooks: IHooks(address(0))
         });
         PoolId poolId = key.toId();

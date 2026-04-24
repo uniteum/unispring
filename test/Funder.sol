@@ -38,7 +38,7 @@ contract Funder {
      *         is an ERC-20) and forward `msg.value` (when `token` is
      *         native ETH), then offer.
      */
-    function offer(Currency token, Currency quote, int24 tickSpacing, int24[] memory ticks, uint256[] memory amounts)
+    function offer(Currency token, Currency quote, int24[] memory ticks, uint256[] memory amounts)
         external
         payable
         returns (uint256 firstPositionId)
@@ -50,7 +50,7 @@ contract Funder {
         if (!token.isAddressZero()) {
             IERC20(Currency.unwrap(token)).approve(address(fountain), total);
         }
-        firstPositionId = fountain.offer{value: msg.value}(token, quote, tickSpacing, ticks, amounts);
+        firstPositionId = fountain.offer{value: msg.value}(token, quote, ticks, amounts);
     }
 
     /**

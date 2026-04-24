@@ -225,7 +225,7 @@ contract Unispring {
             quote = Currency.wrap(hub);
         }
 
-        positionId = FOUNTAIN.offer{value: msg.value}(token, quote, 1, ticks, amounts);
+        positionId = FOUNTAIN.offer{value: msg.value}(token, quote, ticks, amounts);
         emit Offered(msg.sender, token, positionId, supply, tickLower, tickUpper);
     }
 }
