@@ -99,10 +99,8 @@ contract Mimicoinage {
      * @param  mimic       The newly minted ERC-20.
      * @param  original    The original currency the mimic is pegged against
      *                     (`Currency.wrap(address(0))` for native ETH).
-     * @param  poolId      The Uniswap V4 pool id seated for this mimic.
-     * @param  positionId  The Fountain position id holding the mimic supply.
      */
-    event Mimicked(IERC20Metadata indexed mimic, Currency indexed original, PoolId indexed poolId, uint256 positionId);
+    event Mimicked(IERC20Metadata indexed mimic, Currency indexed original);
 
     /**
      * @notice Thrown when {poolKeyOf} or {poolIdOf} is called with a mimic
@@ -230,7 +228,7 @@ contract Mimicoinage {
         uint256 positionId = FOUNTAIN.offer(Currency.wrap(address(mimicErc)), original, ticks, amounts);
         positionIdOf[mimicErc] = positionId;
 
-        emit Mimicked(token, original, poolKeyOf(mimicErc).toId(), positionId);
+        emit Mimicked(token, original);
     }
 
     /**
