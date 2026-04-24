@@ -3,6 +3,7 @@ pragma solidity ^0.8.30;
 
 import {Fountain} from "../src/Fountain.sol";
 import {IERC20} from "ierc20/IERC20.sol";
+import {Currency} from "v4-core/types/Currency.sol";
 import {console} from "forge-std/console.sol";
 
 /**
@@ -33,18 +34,23 @@ contract Funder {
     }
 
     /**
-     * @notice Approve the Fountain for the sum of `amounts` then offer.
+     * @notice Approve the Fountain for the sum of `amounts` (when `token`
+     *         is an ERC-20) and forward `msg.value` (when `token` is
+     *         native ETH), then offer.
      */
-    function offer(IERC20 token, address quote, int24 tickSpacing, int24[] memory ticks, uint256[] memory amounts)
+    function offer(Currency token, Currency quote, int24 tickSpacing, int24[] memory ticks, uint256[] memory amounts)
         external
+        payable
         returns (uint256 firstPositionId)
     {
         uint256 total;
         for (uint256 i = 0; i < amounts.length; i++) {
             total += amounts[i];
         }
-        token.approve(address(fountain), total);
-        firstPositionId = fountain.offer(token, quote, tickSpacing, ticks, amounts);
+        if (!token.isAddressZero()) {
+            IERC20(Currency.unwrap(token)).approve(address(fountain), total);
+        }
+        firstPositionId = fountain.offer{value: msg.value}(token, quote, tickSpacing, ticks, amounts);
     }
 
     /**

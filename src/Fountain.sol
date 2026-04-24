@@ -108,16 +108,18 @@ contract Fountain is IUnlockCallback, Ownable {
      * @notice Emitted when an {offer} call seats a contiguous batch of
      *         positions.
      * @param  offerer          The address that called {offer}.
-     * @param  token            The token whose supply seats the positions.
-     * @param  quote            The quote currency (zero for native ETH).
+     * @param  token            The currency whose supply seats the positions
+     *                          (`Currency.wrap(address(0))` for native ETH).
+     * @param  quote            The quote currency (`Currency.wrap(address(0))`
+     *                          for native ETH).
      * @param  poolId           The Uniswap V4 pool id.
      * @param  firstPositionId  Index of the first position in the batch.
      * @param  positionCount    Number of positions in the batch.
      */
     event Offered(
         address indexed offerer,
-        IERC20 indexed token,
-        address quote,
+        Currency indexed token,
+        Currency quote,
         PoolId indexed poolId,
         uint256 firstPositionId,
         uint256 positionCount
@@ -193,6 +195,13 @@ contract Fountain is IUnlockCallback, Ownable {
     error UnknownPosition(uint256 positionId);
 
     /**
+     * @notice Thrown when `msg.value` does not match the native value
+     *         required by {offer}: `total` when `token` is native ETH,
+     *         zero when `token` is an ERC-20.
+     */
+    error NativeValueMismatch(uint256 expected, uint256 actual);
+
+    /**
      * @notice Thrown when {zzInit} is called by anyone other than the prototype,
      *         or when {make} is called on a clone instead of the prototype.
      */
@@ -214,14 +223,18 @@ contract Fountain is IUnlockCallback, Ownable {
      *         range into N = `amounts.length` segments; `amounts[i]` seats
      *         the segment bounded by `ticks[i]` and `ticks[i + 1]`
      *         single-sided in `token`. Trading fees accrue to this clone's
-     *         {owner}. Caller must have approved this contract for the sum
-     *         of `amounts`.
+     *         {owner}. When `token` is an ERC-20 the caller must have
+     *         approved this contract for the sum of `amounts`; when `token`
+     *         is native ETH (`Currency.wrap(address(0))`) the caller must
+     *         send that sum as `msg.value`.
      * @dev    The lowest tick `ticks[0]` is treated as the pool's starting
      *         price: if the pool does not yet exist it is initialized at
      *         that price; if it already exists its price must match
      *         exactly, else {PoolPreInitialized} reverts.
-     * @param  token           The token whose supply seats the positions.
-     * @param  quote           The quote currency (zero for native ETH).
+     * @param  token           The currency whose supply seats the positions
+     *                         (`Currency.wrap(address(0))` for native ETH).
+     * @param  quote           The quote currency (`Currency.wrap(address(0))`
+     *                         for native ETH).
      * @param  tickSpacing     Tick spacing of the target pool. All ticks
      *                         must be multiples of this value.
      * @param  ticks           Strictly ascending ticks in "token/quote"
@@ -232,10 +245,13 @@ contract Fountain is IUnlockCallback, Ownable {
      *                         call; positions in this batch are at ids
      *                         `firstPositionId .. firstPositionId + N - 1`.
      */
-    function offer(IERC20 token, address quote, int24 tickSpacing, int24[] calldata ticks, uint256[] calldata amounts)
-        external
-        returns (uint256 firstPositionId)
-    {
+    function offer(
+        Currency token,
+        Currency quote,
+        int24 tickSpacing,
+        int24[] calldata ticks,
+        uint256[] calldata amounts
+    ) external payable returns (uint256 firstPositionId) {
         uint256 n = amounts.length;
         if (n == 0) revert NoPositions();
         if (ticks.length != n + 1) revert TickAmountLengthMismatch(ticks.length, n);
@@ -253,15 +269,19 @@ contract Fountain is IUnlockCallback, Ownable {
             total += amounts[i];
         }
 
-        address tokenAddr = address(token);
-        bool tokenIsCurrency0 = tokenAddr < quote;
+        bool tokenIsCurrency0 = token < quote;
 
-        // forge-lint: disable-next-line(erc20-unchecked-transfer)
-        token.transferFrom(msg.sender, address(this), total);
+        if (token.isAddressZero()) {
+            if (msg.value != total) revert NativeValueMismatch(total, msg.value);
+        } else {
+            if (msg.value != 0) revert NativeValueMismatch(0, msg.value);
+            // forge-lint: disable-next-line(erc20-unchecked-transfer)
+            IERC20(Currency.unwrap(token)).transferFrom(msg.sender, address(this), total);
+        }
 
         PoolKey memory key = PoolKey({
-            currency0: Currency.wrap(tokenIsCurrency0 ? tokenAddr : quote),
-            currency1: Currency.wrap(tokenIsCurrency0 ? quote : tokenAddr),
+            currency0: tokenIsCurrency0 ? token : quote,
+            currency1: tokenIsCurrency0 ? quote : token,
             fee: FEE,
             tickSpacing: tickSpacing,
             hooks: IHooks(address(0))
@@ -442,9 +462,13 @@ contract Fountain is IUnlockCallback, Ownable {
         uint256 owed = uint256(-totalOwed);
         Currency currency = tokenIsCurrency0 ? key.currency0 : key.currency1;
         POOL_MANAGER.sync(currency);
-        // forge-lint: disable-next-line(erc20-unchecked-transfer)
-        IERC20(Currency.unwrap(currency)).transfer(address(POOL_MANAGER), owed);
-        POOL_MANAGER.settle();
+        if (currency.isAddressZero()) {
+            POOL_MANAGER.settle{value: owed}();
+        } else {
+            // forge-lint: disable-next-line(erc20-unchecked-transfer)
+            IERC20(Currency.unwrap(currency)).transfer(address(POOL_MANAGER), owed);
+            POOL_MANAGER.settle();
+        }
     }
 
     /**

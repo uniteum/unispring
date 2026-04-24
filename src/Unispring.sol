@@ -4,6 +4,7 @@ pragma solidity ^0.8.30;
 import {Clones} from "clones/Clones.sol";
 import {Fountain} from "./Fountain.sol";
 import {IERC20} from "ierc20/IERC20.sol";
+import {Currency} from "v4-core/types/Currency.sol";
 
 /**
  * @title Unispring
@@ -212,7 +213,7 @@ contract Unispring {
             quote = hub;
         }
 
-        positionId = FOUNTAIN.offer(token, quote, 1, ticks, amounts);
+        positionId = FOUNTAIN.offer(Currency.wrap(address(token)), Currency.wrap(quote), 1, ticks, amounts);
         emit Funded(msg.sender, token, positionId, supply, tickLower, tickUpper);
     }
 }
