@@ -90,15 +90,17 @@ contract NeutrinoSource {
 
     /**
      * @notice Predict the deterministic address of a clone.
-     * @param name       Hub token name (passed to Coinage).
-     * @param symbol     Hub token symbol (passed to Coinage).
-     * @param decimals   Hub token decimals (passed to Coinage).
-     * @param supply     Hub token supply (passed to Coinage).
+     * @param name      Hub token name (passed to Coinage).
+     * @param symbol    Hub token symbol (passed to Coinage).
+     * @param decimals  Hub token decimals (passed to Coinage).
+     * @param supply    Hub token supply (passed to Coinage).
+     * @param tickLower Lower tick for the hub's ETH pool.
+     * @param tickUpper Upper tick for the hub's ETH pool.
      * @param tokenSalt Salt for the Coinage hub token.
-     * @return exists  True if the clone is already deployed.
-     * @return home    The deterministic clone address.
-     * @return salt    The CREATE2 salt (derived from the input parameters).
-     * @return hubHome The deterministic hub token address.
+     * @return exists   True if the clone is already deployed.
+     * @return home     The deterministic clone address.
+     * @return salt     The CREATE2 salt (derived from the input parameters).
+     * @return hubHome  The deterministic hub token address.
      */
     function made(
         string calldata name,
@@ -119,12 +121,12 @@ contract NeutrinoSource {
     /**
      * @notice Create a hub token, a Unispring clone for it, and a
      *         NeutrinoSource clone that bundles them together. Idempotent.
-     * @param name       Hub token name.
-     * @param symbol     Hub token symbol.
-     * @param decimals   Hub token decimals.
-     * @param supply     Hub token supply (entire supply funds the ETH/hub pool).
-     * @param tickLower  Lower tick for the hub's ETH pool.
-     * @param tickUpper  Upper tick for the hub's ETH pool.
+     * @param name      Hub token name.
+     * @param symbol    Hub token symbol.
+     * @param decimals  Hub token decimals.
+     * @param supply    Hub token supply (entire supply funds the ETH/hub pool).
+     * @param tickLower Lower tick for the hub's ETH pool.
+     * @param tickUpper Upper tick for the hub's ETH pool.
      * @param tokenSalt Salt for the Coinage hub token.
      * @return clone The deployed (or existing) NeutrinoSource clone.
      */
@@ -160,7 +162,7 @@ contract NeutrinoSource {
     }
 
     /**
-     * @notice Initializer called by PROTO on a freshly deployed clone.
+     * @notice Initializer called by {PROTO} on a freshly deployed clone.
      * @param spring_ The Unispring clone for this NeutrinoSource's hub token.
      */
     function zzInit(Unispring spring_) external {
@@ -180,7 +182,7 @@ contract NeutrinoSource {
      * @param supply    Spoke token supply (entire supply is funded).
      * @param salt      Salt for the Coinage spoke token.
      * @param tickLower Lower tick (price floor in spoke-in-hub terms).
-     * @param tickUpper Upper tick of the position.
+     * @param tickUpper Upper tick (price ceiling in spoke-in-hub terms).
      * @return token The newly created spoke token.
      */
     function launch(

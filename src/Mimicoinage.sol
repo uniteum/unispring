@@ -18,13 +18,13 @@ import {PoolKey} from "v4-core/types/PoolKey.sol";
  *         {Fountain.untaken}, {Fountain.owner} — lives on Fountain;
  *         Mimicoinage only records the mimic→position mapping and exposes
  *         the pool parameters needed to look up pool state.
- * @dev    The mimic token carries the original's decimals so the raw
- *         sqrtPrice of 1 (tick 0) corresponds to a 1:1 human-unit peg.
- *         Each position uses {FEE} = 100 (0.01%), {TICK_SPACING} = 1, and no
- *         hook. The user-semantic range is `[0, 1)`; Fountain flips and
- *         negates into V4-native ticks internally when the mimic sorts
- *         above the original, so both orderings seat only the mimic at
- *         genesis with tick 0 at the edge of the V4 range.
+ * @dev    The mimic token carries the original's decimals so the raw price
+ *         of 1 at tick 0 corresponds to a 1:1 human-unit peg. Each position
+ *         uses {FEE} = 100 (0.01%), {TICK_SPACING} = 1, and no hook. The
+ *         user-semantic range is `[0, 1)`; Fountain flips and negates into
+ *         V4-native ticks internally when the mimic sorts above the
+ *         original, so both orderings seat only the mimic at genesis with
+ *         tick 0 at the edge of the V4 range.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
 contract Mimicoinage {

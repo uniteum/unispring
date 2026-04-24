@@ -149,7 +149,7 @@ contract Fountain is IUnlockCallback, Ownable {
     error TickAmountLengthMismatch(uint256 ticksLength, uint256 amountsLength);
 
     /**
-     * @notice Thrown when {offer} is called with no positions (fewer than two ticks).
+     * @notice Thrown when {offer} is called with an empty `amounts` array.
      */
     error NoPositions();
 
