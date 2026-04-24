@@ -96,6 +96,37 @@ contract MimicoinageForkTest is ForkBase {
     }
 
     /**
+     * @notice Native ETH as the original: Mimicoinage falls back to "ETH" as
+     *         the symbol prefix and 18 decimals (no on-chain metadata to read),
+     *         registers the mimic, and seats it in a Fountain position whose
+     *         `currency0` is `address(0)`.
+     */
+    function test_MimicNativeETH() public {
+        (IERC20Metadata mimic, uint256 positionId) = mimicoinage.mimic(Currency.wrap(address(0)), "ETHmimic");
+
+        assertEq(mimic.decimals(), uint8(18), "native mimic must have 18 decimals");
+        assertEq(mimic.symbol(), "ETHx1", "native mimic symbol must be ETHx1");
+        assertTrue(mimicoinage.isMimic(IERC20(address(mimic))), "minted mimic not registered");
+        assertEq(
+            Currency.unwrap(mimicoinage.originalOf(IERC20(address(mimic)))),
+            address(0),
+            "originalOf must point to native ETH"
+        );
+
+        // Mimic is a contract address (> 0), ETH sorts below: ETH = currency0, mimic = currency1.
+        PoolKey memory key = mimicoinage.poolKeyOf(IERC20(address(mimic)));
+        assertEq(Currency.unwrap(key.currency0), address(0), "ETH is currency0");
+        assertEq(Currency.unwrap(key.currency1), address(mimic), "mimic is currency1");
+
+        // Pool initialized at tick 0; entire mimic supply seated in Fountain position.
+        (uint160 sqrtPriceX96, int24 tick,,) = fountain.POOL_MANAGER().getSlot0(key.toId());
+        assertEq(tick, int24(0), "pool must initialize at tick 0");
+        assertGt(sqrtPriceX96, 0, "pool not initialized");
+        assertEq(IERC20(address(mimic)).balanceOf(address(mimicoinage)), 0, "supply should be in V4, not in factory");
+        assertEq(positionId, 0, "first position id");
+    }
+
+    /**
      * @notice Both orderings must initialize at the identical 1:1 spot price.
      *         `ffffff` is a high-address lepton (mimic sorts below → token0);
      *         `zeros` is a low-address lepton (mimic sorts above → token1).

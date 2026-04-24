@@ -1,0 +1,1 @@
+- [Native-ETH spoke collides with hub pool](canon_native_eth_spoke_collision.md) — ETH-as-spoke against an ERC-20 hub seats into the hub's own ETH pool, so it only works when `tickLower == HUB_TICK_UPPER`
