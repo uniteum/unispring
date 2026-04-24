@@ -3,7 +3,6 @@ pragma solidity ^0.8.30;
 
 import {Fountain} from "./Fountain.sol";
 import {ICoinage} from "ierc20/ICoinage.sol";
-import {IERC20} from "ierc20/IERC20.sol";
 import {IERC20Metadata} from "ierc20/IERC20Metadata.sol";
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {Currency} from "v4-core/types/Currency.sol";
@@ -71,21 +70,21 @@ contract Mimicoinage {
      *         mimics that satisfy {isMimic} (since `Currency.wrap(address(0))`
      *         is itself a valid native-ETH original).
      */
-    mapping(IERC20 => Currency) public originalOf;
+    mapping(IERC20Metadata => Currency) public originalOf;
 
     /**
      * @notice Whether `token` was minted by this factory as a mimic.
      *         Populated by {mimic}; the auto-generated getter doubles as
      *         the public existence check.
      */
-    mapping(IERC20 => bool) public isMimic;
+    mapping(IERC20Metadata => bool) public isMimic;
 
     /**
      * @notice Fountain position id backing each mimic, indexed by the mimic
      *         token address. Populated by {mimic}; meaningful only for
      *         mimics that satisfy {isMimic}.
      */
-    mapping(IERC20 => uint256) public positionIdOf;
+    mapping(IERC20Metadata => uint256) public positionIdOf;
 
     /**
      * @notice All mimics minted by this factory, in mint order. The
@@ -108,7 +107,7 @@ contract Mimicoinage {
      * @notice Thrown when {poolKeyOf} or {poolIdOf} is called with a mimic
      *         this factory did not mint.
      */
-    error UnknownMimic(IERC20 mimic);
+    error UnknownMimic(IERC20Metadata mimic);
 
     /**
      * @notice Construct the singleton factory.
@@ -156,7 +155,7 @@ contract Mimicoinage {
      * @return key   The pool key with sorted currencies and this factory's
      *               fee/tickSpacing/hooks constants.
      */
-    function poolKeyOf(IERC20 token) public view returns (PoolKey memory key) {
+    function poolKeyOf(IERC20Metadata token) public view returns (PoolKey memory key) {
         if (!isMimic[token]) revert UnknownMimic(token);
         Currency mimicCurrency = Currency.wrap(address(token));
         Currency original = originalOf[token];
@@ -176,7 +175,7 @@ contract Mimicoinage {
      * @param  token A mimic minted by this factory.
      * @return id    The derived Uniswap V4 pool id.
      */
-    function poolIdOf(IERC20 token) external view returns (PoolId id) {
+    function poolIdOf(IERC20Metadata token) external view returns (PoolId id) {
         id = poolKeyOf(token).toId();
     }
 
@@ -217,7 +216,7 @@ contract Mimicoinage {
     {
         (uint8 decimals, string memory symbol) = _mimicMetadata(original);
         token = COINAGE.make(name, symbol, decimals, SUPPLY, bytes32(0));
-        IERC20 mimicErc = IERC20(address(token));
+        IERC20Metadata mimicErc = IERC20Metadata(address(token));
         originalOf[mimicErc] = original;
         isMimic[mimicErc] = true;
         mimics.push(token);
