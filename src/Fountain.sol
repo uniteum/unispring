@@ -536,7 +536,7 @@ contract Fountain is IUnlockCallback, Ownable {
      *         preserved across clone forwarding.
      */
     function make() external returns (Fountain instance) {
-        if (this != PROTO) revert Unauthorized();
+        if (address(this) != address(PROTO)) revert Unauthorized();
         (bool exists, address home, bytes32 salt) = made(msg.sender);
         instance = Fountain(home);
         if (!exists) {
