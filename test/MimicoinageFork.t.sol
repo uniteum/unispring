@@ -126,7 +126,7 @@ contract MimicoinageForkTest is ForkBase {
         assertEq(
             IERC20Metadata(address(mimic)).balanceOf(address(mimicoinage)), 0, "supply should be in V4, not in factory"
         );
-        assertEq(mimicoinage.positionIdOf(mimic), 0, "first position id");
+        assertEq(fountain.positionsCount(), 1, "mimic must seat exactly one Fountain position");
     }
 
     /**
@@ -232,8 +232,8 @@ contract MimicoinageForkTest is ForkBase {
     function test_TakeRoutesFeesToTaker() public {
         // mimic sorts below ffffff → mimic is currency0, ffffff is currency1.
         // A zeroForOne=false swap spends currency1 (ffffff), so fees accrue on currency1.
+        uint256 positionId = fountain.positionsCount();
         IERC20Metadata mimic = mimicoinage.mimic(Currency.wrap(ffffff), "mimicFF");
-        uint256 positionId = mimicoinage.positionIdOf(mimic);
         PoolKey memory key = mimicoinage.poolKeyOf(IERC20Metadata(address(mimic)));
 
         uint128 amountIn = 1e18;
@@ -268,10 +268,10 @@ contract MimicoinageForkTest is ForkBase {
      *         forecasts to the taker.
      */
     function test_TakeBatchRoutesFeesToTaker() public {
+        uint256 hiId = fountain.positionsCount();
         IERC20Metadata hiMimic = mimicoinage.mimic(Currency.wrap(ffffff), "mimicFF");
+        uint256 loId = fountain.positionsCount();
         IERC20Metadata loMimic = mimicoinage.mimic(Currency.wrap(zeros), "mimicZZ");
-        uint256 hiId = mimicoinage.positionIdOf(hiMimic);
-        uint256 loId = mimicoinage.positionIdOf(loMimic);
 
         PoolKey memory hiKey = mimicoinage.poolKeyOf(IERC20Metadata(address(hiMimic)));
         PoolKey memory loKey = mimicoinage.poolKeyOf(IERC20Metadata(address(loMimic)));

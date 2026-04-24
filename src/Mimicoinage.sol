@@ -54,9 +54,7 @@ contract Mimicoinage {
 
     /**
      * @notice The Fountain that holds each mimic's single-tick position
-     *         and routes its swap fees to {Fountain.owner}. Callers use
-     *         {positionIdOf} to resolve a mimic to its Fountain position
-     *         id for direct take / untaken queries.
+     *         and routes its swap fees to {Fountain.owner}.
      */
     Fountain public immutable FOUNTAIN;
 
@@ -79,13 +77,6 @@ contract Mimicoinage {
      *         the public existence check.
      */
     mapping(IERC20Metadata => bool) public isMimic;
-
-    /**
-     * @notice Fountain position id backing each mimic, indexed by the mimic
-     *         token address. Populated by {mimic}; meaningful only for
-     *         mimics that satisfy {isMimic}.
-     */
-    mapping(IERC20Metadata => uint256) public positionIdOf;
 
     /**
      * @notice All mimics minted by this factory, in mint order. The
@@ -205,8 +196,7 @@ contract Mimicoinage {
      *                    mimic is minted with 18 decimals and `"ETH"` as
      *                    its symbol prefix in that case).
      * @param  name       Name for the newly minted mimic token.
-     * @return token      The newly minted mimic token. Its Fountain position
-     *                    id is available as {positionIdOf}(`token`).
+     * @return token      The newly minted mimic token.
      */
     function mimic(Currency original, string calldata name) external returns (IERC20Metadata token) {
         (uint8 decimals, string memory symbol) = _mimicMetadata(original);
@@ -225,8 +215,7 @@ contract Mimicoinage {
         uint256[] memory amounts = new uint256[](1);
         amounts[0] = SUPPLY;
 
-        uint256 positionId = FOUNTAIN.offer(Currency.wrap(address(mimicErc)), original, ticks, amounts);
-        positionIdOf[mimicErc] = positionId;
+        FOUNTAIN.offer(Currency.wrap(address(mimicErc)), original, ticks, amounts);
 
         emit Mimicked(token, original);
     }
