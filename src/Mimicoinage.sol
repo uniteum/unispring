@@ -66,13 +66,6 @@ contract Mimicoinage {
     mapping(IERC20Metadata => bool) public isMimic;
 
     /**
-     * @notice All mimics minted by this factory, in mint order. The
-     *         auto-generated getter returns a single element by index; use
-     *         {mimicsCount} and {mimicsSlice} for bulk reads.
-     */
-    IERC20Metadata[] public mimics;
-
-    /**
      * @notice Emitted when a mimic token is minted.
      * @param  mimic       The newly minted ERC-20.
      * @param  original    The original currency the mimic is pegged against
@@ -89,33 +82,6 @@ contract Mimicoinage {
     constructor(Fountain fountain, ICoinage coinage) {
         FOUNTAIN = fountain;
         COINAGE = coinage;
-    }
-
-    /**
-     * @notice The number of mimics minted by this factory.
-     */
-    function mimicsCount() external view returns (uint256) {
-        return mimics.length;
-    }
-
-    /**
-     * @notice Return a contiguous slice of {mimics}. Clamps to the array
-     *         bounds: passing an `offset` at or past the end returns an
-     *         empty array; passing a `count` that runs past the end
-     *         returns only the existing tail.
-     * @param  offset Index of the first mimic to return.
-     * @param  count  Maximum number of mimics to return.
-     * @return slice  The requested mimic tokens, in mint order.
-     */
-    function mimicsSlice(uint256 offset, uint256 count) external view returns (IERC20Metadata[] memory slice) {
-        uint256 length = mimics.length;
-        if (offset >= length) return new IERC20Metadata[](0);
-        uint256 end = offset + count;
-        if (end > length) end = length;
-        slice = new IERC20Metadata[](end - offset);
-        for (uint256 i = 0; i < slice.length; i++) {
-            slice[i] = mimics[offset + i];
-        }
     }
 
     /**
@@ -153,7 +119,6 @@ contract Mimicoinage {
         IERC20Metadata mimicErc = IERC20Metadata(address(token));
         originalOf[mimicErc] = original;
         isMimic[mimicErc] = true;
-        mimics.push(token);
 
         // forge-lint: disable-next-line(erc20-unchecked-transfer)
         mimicErc.approve(address(FOUNTAIN), SUPPLY);
