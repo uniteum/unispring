@@ -182,15 +182,6 @@ contract Fountain is IUnlockCallback, Ownable {
     error LiquidityOverflow();
 
     /**
-     * @notice Thrown when the pool exists at a price other than the starting
-     *         price this {offer} call would have initialized it to. Pools are
-     *         permanent once initialized in V4, so recovery is not possible
-     *         on the affected {PoolKey}; choose a different quote to produce
-     *         a different pool.
-     */
-    error PoolPreInitialized(uint160 sqrtPriceX96);
-
-    /**
      * @notice Thrown when {take} references a position index that does not exist.
      */
     error UnknownPosition(uint256 positionId);
@@ -230,10 +221,30 @@ contract Fountain is IUnlockCallback, Ownable {
      *         approved this contract for the sum of `amounts`; when `token`
      *         is native ETH (`Currency.wrap(address(0))`) the caller must
      *         send that sum as `msg.value`.
-     * @dev    The lowest tick `ticks[0]` is treated as the pool's starting
-     *         price: if the pool does not yet exist it is initialized at
-     *         that price; if it already exists its price must match
-     *         exactly, else {PoolPreInitialized} reverts.
+     * @dev    `ticks[0]` is the *intended* starting price: an uninitialized
+     *         pool is initialized at that price, but if the pool already
+     *         exists Fountain proceeds with whatever spot price it finds.
+     *         Outcome depends on where that spot sits relative to
+     *         `ticks[0]` (in user/token-per-quote terms):
+     *
+     *         - spot at-or-below `ticks[0]`: every position is fully above
+     *           spot, single-sided in `token`, and seats normally. The
+     *           pool just starts at a lower price than the caller intended
+     *           and the bonding curve activates as buyers push spot up
+     *           into the range.
+     *
+     *         - spot above `ticks[0]`: at least the first position would
+     *           span or sit below spot and demand the quote currency,
+     *           which Fountain does not settle. The PoolManager unlock
+     *           reverts with {CurrencyNotSettled} (V4-named) and the
+     *           transaction unwinds with no state change.
+     *
+     *         A would-be griefer that front-runs `initialize` therefore
+     *         only locks the {PoolKey} when they pick a price strictly
+     *         above `ticks[0]`. A below-`ticks[0]` front-run is silently
+     *         absorbed; an above-`ticks[0]` one can be undone by anyone
+     *         (no liquidity in the path) by walking spot back down with a
+     *         1-wei swap before re-calling {offer}.
      * @param  token           The currency whose supply seats the positions
      *                         (`Currency.wrap(address(0))` for native ETH).
      * @param  quote           The quote currency (`Currency.wrap(address(0))`
@@ -292,8 +303,6 @@ contract Fountain is IUnlockCallback, Ownable {
         (uint160 existingSqrtPriceX96,,,) = POOL_MANAGER.getSlot0(poolId);
         if (existingSqrtPriceX96 == 0) {
             POOL_MANAGER.initialize(key, startingSqrtPriceX96);
-        } else if (existingSqrtPriceX96 != startingSqrtPriceX96) {
-            revert PoolPreInitialized(existingSqrtPriceX96);
         }
 
         firstPositionId = positions.length;

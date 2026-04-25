@@ -241,15 +241,52 @@ contract FountainForkTest is ForkBase {
         assertEq(fountain.positionsCount(), 1, "offer succeeded after matching pre-init");
     }
 
-    function test_OfferRevertsOnPreInitializedAtWrongPrice() public {
+    /**
+     * @notice Pre-init below `ticks[0]` is silently absorbed: positions
+     *         seat above spot single-sided in token, the pool keeps its
+     *         pre-init price, and the bonding curve activates as buyers
+     *         push spot up into the user's range. No-flip case
+     *         (token < ffffff): user `ticks[0]=100` → V4 start tick 100;
+     *         pre-init at V4 tick 50 is below.
+     */
+    function test_OfferAbsorbsPreInitBelowTicksZero() public {
         int24[] memory ticks = _twoTicks(100, 500);
         uint256[] memory amounts = _oneAmount(SEGMENT_AMOUNT);
         PoolKey memory key = _keyFor(ffffff, TICK_SPACING);
-        uint160 griefSqrt = TickMath.getSqrtPriceAtTick(777);
-        fountain.POOL_MANAGER().initialize(key, griefSqrt);
+        uint160 preInitSqrt = TickMath.getSqrtPriceAtTick(50);
+        fountain.POOL_MANAGER().initialize(key, preInitSqrt);
 
         _mint(SEGMENT_AMOUNT);
-        vm.expectRevert(abi.encodeWithSelector(Fountain.PoolPreInitialized.selector, griefSqrt));
+        bot.offer(Currency.wrap(address(token)), Currency.wrap(ffffff), ticks, amounts);
+
+        assertEq(fountain.positionsCount(), 1, "position seated despite pre-init");
+        (uint160 sqrt,,,) = fountain.POOL_MANAGER().getSlot0(key.toId());
+        assertEq(sqrt, preInitSqrt, "spot stays at pre-init price, not ticks[0]");
+
+        uint256 inPoolManager = IERC20(address(token)).balanceOf(address(fountain.POOL_MANAGER()));
+        uint256 inFountain = IERC20(address(token)).balanceOf(address(fountain));
+        assertEq(inPoolManager + inFountain, SEGMENT_AMOUNT, "supply conserved");
+        assertGt(inPoolManager, (SEGMENT_AMOUNT * 999) / 1000, "supply seated single-sided in token");
+    }
+
+    /**
+     * @notice Pre-init above `ticks[0]` reverts with V4's
+     *         {IPoolManager.CurrencyNotSettled}: the first position spans
+     *         or sits below spot, V4 demands the quote currency, Fountain
+     *         only settles token. The legitimate offerer's funds are
+     *         safe (transferFrom unwinds with the revert) but the error
+     *         is opaque — no Fountain-named error names the pre-init
+     *         price. Recovery: walk the price down externally with a
+     *         1-wei swap (pool is empty), then re-call {offer}.
+     */
+    function test_OfferRevertsWhenPreInitAboveTicksZero() public {
+        int24[] memory ticks = _twoTicks(100, 500);
+        uint256[] memory amounts = _oneAmount(SEGMENT_AMOUNT);
+        PoolKey memory key = _keyFor(ffffff, TICK_SPACING);
+        fountain.POOL_MANAGER().initialize(key, TickMath.getSqrtPriceAtTick(777));
+
+        _mint(SEGMENT_AMOUNT);
+        vm.expectRevert(IPoolManager.CurrencyNotSettled.selector);
         bot.offer(Currency.wrap(address(token)), Currency.wrap(ffffff), ticks, amounts);
     }
 

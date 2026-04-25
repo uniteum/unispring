@@ -327,17 +327,40 @@ contract MimicoinageForkTest is ForkBase {
     }
 
     /**
-     * @notice A griefer that pre-initializes the target PoolKey at any price
-     *         other than tick 0 blocks {mimic} with {Fountain.PoolPreInitialized}.
-     *         The workaround is to re-mint with a different `name`, which
-     *         produces a fresh mimic address and a fresh PoolKey.
+     * @notice Mimicoinage seats at `ticks[0] = 0`. A pre-init below user
+     *         tick 0 is silently absorbed by Fountain — {mimic} succeeds,
+     *         spot stays at the pre-init price, and the curve activates
+     *         when buyers push spot up to 0. (No-flip orientation: mimic
+     *         sorts below ffffff, so mimic = currency0 and "below user
+     *         tick 0" matches "V4 tick < 0".)
      */
-    function test_MimicRevertsOnPreInitializedPool() public {
+    function test_MimicAbsorbsPreInitBelowTicksZero() public {
         PoolKey memory key = _predictedPoolKey(Currency.wrap(ffffff), "mimicFF");
-        uint160 griefSqrt = TickMath.getSqrtPriceAtTick(100);
-        fountain.POOL_MANAGER().initialize(key, griefSqrt);
+        uint160 preInitSqrt = TickMath.getSqrtPriceAtTick(-100);
+        fountain.POOL_MANAGER().initialize(key, preInitSqrt);
 
-        vm.expectRevert(abi.encodeWithSelector(Fountain.PoolPreInitialized.selector, griefSqrt));
+        IERC20Metadata mimic = mimicoinage.mimic(Currency.wrap(ffffff), "mimicFF");
+        assertTrue(mimicoinage.isMimic(IERC20Metadata(address(mimic))), "mimic registered after below-tick pre-init");
+
+        (uint160 sqrt,,,) = fountain.POOL_MANAGER().getSlot0(key.toId());
+        assertEq(sqrt, preInitSqrt, "spot stays at pre-init price, not at ticks[0]=0");
+    }
+
+    /**
+     * @notice A pre-init above user tick 0 leaves the first position
+     *         spanning or below spot, so V4 demands the quote currency
+     *         that Fountain doesn't settle. {mimic} reverts with V4's
+     *         {IPoolManager.CurrencyNotSettled}. The mimic address is
+     *         not registered. The workaround is to re-mint under a
+     *         different `name` (different PoolKey) or walk the existing
+     *         pool's spot back down to/below tick 0 first (free since
+     *         the pool has no liquidity).
+     */
+    function test_MimicRevertsOnPreInitAboveTicksZero() public {
+        PoolKey memory key = _predictedPoolKey(Currency.wrap(ffffff), "mimicFF");
+        fountain.POOL_MANAGER().initialize(key, TickMath.getSqrtPriceAtTick(100));
+
+        vm.expectRevert(IPoolManager.CurrencyNotSettled.selector);
         mimicoinage.mimic(Currency.wrap(ffffff), "mimicFF");
 
         // Re-minting under a different name yields a different PoolKey and succeeds.
