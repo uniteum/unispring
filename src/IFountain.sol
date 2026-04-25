@@ -21,7 +21,11 @@ interface IFountain {
      *         Fountain's owner. When `token` is an ERC-20 the caller must
      *         have approved the Fountain for the sum of `amounts`; when
      *         `token` is native ETH (`Currency.wrap(address(0))`) the
-     *         caller must send that sum as `msg.value`.
+     *         caller must send that sum as `msg.value` — this is why
+     *         `offer` is `payable`. The native-ETH-as-token path supports
+     *         e.g. seating an ETH spoke against a hub in {Unispring};
+     *         token-side ETH is unusual otherwise (most callers offer the
+     *         scarce token and quote in ETH or a stablecoin).
      * @dev    `ticks[0]` is the *intended* starting price: an uninitialized
      *         pool is initialized at that price, but if the pool already
      *         exists Fountain proceeds with whatever spot price it finds.
