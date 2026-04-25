@@ -4,6 +4,7 @@ pragma solidity ^0.8.30;
 import {Clones} from "clones/Clones.sol";
 import {IAddressLookup} from "ilookup/IAddressLookup.sol";
 import {IERC20} from "ierc20/IERC20.sol";
+import {IFountain} from "./IFountain.sol";
 import {Ownable} from "ownable/Ownable.sol";
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
@@ -77,7 +78,7 @@ interface IFountainActions {
  *         is preserved.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
-contract Fountain is IUnlockCallback, Ownable {
+contract Fountain is IFountain, IUnlockCallback, Ownable {
     string public constant VERSION = "0.4.0";
 
     /**
@@ -260,6 +261,7 @@ contract Fountain is IUnlockCallback, Ownable {
     function offer(Currency token, Currency quote, int24[] calldata ticks, uint256[] calldata amounts)
         external
         payable
+        override
         returns (uint256 firstPositionId)
     {
         uint256 n = amounts.length;
