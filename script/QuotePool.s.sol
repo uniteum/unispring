@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
+import {Fountain} from "../src/Fountain.sol";
 import {Unispring} from "../src/Unispring.sol";
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {Currency} from "v4-core/types/Currency.sol";
@@ -38,6 +39,7 @@ contract QuotePool is Script {
 
     function run() external {
         Unispring unispring = Unispring(payable(vm.envAddress("Unispring")));
+        Fountain fountain = Fountain(address(unispring.FOUNTAIN()));
         address newToken = vm.envAddress("HelloWorld");
         address hub = unispring.hub();
         uint128 hubAmount = uint128(vm.envUint("HubAmount"));
@@ -46,7 +48,7 @@ contract QuotePool is Script {
         PoolKey memory key = PoolKey({
             currency0: Currency.wrap(newToken),
             currency1: Currency.wrap(hub),
-            fee: unispring.FOUNTAIN().FEE(),
+            fee: fountain.FEE(),
             tickSpacing: 1,
             hooks: IHooks(address(0))
         });

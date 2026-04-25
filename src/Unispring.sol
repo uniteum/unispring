@@ -2,7 +2,7 @@
 pragma solidity ^0.8.30;
 
 import {Clones} from "clones/Clones.sol";
-import {Fountain} from "./Fountain.sol";
+import {IFountain} from "./IFountain.sol";
 import {IERC20} from "ierc20/IERC20.sol";
 import {Currency} from "v4-core/types/Currency.sol";
 
@@ -15,7 +15,7 @@ import {Currency} from "v4-core/types/Currency.sol";
  * @dev    All V4 plumbing — unlock, modifyLiquidity, liquidity math, fee
  *         take — lives on {FOUNTAIN}. Unispring only mints/tracks
  *         the clone-per-hub key, pre-approves {FOUNTAIN} against pulled
- *         tokens, and delegates to {Fountain.offer}. Pools inherit
+ *         tokens, and delegates to {IFountain.offer}. Pools inherit
  *         {Fountain.FEE} (0.01%) and accrued fees flow to Fountain's owner.
  * @dev    Ticks: callers pass V4-native `(tickLower, tickUpper)` in the
  *         log_1.0001(currency1/currency0) convention. For the hub pool the
@@ -47,7 +47,7 @@ contract Unispring {
      *         this Unispring. Positions inherit {Fountain.POOL_MANAGER} and
      *         {Fountain.FEE}; accrued fees flow to `FOUNTAIN.owner()`.
      */
-    Fountain public immutable FOUNTAIN;
+    IFountain public immutable FOUNTAIN;
 
     /**
      * @notice The hub token, set by {zzInit} on each clone.
@@ -109,7 +109,7 @@ contract Unispring {
      * @param  fountain The Fountain that will seat every position funded
      *                  through this Unispring.
      */
-    constructor(Fountain fountain) {
+    constructor(IFountain fountain) {
         PROTO = this;
         FOUNTAIN = fountain;
     }

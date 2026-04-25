@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
+import {Fountain} from "../src/Fountain.sol";
 import {Unispring} from "../src/Unispring.sol";
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
@@ -19,6 +20,7 @@ contract CheckPool is Script {
 
     function run() external view {
         Unispring spring = Unispring(payable(vm.envAddress("Unispring")));
+        Fountain fountain = Fountain(address(spring.FOUNTAIN()));
         address newToken = vm.envAddress("HelloWorld");
         address hub = spring.hub();
         bool newIsCurrency0 = newToken < hub;
@@ -26,13 +28,13 @@ contract CheckPool is Script {
         PoolKey memory key = PoolKey({
             currency0: Currency.wrap(newIsCurrency0 ? newToken : hub),
             currency1: Currency.wrap(newIsCurrency0 ? hub : newToken),
-            fee: spring.FOUNTAIN().FEE(),
+            fee: fountain.FEE(),
             tickSpacing: 1,
             hooks: IHooks(address(0))
         });
         PoolId id = key.toId();
 
-        IPoolManager pm = spring.FOUNTAIN().POOL_MANAGER();
+        IPoolManager pm = fountain.POOL_MANAGER();
         (uint160 sqrtPriceX96, int24 tick, uint24 protocolFee, uint24 lpFee) = pm.getSlot0(id);
         uint128 liquidity = pm.getLiquidity(id);
 
