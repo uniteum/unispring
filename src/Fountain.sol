@@ -255,10 +255,10 @@ contract Fountain is IUnlockCallback, Ownable {
         if (n == 0) revert NoPositions();
         if (ticks.length != n + 1) revert TickAmountLengthMismatch(ticks.length, n);
 
-        for (uint256 i = 0; i < ticks.length; i++) {
-            int24 t = ticks[i];
-            if (t < TickMath.MIN_TICK || t > TickMath.MAX_TICK) revert TickOutOfRange(t);
-            if (i > 0 && t <= ticks[i - 1]) revert TicksNotAscending(i, ticks[i - 1], t);
+        if (ticks[0] < TickMath.MIN_TICK) revert TickOutOfRange(ticks[0]);
+        if (ticks[n] > TickMath.MAX_TICK) revert TickOutOfRange(ticks[n]);
+        for (uint256 i = 1; i < ticks.length; i++) {
+            if (ticks[i] <= ticks[i - 1]) revert TicksNotAscending(i, ticks[i - 1], ticks[i]);
         }
 
         uint256 total;
