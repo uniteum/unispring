@@ -79,7 +79,7 @@ interface IFountainActions {
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
 contract Fountain is IFountain, IUnlockCallback, Ownable {
-    string public constant VERSION = "0.4.0";
+    string public constant VERSION = "0.5.0";
 
     /**
      * @notice Pool fee in hundredths of a bip (0.01%).
