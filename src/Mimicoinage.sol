@@ -35,11 +35,6 @@ contract Mimicoinage {
     uint128 public constant SUPPLY = 10 ** 27;
 
     /**
-     * @notice Symbol suffix appended to the original token's symbol.
-     */
-    string public constant SUFFIX = "x1";
-
-    /**
      * @notice The Fountain that holds each mimic's single-tick position
      *         and routes its swap fees to {Fountain.owner}.
      */
@@ -86,18 +81,22 @@ contract Mimicoinage {
 
     /**
      * @notice Predict the address of the mimic that {mimic} would create
-     *         for `(original, name)`. Lets a UI show the future token
-     *         address (and whether it already exists) before any gas is
-     *         spent.
+     *         for `(original, name, symbol)`. Lets a UI show the future
+     *         token address (and whether it already exists) before any
+     *         gas is spent.
      * @param  original The reference currency that would be pegged against
      *                  (`Currency.wrap(address(0))` for native ETH).
      * @param  name     Name that would be passed to {mimic}.
+     * @param  symbol   Symbol that would be passed to {mimic}.
      * @return exists   True if the mimic has already been deployed.
      * @return token    Deterministic address of the mimic.
      */
-    function predictMimic(Currency original, string calldata name) external view returns (bool exists, address token) {
-        (uint8 decimals, string memory symbol) = _mimicMetadata(original);
-        (exists, token,) = COINAGE.made(address(this), name, symbol, decimals, SUPPLY, bytes32(0));
+    function predictMimic(Currency original, string calldata name, string calldata symbol)
+        external
+        view
+        returns (bool exists, address token)
+    {
+        (exists, token,) = COINAGE.made(address(this), name, symbol, _mimicDecimals(original), SUPPLY, bytes32(0));
     }
 
     /**
@@ -108,14 +107,16 @@ contract Mimicoinage {
      *         The position is permanent.
      * @param  original   The reference currency to peg against
      *                    (`Currency.wrap(address(0))` for native ETH; the
-     *                    mimic is minted with 18 decimals and `"ETH"` as
-     *                    its symbol prefix in that case).
+     *                    mimic is minted with 18 decimals in that case).
      * @param  name       Name for the newly minted mimic token.
+     * @param  symbol     Symbol for the newly minted mimic token.
      * @return token      The newly minted mimic token.
      */
-    function mimic(Currency original, string calldata name) external returns (IERC20Metadata token) {
-        (uint8 decimals, string memory symbol) = _mimicMetadata(original);
-        token = COINAGE.make(name, symbol, decimals, SUPPLY, bytes32(0));
+    function mimic(Currency original, string calldata name, string calldata symbol)
+        external
+        returns (IERC20Metadata token)
+    {
+        token = COINAGE.make(name, symbol, _mimicDecimals(original), SUPPLY, bytes32(0));
         IERC20Metadata mimicErc = IERC20Metadata(address(token));
         originalOf[mimicErc] = original;
         isMimic[mimicErc] = true;
@@ -135,19 +136,12 @@ contract Mimicoinage {
     }
 
     /**
-     * @dev Resolve the decimals and symbol-prefix used to mint a mimic of
-     *      `original`. Native ETH (`address(0)`) has no on-chain metadata,
-     *      so the mimic uses 18 decimals and `"ETH"` as its symbol prefix
-     *      to match the conventional human-unit semantics.
+     * @dev Resolve the decimals used to mint a mimic of `original`. Native
+     *      ETH (`address(0)`) has no on-chain metadata, so the mimic uses
+     *      18 decimals to match the conventional human-unit semantics.
      */
-    function _mimicMetadata(Currency original) private view returns (uint8 decimals, string memory symbol) {
-        if (original.isAddressZero()) {
-            decimals = 18;
-            symbol = string.concat("ETH", SUFFIX);
-        } else {
-            IERC20Metadata orig = IERC20Metadata(Currency.unwrap(original));
-            decimals = orig.decimals();
-            symbol = string.concat(orig.symbol(), SUFFIX);
-        }
+    function _mimicDecimals(Currency original) private view returns (uint8) {
+        if (original.isAddressZero()) return 18;
+        return IERC20Metadata(Currency.unwrap(original)).decimals();
     }
 }

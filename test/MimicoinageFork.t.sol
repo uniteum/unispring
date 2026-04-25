@@ -69,19 +69,20 @@ contract MimicoinageForkTest is ForkBase {
 
     function test_PredictMimicMatchesMimic() public {
         string memory name = "USDCmimic";
-        (bool exists, address predicted) = mimicoinage.predictMimic(Currency.wrap(USDC), name);
+        string memory symbol = "USDCx1";
+        (bool exists, address predicted) = mimicoinage.predictMimic(Currency.wrap(USDC), name, symbol);
         assertFalse(exists, "fresh Mimicoinage cannot have pre-existing mimics");
         assertTrue(predicted != address(0), "predicted address is zero");
 
-        IERC20Metadata mimic = mimicoinage.mimic(Currency.wrap(USDC), name);
+        IERC20Metadata mimic = mimicoinage.mimic(Currency.wrap(USDC), name, symbol);
         assertEq(address(mimic), predicted, "minted address differs from prediction");
     }
 
     function test_MimicUSDC() public {
-        IERC20Metadata mimic = mimicoinage.mimic(Currency.wrap(USDC), "USDCmimic");
+        IERC20Metadata mimic = mimicoinage.mimic(Currency.wrap(USDC), "USDCmimic", "USDCx1");
 
         assertEq(mimic.decimals(), IERC20Metadata(USDC).decimals(), "decimals must match original");
-        assertEq(mimic.symbol(), "USDCx1", "symbol must be original.symbol + SUFFIX");
+        assertEq(mimic.symbol(), "USDCx1", "symbol must round-trip through mimic");
         assertTrue(mimicoinage.isMimic(IERC20Metadata(address(mimic))), "minted token not marked as mimic");
 
         // Pool is initialized at tick 0 (sqrtPriceX96 for tick 0 = 2**96).
@@ -97,16 +98,16 @@ contract MimicoinageForkTest is ForkBase {
     }
 
     /**
-     * @notice Native ETH as the original: Mimicoinage falls back to "ETH" as
-     *         the symbol prefix and 18 decimals (no on-chain metadata to read),
-     *         registers the mimic, and seats it in a Fountain position whose
-     *         `currency0` is `address(0)`.
+     * @notice Native ETH as the original: Mimicoinage falls back to 18
+     *         decimals (no on-chain metadata to read), registers the mimic,
+     *         and seats it in a Fountain position whose `currency0` is
+     *         `address(0)`.
      */
     function test_MimicNativeETH() public {
-        IERC20Metadata mimic = mimicoinage.mimic(Currency.wrap(address(0)), "ETHmimic");
+        IERC20Metadata mimic = mimicoinage.mimic(Currency.wrap(address(0)), "ETHmimic", "ETHx1");
 
         assertEq(mimic.decimals(), uint8(18), "native mimic must have 18 decimals");
-        assertEq(mimic.symbol(), "ETHx1", "native mimic symbol must be ETHx1");
+        assertEq(mimic.symbol(), "ETHx1", "native mimic symbol must round-trip");
         assertTrue(mimicoinage.isMimic(IERC20Metadata(address(mimic))), "minted mimic not registered");
         assertEq(
             Currency.unwrap(mimicoinage.originalOf(IERC20Metadata(address(mimic)))),
@@ -140,8 +141,8 @@ contract MimicoinageForkTest is ForkBase {
         require(ffffff.code.length > 0, "ffffff lepton missing at forked block");
         require(zeros.code.length > 0, "zeros lepton missing at forked block");
 
-        IERC20Metadata hiMimic = mimicoinage.mimic(Currency.wrap(ffffff), "mimicFF");
-        IERC20Metadata loMimic = mimicoinage.mimic(Currency.wrap(zeros), "mimicZZ");
+        IERC20Metadata hiMimic = mimicoinage.mimic(Currency.wrap(ffffff), "mimicFF", "FFx1");
+        IERC20Metadata loMimic = mimicoinage.mimic(Currency.wrap(zeros), "mimicZZ", "ZZx1");
 
         assertLt(uint160(address(hiMimic)), uint160(ffffff), "mimic of high lepton must sort below (token0)");
         assertGt(uint160(address(loMimic)), uint160(zeros), "mimic of low lepton must sort above (token1)");
@@ -166,8 +167,8 @@ contract MimicoinageForkTest is ForkBase {
      *         should match to sub-bp precision.
      */
     function test_QuotedOutputsMatchAcrossOrdering() public {
-        IERC20Metadata hiMimic = mimicoinage.mimic(Currency.wrap(ffffff), "mimicFF");
-        IERC20Metadata loMimic = mimicoinage.mimic(Currency.wrap(zeros), "mimicZZ");
+        IERC20Metadata hiMimic = mimicoinage.mimic(Currency.wrap(ffffff), "mimicFF", "FFx1");
+        IERC20Metadata loMimic = mimicoinage.mimic(Currency.wrap(zeros), "mimicZZ", "ZZx1");
 
         PoolKey memory hiKey = _poolKeyOf(IERC20Metadata(address(hiMimic)));
         PoolKey memory loKey = _poolKeyOf(IERC20Metadata(address(loMimic)));
@@ -199,8 +200,8 @@ contract MimicoinageForkTest is ForkBase {
      *         stateless, so this executes real swaps via persona traders.
      */
     function test_SequentialBuysMatchAcrossOrdering() public {
-        IERC20Metadata hiMimic = mimicoinage.mimic(Currency.wrap(ffffff), "mimicFF");
-        IERC20Metadata loMimic = mimicoinage.mimic(Currency.wrap(zeros), "mimicZZ");
+        IERC20Metadata hiMimic = mimicoinage.mimic(Currency.wrap(ffffff), "mimicFF", "FFx1");
+        IERC20Metadata loMimic = mimicoinage.mimic(Currency.wrap(zeros), "mimicZZ", "ZZx1");
 
         PoolKey memory hiKey = _poolKeyOf(IERC20Metadata(address(hiMimic)));
         PoolKey memory loKey = _poolKeyOf(IERC20Metadata(address(loMimic)));
@@ -233,7 +234,7 @@ contract MimicoinageForkTest is ForkBase {
         // mimic sorts below ffffff → mimic is currency0, ffffff is currency1.
         // A zeroForOne=false swap spends currency1 (ffffff), so fees accrue on currency1.
         uint256 positionId = fountain.positionsCount();
-        IERC20Metadata mimic = mimicoinage.mimic(Currency.wrap(ffffff), "mimicFF");
+        IERC20Metadata mimic = mimicoinage.mimic(Currency.wrap(ffffff), "mimicFF", "FFx1");
         PoolKey memory key = _poolKeyOf(IERC20Metadata(address(mimic)));
 
         uint128 amountIn = 1e18;
@@ -269,9 +270,9 @@ contract MimicoinageForkTest is ForkBase {
      */
     function test_TakeBatchRoutesFeesToTaker() public {
         uint256 hiId = fountain.positionsCount();
-        IERC20Metadata hiMimic = mimicoinage.mimic(Currency.wrap(ffffff), "mimicFF");
+        IERC20Metadata hiMimic = mimicoinage.mimic(Currency.wrap(ffffff), "mimicFF", "FFx1");
         uint256 loId = fountain.positionsCount();
-        IERC20Metadata loMimic = mimicoinage.mimic(Currency.wrap(zeros), "mimicZZ");
+        IERC20Metadata loMimic = mimicoinage.mimic(Currency.wrap(zeros), "mimicZZ", "ZZx1");
 
         PoolKey memory hiKey = _poolKeyOf(IERC20Metadata(address(hiMimic)));
         PoolKey memory loKey = _poolKeyOf(IERC20Metadata(address(loMimic)));
@@ -317,11 +318,11 @@ contract MimicoinageForkTest is ForkBase {
      *         re-init and completes normally.
      */
     function test_MimicIdempotentAtGenesisPrice() public {
-        (, address predicted) = mimicoinage.predictMimic(Currency.wrap(ffffff), "mimicFF");
-        PoolKey memory key = _predictedPoolKey(Currency.wrap(ffffff), "mimicFF");
+        (, address predicted) = mimicoinage.predictMimic(Currency.wrap(ffffff), "mimicFF", "FFx1");
+        PoolKey memory key = _predictedPoolKey(Currency.wrap(ffffff), "mimicFF", "FFx1");
         fountain.POOL_MANAGER().initialize(key, TickMath.getSqrtPriceAtTick(0));
 
-        IERC20Metadata mimic = mimicoinage.mimic(Currency.wrap(ffffff), "mimicFF");
+        IERC20Metadata mimic = mimicoinage.mimic(Currency.wrap(ffffff), "mimicFF", "FFx1");
         assertEq(address(mimic), predicted, "minted address != predicted");
         assertTrue(mimicoinage.isMimic(IERC20Metadata(address(mimic))), "mimic not registered");
     }
@@ -335,11 +336,11 @@ contract MimicoinageForkTest is ForkBase {
      *         tick 0" matches "V4 tick < 0".)
      */
     function test_MimicAbsorbsPreInitBelowTicksZero() public {
-        PoolKey memory key = _predictedPoolKey(Currency.wrap(ffffff), "mimicFF");
+        PoolKey memory key = _predictedPoolKey(Currency.wrap(ffffff), "mimicFF", "FFx1");
         uint160 preInitSqrt = TickMath.getSqrtPriceAtTick(-100);
         fountain.POOL_MANAGER().initialize(key, preInitSqrt);
 
-        IERC20Metadata mimic = mimicoinage.mimic(Currency.wrap(ffffff), "mimicFF");
+        IERC20Metadata mimic = mimicoinage.mimic(Currency.wrap(ffffff), "mimicFF", "FFx1");
         assertTrue(mimicoinage.isMimic(IERC20Metadata(address(mimic))), "mimic registered after below-tick pre-init");
 
         (uint160 sqrt,,,) = fountain.POOL_MANAGER().getSlot0(key.toId());
@@ -357,14 +358,14 @@ contract MimicoinageForkTest is ForkBase {
      *         the pool has no liquidity).
      */
     function test_MimicRevertsOnPreInitAboveTicksZero() public {
-        PoolKey memory key = _predictedPoolKey(Currency.wrap(ffffff), "mimicFF");
+        PoolKey memory key = _predictedPoolKey(Currency.wrap(ffffff), "mimicFF", "FFx1");
         fountain.POOL_MANAGER().initialize(key, TickMath.getSqrtPriceAtTick(100));
 
         vm.expectRevert(IPoolManager.CurrencyNotSettled.selector);
-        mimicoinage.mimic(Currency.wrap(ffffff), "mimicFF");
+        mimicoinage.mimic(Currency.wrap(ffffff), "mimicFF", "FFx1");
 
         // Re-minting under a different name yields a different PoolKey and succeeds.
-        IERC20Metadata escaped = mimicoinage.mimic(Currency.wrap(ffffff), "mimicFF2");
+        IERC20Metadata escaped = mimicoinage.mimic(Currency.wrap(ffffff), "mimicFF2", "FF2x1");
         assertTrue(mimicoinage.isMimic(IERC20Metadata(address(escaped))), "rescue mint under new name failed");
     }
 
@@ -379,12 +380,17 @@ contract MimicoinageForkTest is ForkBase {
     }
 
     /**
-     * @dev Rebuild the {PoolKey} {mimic} will compute for `(original, name)`
-     *      using the predicted mimic CREATE2 address — lets a test pre-init
-     *      the target pool before the mimic exists.
+     * @dev Rebuild the {PoolKey} {mimic} will compute for
+     *      `(original, name, symbol)` using the predicted mimic CREATE2
+     *      address — lets a test pre-init the target pool before the mimic
+     *      exists.
      */
-    function _predictedPoolKey(Currency original, string memory name) internal view returns (PoolKey memory) {
-        (, address predicted) = mimicoinage.predictMimic(original, name);
+    function _predictedPoolKey(Currency original, string memory name, string memory symbol)
+        internal
+        view
+        returns (PoolKey memory)
+    {
+        (, address predicted) = mimicoinage.predictMimic(original, name, symbol);
         return _poolKey(predicted, original);
     }
 
