@@ -4,6 +4,7 @@ pragma solidity ^0.8.30;
 import {Fountain, Position} from "../src/Fountain.sol";
 import {ForkBase} from "./ForkBase.t.sol";
 import {Funder} from "./Funder.sol";
+import {Griefer} from "./Griefer.sol";
 import {SwapRouter} from "./SwapRouter.sol";
 import {TestToken} from "./TestToken.sol";
 import {Trader} from "./Trader.sol";
@@ -226,7 +227,30 @@ contract FountainForkTest is ForkBase {
     }
 
     // ----------------------------------------------------------------------
-    // Pool initialization guard
+    // Pool initialization / griefing recovery
+    //
+    // Griefing premise: the PoolKey for a Fountain offer is deterministic in
+    // (token, quote, fee, tickSpacing, hooks). An attacker that observes a
+    // pending token deployment (CREATE2 address is predictable) can call
+    // PoolManager.initialize with a wrong price before the legitimate offer
+    // lands. Pools are permanent in V4, so the worry was that this would
+    // permanently lock out the legitimate offerer on that PoolKey.
+    //
+    // Reality: V4's swap loop with zero in-path liquidity computes zero
+    // deltas at every step and walks the price straight to `sqrtPriceLimit`
+    // for free. So front-run-`initialize` is fully recoverable as long as
+    // the attacker can't seat liquidity in the path. For the new-token-
+    // mint-and-offer flow they can't (token doesn't exist yet). Even when
+    // the token exists, seating blocking liquidity costs the attacker real
+    // funds in both currencies and is wasted as soon as the legitimate
+    // offerer chooses a different quote.
+    //
+    // These tests cover:
+    //   - matching pre-init is a no-op
+    //   - wrong-price pre-init is recovered (no-flip / flip / native quote /
+    //     upward target / griefer-also-swapped escalation)
+    //   - blocking liquidity in the path causes a clean PoolPriceLocked
+    //   - recovered pools function normally (fees accrue on swaps)
     // ----------------------------------------------------------------------
 
     function test_OfferIdempotentWhenPreInitAtCorrectPrice() public {
@@ -241,16 +265,172 @@ contract FountainForkTest is ForkBase {
         assertEq(fountain.positionsCount(), 1, "offer succeeded after matching pre-init");
     }
 
-    function test_OfferRevertsOnPreInitializedAtWrongPrice() public {
+    function test_OfferRecoversFromPreInitGriefing_NoFlip() public {
+        // No-flip case (token=currency0): caller's ticks[0]=100 → V4 starting tick=100.
+        // Griefer pre-initialized at tick 777. Empty pool; price-fix walks for free.
         int24[] memory ticks = _twoTicks(100, 500);
         uint256[] memory amounts = _oneAmount(SEGMENT_AMOUNT);
         PoolKey memory key = _keyFor(ffffff, TICK_SPACING);
-        uint160 griefSqrt = TickMath.getSqrtPriceAtTick(777);
-        fountain.POOL_MANAGER().initialize(key, griefSqrt);
+        fountain.POOL_MANAGER().initialize(key, TickMath.getSqrtPriceAtTick(777));
 
         _mint(SEGMENT_AMOUNT);
-        vm.expectRevert(abi.encodeWithSelector(Fountain.PoolPreInitialized.selector, griefSqrt));
         bot.offer(Currency.wrap(address(token)), Currency.wrap(ffffff), ticks, amounts);
+
+        (uint160 sqrt,,,) = fountain.POOL_MANAGER().getSlot0(key.toId());
+        assertEq(sqrt, TickMath.getSqrtPriceAtTick(100), "price recovered to ticks[0]");
+        assertEq(fountain.positionsCount(), 1, "position seated after recovery");
+
+        uint256 inPoolManager = IERC20(address(token)).balanceOf(address(fountain.POOL_MANAGER()));
+        uint256 inFountain = IERC20(address(token)).balanceOf(address(fountain));
+        assertEq(inPoolManager + inFountain, SEGMENT_AMOUNT, "supply conserved post-recovery");
+        assertGt(inPoolManager, (SEGMENT_AMOUNT * 999) / 1000, "most supply in PoolManager");
+    }
+
+    function test_OfferRecoversFromPreInitGriefing_FlipCase() public {
+        // Flip case (token=currency1): caller's ticks[0]=100 → V4 starting tick=-100.
+        int24[] memory ticks = _twoTicks(100, 500);
+        uint256[] memory amounts = _oneAmount(SEGMENT_AMOUNT);
+        PoolKey memory key = _keyFor(zeros, TICK_SPACING);
+        fountain.POOL_MANAGER().initialize(key, TickMath.getSqrtPriceAtTick(2222));
+
+        _mint(SEGMENT_AMOUNT);
+        bot.offer(Currency.wrap(address(token)), Currency.wrap(zeros), ticks, amounts);
+
+        (uint160 sqrt,,,) = fountain.POOL_MANAGER().getSlot0(key.toId());
+        assertEq(sqrt, TickMath.getSqrtPriceAtTick(-100), "price recovered to -ticks[0] (flip)");
+        assertEq(fountain.positionsCount(), 1, "position seated");
+    }
+
+    function test_OfferRecoversFromPreInitGriefing_NativeQuote() public {
+        // ETH = address(0) → token > quote, flip case.
+        int24[] memory ticks = _twoTicks(100, 500);
+        uint256[] memory amounts = _oneAmount(SEGMENT_AMOUNT);
+        PoolKey memory key = PoolKey({
+            currency0: Currency.wrap(address(0)),
+            currency1: Currency.wrap(address(token)),
+            fee: fountain.FEE(),
+            tickSpacing: TICK_SPACING,
+            hooks: IHooks(address(0))
+        });
+        fountain.POOL_MANAGER().initialize(key, TickMath.getSqrtPriceAtTick(-3000));
+
+        _mint(SEGMENT_AMOUNT);
+        bot.offer(Currency.wrap(address(token)), Currency.wrap(address(0)), ticks, amounts);
+
+        (uint160 sqrt,,,) = fountain.POOL_MANAGER().getSlot0(key.toId());
+        assertEq(sqrt, TickMath.getSqrtPriceAtTick(-100), "price recovered for native quote");
+    }
+
+    function test_OfferRecoversFromPreInitGriefing_UpwardTarget() public {
+        // Symmetric direction: griefer pre-inits below the target so the
+        // price-fix walks upward (zeroForOne=false) instead of downward.
+        int24[] memory ticks = _twoTicks(500, 1000);
+        uint256[] memory amounts = _oneAmount(SEGMENT_AMOUNT);
+        PoolKey memory key = _keyFor(ffffff, TICK_SPACING);
+        fountain.POOL_MANAGER().initialize(key, TickMath.getSqrtPriceAtTick(-100));
+
+        _mint(SEGMENT_AMOUNT);
+        bot.offer(Currency.wrap(address(token)), Currency.wrap(ffffff), ticks, amounts);
+
+        (uint160 sqrt,,,) = fountain.POOL_MANAGER().getSlot0(key.toId());
+        assertEq(sqrt, TickMath.getSqrtPriceAtTick(500), "price recovered upward");
+    }
+
+    function test_OfferRecoversFromPreInitPlusEmptyPoolSwap() public {
+        // Escalated grief: pre-init plus a free swap on the empty pool to
+        // an even more distant price. Pool still has no liquidity, so
+        // recovery is still free.
+        int24[] memory ticks = _twoTicks(100, 500);
+        uint256[] memory amounts = _oneAmount(SEGMENT_AMOUNT);
+        PoolKey memory key = _keyFor(ffffff, TICK_SPACING);
+        Griefer griefer = new Griefer(fountain.POOL_MANAGER(), "griefer");
+        griefer.preInit(key, TickMath.getSqrtPriceAtTick(0));
+        griefer.movePrice(key, TickMath.getSqrtPriceAtTick(50000));
+
+        (uint160 sqrtBefore,,,) = fountain.POOL_MANAGER().getSlot0(key.toId());
+        assertEq(sqrtBefore, TickMath.getSqrtPriceAtTick(50000), "griefer moved price after init");
+
+        _mint(SEGMENT_AMOUNT);
+        bot.offer(Currency.wrap(address(token)), Currency.wrap(ffffff), ticks, amounts);
+
+        (uint160 sqrt,,,) = fountain.POOL_MANAGER().getSlot0(key.toId());
+        assertEq(sqrt, TickMath.getSqrtPriceAtTick(100), "price recovered after griefer swap");
+    }
+
+    function test_OfferLocksWhenLiquidityBlocksDownwardPath() public {
+        // Pre-init at tick 1000, then seat a position at [200, 1500] that's
+        // in-range at the current price. Caller's ticks[0]=100 (token=
+        // currency0; V4 target=100), so the price-fix walks downward
+        // through 1000 → 100 and immediately consumes the 1-wei input
+        // against the seated liquidity, stalling above the target.
+        int24[] memory ticks = _twoTicks(100, 500);
+        uint256[] memory amounts = _oneAmount(SEGMENT_AMOUNT);
+        PoolKey memory key = _keyFor(ffffff, TICK_SPACING);
+
+        Griefer griefer = new Griefer(fountain.POOL_MANAGER(), "griefer");
+        griefer.preInit(key, TickMath.getSqrtPriceAtTick(1000));
+
+        // Fund griefer with both currencies and seat blocking liquidity.
+        token.mint(address(griefer), 1e18);
+        deal(ffffff, address(griefer), 1e18);
+        griefer.seat(key, 200, 1500, 1e15);
+
+        _mint(SEGMENT_AMOUNT);
+        // Selector-only match: the intermediate stall price isn't
+        // analytically obvious and we only care that the failure mode is
+        // PoolPriceLocked rather than an opaque accounting revert.
+        vm.expectPartialRevert(Fountain.PoolPriceLocked.selector);
+        bot.offer(Currency.wrap(address(token)), Currency.wrap(ffffff), ticks, amounts);
+    }
+
+    function test_OfferLocksWhenLiquidityBlocksUpwardPath() public {
+        // Mirror of the downward case: pre-init at tick -1000, seat
+        // liquidity at [-1500, -200] in-range, caller wants ticks[0]=100
+        // (V4 target=100, walk upward). 1-wei input consumed against the
+        // seated liquidity, price stalls below target.
+        int24[] memory ticks = _twoTicks(100, 500);
+        uint256[] memory amounts = _oneAmount(SEGMENT_AMOUNT);
+        PoolKey memory key = _keyFor(ffffff, TICK_SPACING);
+
+        Griefer griefer = new Griefer(fountain.POOL_MANAGER(), "griefer");
+        griefer.preInit(key, TickMath.getSqrtPriceAtTick(-1000));
+
+        token.mint(address(griefer), 1e18);
+        deal(ffffff, address(griefer), 1e18);
+        griefer.seat(key, -1500, -200, 1e15);
+
+        _mint(SEGMENT_AMOUNT);
+        vm.expectPartialRevert(Fountain.PoolPriceLocked.selector);
+        bot.offer(Currency.wrap(address(token)), Currency.wrap(ffffff), ticks, amounts);
+    }
+
+    function test_OfferRecoversThenAcceptsFeesNormally() public {
+        // After recovering from grief, the pool should function exactly
+        // like a freshly-initialized one: swaps consume the curve, fees
+        // accrue to the seated positions, take forwards them to owner.
+        int24[] memory ticks = _twoTicks(100, 500);
+        uint256[] memory amounts = _oneAmount(SEGMENT_AMOUNT);
+        PoolKey memory key = _keyFor(ffffff, TICK_SPACING);
+        fountain.POOL_MANAGER().initialize(key, TickMath.getSqrtPriceAtTick(777));
+
+        _mint(SEGMENT_AMOUNT);
+        bot.offer(Currency.wrap(address(token)), Currency.wrap(ffffff), ticks, amounts);
+
+        Trader alice = new Trader("alice", router);
+        uint128 amountIn = 1e15;
+        deal(ffffff, address(alice), uint256(amountIn));
+        alice.swap(key, false, amountIn);
+
+        uint256[] memory ids = new uint256[](1);
+        ids[0] = 0;
+        (uint256[] memory pending0, uint256[] memory pending1) = fountain.untaken(ids);
+        assertEq(pending0[0], 0, "no fees on token side");
+        assertGt(pending1[0], 0, "fees accrue post-recovery");
+
+        uint256 expected = pending1[0];
+        uint256 before = IERC20(ffffff).balanceOf(address(bot));
+        bot.take(0);
+        assertEq(IERC20(ffffff).balanceOf(address(bot)) - before, expected, "owner received fees post-recovery");
     }
 
     // ----------------------------------------------------------------------

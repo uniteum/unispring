@@ -17,7 +17,7 @@ import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
 import {Currency} from "v4-core/types/Currency.sol";
 import {PoolId} from "v4-core/types/PoolId.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
-import {ModifyLiquidityParams} from "v4-core/types/PoolOperation.sol";
+import {ModifyLiquidityParams, SwapParams} from "v4-core/types/PoolOperation.sol";
 
 /**
  * @dev Record of a single Fountain-owned liquidity position. Stored in the
@@ -182,13 +182,15 @@ contract Fountain is IUnlockCallback, Ownable {
     error LiquidityOverflow();
 
     /**
-     * @notice Thrown when the pool exists at a price other than the starting
-     *         price this {offer} call would have initialized it to. Pools are
-     *         permanent once initialized in V4, so recovery is not possible
-     *         on the affected {PoolKey}; choose a different quote to produce
-     *         a different pool.
+     * @notice Thrown when the pool exists at a price the price-fix swap
+     *         cannot move — typically because liquidity has already been
+     *         seated in the path between the existing price and the target.
+     *         Pools are permanent in V4 and the price-fix swap walks for
+     *         free only against an empty path, so recovery is not possible
+     *         on the affected {PoolKey}; choose a different quote to
+     *         produce a different pool.
      */
-    error PoolPreInitialized(uint160 sqrtPriceX96);
+    error PoolPriceLocked(uint160 currentSqrtPriceX96, uint160 targetSqrtPriceX96);
 
     /**
      * @notice Thrown when {take} references a position index that does not exist.
@@ -230,10 +232,15 @@ contract Fountain is IUnlockCallback, Ownable {
      *         approved this contract for the sum of `amounts`; when `token`
      *         is native ETH (`Currency.wrap(address(0))`) the caller must
      *         send that sum as `msg.value`.
-     * @dev    The lowest tick `ticks[0]` is treated as the pool's starting
-     *         price: if the pool does not yet exist it is initialized at
-     *         that price; if it already exists its price must match
-     *         exactly, else {PoolPreInitialized} reverts.
+     * @dev    The lowest tick `ticks[0]` is the pool's starting price.
+     *         If the pool does not yet exist it is initialized at that
+     *         price. If it already exists at a different price, Fountain
+     *         walks the price to the target with a 1-wei swap inside the
+     *         unlock; this costs nothing when the pool has no liquidity in
+     *         the path (the typical griefing scenario where an attacker
+     *         front-runs `initialize` on a deterministic {PoolKey}). If
+     *         the swap cannot reach the target — usually because liquidity
+     *         was seated at the wrong price — {PoolPriceLocked} reverts.
      * @param  token           The currency whose supply seats the positions
      *                         (`Currency.wrap(address(0))` for native ETH).
      * @param  quote           The quote currency (`Currency.wrap(address(0))`
@@ -286,15 +293,13 @@ contract Fountain is IUnlockCallback, Ownable {
         });
         PoolId poolId = key.toId();
 
-        int24 startingV4Tick = tokenIsCurrency0 ? ticks[0] : -ticks[0];
-        uint160 startingSqrtPriceX96 = TickMath.getSqrtPriceAtTick(startingV4Tick);
-
         (uint160 existingSqrtPriceX96,,,) = POOL_MANAGER.getSlot0(poolId);
         if (existingSqrtPriceX96 == 0) {
-            POOL_MANAGER.initialize(key, startingSqrtPriceX96);
-        } else if (existingSqrtPriceX96 != startingSqrtPriceX96) {
-            revert PoolPreInitialized(existingSqrtPriceX96);
+            int24 startingV4Tick = tokenIsCurrency0 ? ticks[0] : -ticks[0];
+            POOL_MANAGER.initialize(key, TickMath.getSqrtPriceAtTick(startingV4Tick));
         }
+        // else: pool exists at some price; _offerAll walks it to the target
+        // inside the unlock if needed, or reverts with PoolPriceLocked.
 
         firstPositionId = positions.length;
         POOL_MANAGER.unlock(abi.encodeCall(IFountainActions.offer, (key, ticks, amounts, tokenIsCurrency0)));
@@ -405,6 +410,35 @@ contract Fountain is IUnlockCallback, Ownable {
     }
 
     /**
+     * @dev Walk the pool's price to `targetV4Tick` if it isn't already
+     *      there. A 1-wei swap with `sqrtPriceLimitX96` set to the target
+     *      moves the price for free when no liquidity sits in the path
+     *      (the front-run-`initialize` griefing case), since with L=0
+     *      every step computes zero deltas and the loop walks straight
+     *      to the limit. If liquidity is in the path the 1 wei is
+     *      consumed before the limit is reached and the pool stalls at
+     *      an intermediate price, which the post-check catches and
+     *      reverts on. Must be called inside the PoolManager unlock.
+     */
+    function _alignPrice(PoolKey memory key, int24 targetV4Tick) private {
+        uint160 targetSqrtPriceX96 = TickMath.getSqrtPriceAtTick(targetV4Tick);
+        PoolId poolId = key.toId();
+        (uint160 currentSqrtPriceX96,,,) = POOL_MANAGER.getSlot0(poolId);
+        if (currentSqrtPriceX96 == targetSqrtPriceX96) return;
+
+        bool zeroForOne = targetSqrtPriceX96 < currentSqrtPriceX96;
+        POOL_MANAGER.swap(
+            key,
+            SwapParams({zeroForOne: zeroForOne, amountSpecified: -int256(1), sqrtPriceLimitX96: targetSqrtPriceX96}),
+            ""
+        );
+        (currentSqrtPriceX96,,,) = POOL_MANAGER.getSlot0(poolId);
+        if (currentSqrtPriceX96 != targetSqrtPriceX96) {
+            revert PoolPriceLocked(currentSqrtPriceX96, targetSqrtPriceX96);
+        }
+    }
+
+    /**
      * @dev Seat every segment of the caller-described curve in one unlock.
      *      User segment [userTicks[i], userTicks[i+1]) with amount[i]
      *      seats a V4 position at [userTicks[i], userTicks[i+1]) when the
@@ -419,6 +453,8 @@ contract Fountain is IUnlockCallback, Ownable {
     function _offerAll(PoolKey memory key, int24[] memory userTicks, uint256[] memory amounts, bool tokenIsCurrency0)
         private
     {
+        _alignPrice(key, tokenIsCurrency0 ? userTicks[0] : -userTicks[0]);
+
         uint256 n = amounts.length;
         int256 totalOwed;
         for (uint256 i = 0; i < n; i++) {

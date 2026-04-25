@@ -327,22 +327,20 @@ contract MimicoinageForkTest is ForkBase {
     }
 
     /**
-     * @notice A griefer that pre-initializes the target PoolKey at any price
-     *         other than tick 0 blocks {mimic} with {Fountain.PoolPreInitialized}.
-     *         The workaround is to re-mint with a different `name`, which
-     *         produces a fresh mimic address and a fresh PoolKey.
+     * @notice A griefer that pre-initializes the target PoolKey at any
+     *         price other than tick 0 used to block {mimic}; with
+     *         Fountain's empty-pool price-fix, the front-run is recovered
+     *         in-band and {mimic} succeeds at the genesis price.
      */
-    function test_MimicRevertsOnPreInitializedPool() public {
+    function test_MimicRecoversFromPreInitGriefing() public {
         PoolKey memory key = _predictedPoolKey(Currency.wrap(ffffff), "mimicFF");
-        uint160 griefSqrt = TickMath.getSqrtPriceAtTick(100);
-        fountain.POOL_MANAGER().initialize(key, griefSqrt);
+        fountain.POOL_MANAGER().initialize(key, TickMath.getSqrtPriceAtTick(100));
 
-        vm.expectRevert(abi.encodeWithSelector(Fountain.PoolPreInitialized.selector, griefSqrt));
-        mimicoinage.mimic(Currency.wrap(ffffff), "mimicFF");
+        IERC20Metadata mimic = mimicoinage.mimic(Currency.wrap(ffffff), "mimicFF");
+        assertTrue(mimicoinage.isMimic(IERC20Metadata(address(mimic))), "mimic registered after recovery");
 
-        // Re-minting under a different name yields a different PoolKey and succeeds.
-        IERC20Metadata escaped = mimicoinage.mimic(Currency.wrap(ffffff), "mimicFF2");
-        assertTrue(mimicoinage.isMimic(IERC20Metadata(address(escaped))), "rescue mint under new name failed");
+        (uint160 sqrt,,,) = fountain.POOL_MANAGER().getSlot0(key.toId());
+        assertEq(sqrt, TickMath.getSqrtPriceAtTick(0), "price recovered to genesis");
     }
 
     /**
