@@ -87,7 +87,8 @@ contract Fountain is IFountain, IFountainPoolConfig, IFountainTaker, IOwnableMak
      * @notice The prototype instance. On clones, this points back to the
      *         original deployment.
      */
-    Fountain public immutable PROTO = this;
+    // forge-lint: disable-next-line(screaming-snake-case-immutable)
+    Fountain public immutable proto = this;
 
     /**
      * @inheritdoc IFountainPoolConfig
@@ -409,7 +410,7 @@ contract Fountain is IFountain, IFountainPoolConfig, IFountainTaker, IOwnableMak
      */
     function made(address owner_, uint256 variant) public view returns (bool exists, address home, bytes32 salt) {
         salt = keccak256(abi.encode(owner_, variant));
-        home = Clones.predictDeterministicAddress(address(PROTO), salt, address(PROTO));
+        home = Clones.predictDeterministicAddress(address(proto), salt, address(proto));
         exists = home.code.length > 0;
     }
 
@@ -420,11 +421,11 @@ contract Fountain is IFountain, IFountainPoolConfig, IFountainTaker, IOwnableMak
      *      preserved across clone forwarding.
      */
     function make(uint256 variant) external returns (address instance) {
-        if (address(this) != address(PROTO)) revert Unauthorized();
+        if (address(this) != address(proto)) revert Unauthorized();
         (bool exists, address home, bytes32 salt) = made(msg.sender, variant);
         instance = home;
         if (!exists) {
-            Clones.cloneDeterministic(address(PROTO), salt, 0);
+            Clones.cloneDeterministic(address(proto), salt, 0);
             Fountain(home).zzInit(msg.sender);
             emit Made(msg.sender, variant, home);
         }
@@ -436,7 +437,7 @@ contract Fountain is IFountain, IFountainPoolConfig, IFountainTaker, IOwnableMak
      *         if called by anyone other than the prototype.
      */
     function zzInit(address owner_) public {
-        if (msg.sender != address(PROTO)) revert Unauthorized();
+        if (msg.sender != address(proto)) revert Unauthorized();
         _transferOwnership(owner_);
     }
 }

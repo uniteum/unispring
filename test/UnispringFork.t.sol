@@ -55,7 +55,7 @@ contract UnispringForkTest is ForkBase {
     // ----------------------------------------------------------------------
 
     function test_ConstructorRegistersImmutables() public view {
-        assertEq(address(proto.PROTO()), address(proto), "PROTO is self on prototype");
+        assertEq(address(proto.proto()), address(proto), "proto is self on prototype");
         assertEq(address(proto.FOUNTAIN()), address(fountain), "FOUNTAIN immutable");
         assertEq(proto.hub(), address(0), "hub unset on prototype");
     }
@@ -98,7 +98,7 @@ contract UnispringForkTest is ForkBase {
     function test_MakeFromCloneDelegatesToProto() public {
         Unispring clone = _makeHub();
         Unispring same = clone.make(IERC20(ffffff), HUB_TICK_LOWER, HUB_TICK_UPPER);
-        assertEq(address(same), address(clone), "clone.make routes through PROTO");
+        assertEq(address(same), address(clone), "clone.make routes through proto");
     }
 
     // ----------------------------------------------------------------------

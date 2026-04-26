@@ -42,10 +42,10 @@ contract NeutrinoChannelTest is Test {
         coinage = new MockCoinage();
     }
 
-    // ---- PROTO immutable ----
+    // ---- proto immutable ----
 
     function test_ProtoPointsToSelf() public view {
-        assertEq(address(proto.PROTO()), address(proto));
+        assertEq(address(proto.proto()), address(proto));
     }
 
     // ---- made / make ----

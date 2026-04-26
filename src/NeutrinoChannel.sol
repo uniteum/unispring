@@ -25,7 +25,8 @@ contract NeutrinoChannel {
      * @notice The prototype instance. On clones, this points back to the
      *         original deployment.
      */
-    NeutrinoChannel public immutable PROTO;
+    // forge-lint: disable-next-line(screaming-snake-case-immutable)
+    NeutrinoChannel public immutable proto;
 
     /**
      * @notice The address that created this clone by calling {make}, and the
@@ -35,13 +36,13 @@ contract NeutrinoChannel {
     address public source;
 
     /**
-     * @notice Thrown when {zzInit} is called by anyone other than {PROTO},
+     * @notice Thrown when {zzInit} is called by anyone other than {proto},
      *         or when {mint} is called by anyone other than {source}.
      */
     error Unauthorized();
 
     constructor() {
-        PROTO = this;
+        proto = this;
     }
 
     // ---- Bitsy factory ----
@@ -61,7 +62,7 @@ contract NeutrinoChannel {
         returns (bool exists, address home, bytes32 salt)
     {
         salt = keccak256(abi.encode(sender, tickLower, tickUpper));
-        home = Clones.predictDeterministicAddress(address(PROTO), salt, address(PROTO));
+        home = Clones.predictDeterministicAddress(address(proto), salt, address(proto));
         exists = home.code.length > 0;
     }
 
@@ -75,18 +76,18 @@ contract NeutrinoChannel {
         (bool exists, address home, bytes32 salt) = made(msg.sender, tickLower, tickUpper);
         clone = NeutrinoChannel(home);
         if (!exists) {
-            Clones.cloneDeterministic(address(PROTO), salt, 0);
+            Clones.cloneDeterministic(address(proto), salt, 0);
             clone.zzInit(msg.sender);
         }
     }
 
     /**
-     * @notice Initializer called by {PROTO} on a freshly deployed clone.
+     * @notice Initializer called by {proto} on a freshly deployed clone.
      *         Sets {source} to the address that called {make}. Reverts with
-     *         {Unauthorized} if called by anyone other than {PROTO}.
+     *         {Unauthorized} if called by anyone other than {proto}.
      */
     function zzInit(address source_) external {
-        if (msg.sender != address(PROTO)) revert Unauthorized();
+        if (msg.sender != address(proto)) revert Unauthorized();
         source = source_;
     }
 

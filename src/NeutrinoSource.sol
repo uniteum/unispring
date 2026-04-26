@@ -29,7 +29,8 @@ contract NeutrinoSource {
     /**
      * @notice The prototype instance that acts as the Bitsy factory.
      */
-    NeutrinoSource public immutable PROTO;
+    // forge-lint: disable-next-line(screaming-snake-case-immutable)
+    NeutrinoSource public immutable proto;
 
     /**
      * @notice The Unispring prototype used to create fair-launch pools.
@@ -72,7 +73,7 @@ contract NeutrinoSource {
     event Launch(IERC20Metadata indexed token, uint256 supply, int24 tickLower, int24 tickUpper);
 
     /**
-     * @notice Thrown when {zzInit} is called by anyone other than {PROTO}.
+     * @notice Thrown when {zzInit} is called by anyone other than {proto}.
      */
     error Unauthorized();
 
@@ -83,7 +84,7 @@ contract NeutrinoSource {
      * @param coinage   The Coinage prototype.
      */
     constructor(Unispring unispring, NeutrinoChannel channel, ICoinage coinage) {
-        PROTO = this;
+        proto = this;
         UNISPRING = unispring;
         CHANNEL = channel;
         COINAGE = coinage;
@@ -115,9 +116,9 @@ contract NeutrinoSource {
         bytes32 tokenSalt
     ) public view returns (bool exists, address home, bytes32 salt, address hubHome) {
         salt = keccak256(abi.encode(name, symbol, decimals, supply, tickLower, tickUpper, tokenSalt));
-        home = Clones.predictDeterministicAddress(address(PROTO), salt, address(PROTO));
+        home = Clones.predictDeterministicAddress(address(proto), salt, address(proto));
         exists = home.code.length > 0;
-        (, address channel,) = CHANNEL.made(address(PROTO), tickLower, tickUpper);
+        (, address channel,) = CHANNEL.made(address(proto), tickLower, tickUpper);
         (, hubHome,) = COINAGE.made(channel, name, symbol, decimals, supply, tokenSalt);
     }
 
@@ -142,8 +143,8 @@ contract NeutrinoSource {
         int24 tickUpper,
         bytes32 tokenSalt
     ) external returns (NeutrinoSource clone) {
-        if (this != PROTO) {
-            clone = PROTO.make(name, symbol, decimals, supply, tickLower, tickUpper, tokenSalt);
+        if (this != proto) {
+            clone = proto.make(name, symbol, decimals, supply, tickLower, tickUpper, tokenSalt);
         } else {
             (bool exists, address home, bytes32 salt,) =
                 made(name, symbol, decimals, supply, tickLower, tickUpper, tokenSalt);
@@ -157,7 +158,7 @@ contract NeutrinoSource {
                 IERC20Metadata(address(hubToken)).transfer(springHome, supply);
                 Unispring unispring = UNISPRING.make(hubToken, tickLower, tickUpper);
 
-                Clones.cloneDeterministic(address(PROTO), salt, 0);
+                Clones.cloneDeterministic(address(proto), salt, 0);
                 NeutrinoSource(home).zzInit(unispring);
                 emit Make(clone, IERC20Metadata(address(hubToken)), unispring);
             }
@@ -165,11 +166,11 @@ contract NeutrinoSource {
     }
 
     /**
-     * @notice Initializer called by {PROTO} on a freshly deployed clone.
+     * @notice Initializer called by {proto} on a freshly deployed clone.
      * @param spring_ The Unispring clone for this NeutrinoSource's hub token.
      */
     function zzInit(Unispring spring_) external {
-        if (msg.sender != address(PROTO)) revert Unauthorized();
+        if (msg.sender != address(proto)) revert Unauthorized();
         spring = spring_;
     }
 

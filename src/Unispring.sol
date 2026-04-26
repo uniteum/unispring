@@ -40,7 +40,8 @@ contract Unispring {
     /**
      * @notice The prototype instance that acts as the Bitsy factory.
      */
-    Unispring public immutable PROTO;
+    // forge-lint: disable-next-line(screaming-snake-case-immutable)
+    Unispring public immutable proto;
 
     /**
      * @notice The Fountain that seats and owns every position funded through
@@ -92,7 +93,7 @@ contract Unispring {
     error SpokeMustSortBelowHub(address token);
 
     /**
-     * @notice Thrown when {zzInit} is called by anyone other than {PROTO}.
+     * @notice Thrown when {zzInit} is called by anyone other than {proto}.
      */
     error Unauthorized();
 
@@ -102,7 +103,7 @@ contract Unispring {
      *                  through this Unispring.
      */
     constructor(IFountain fountain) {
-        PROTO = this;
+        proto = this;
         FOUNTAIN = fountain;
     }
 
@@ -120,7 +121,7 @@ contract Unispring {
         returns (bool exists, address home, bytes32 salt)
     {
         salt = keccak256(abi.encode(hub_, tickLower, tickUpper));
-        home = Clones.predictDeterministicAddress(address(PROTO), salt, address(PROTO));
+        home = Clones.predictDeterministicAddress(address(proto), salt, address(proto));
         exists = home.code.length > 0;
     }
 
@@ -130,13 +131,13 @@ contract Unispring {
      * @return clone The deployed (or existing) clone.
      */
     function make(IERC20 hub_, int24 tickLower, int24 tickUpper) external returns (Unispring clone) {
-        if (address(this) != address(PROTO)) {
-            clone = PROTO.make(hub_, tickLower, tickUpper);
+        if (address(this) != address(proto)) {
+            clone = proto.make(hub_, tickLower, tickUpper);
         } else {
             (bool exists, address home, bytes32 salt) = made(hub_, tickLower, tickUpper);
             clone = Unispring(home);
             if (!exists) {
-                Clones.cloneDeterministic(address(PROTO), salt, 0);
+                Clones.cloneDeterministic(address(proto), salt, 0);
                 Unispring(home).zzInit(hub_, tickLower, tickUpper);
                 emit Make(clone, hub_, tickLower, tickUpper);
             }
@@ -146,13 +147,13 @@ contract Unispring {
     /**
      * @notice Initializer for a freshly deployed clone. Sets {hub}, initializes
      *         the hub's ETH pool, and funds it single-sided with the hub
-     *         balance held at this address. Callable only by {PROTO}.
+     *         balance held at this address. Callable only by {proto}.
      * @dev    See DESIGN.md §7 for the mirror-geometry rationale (the position
      *         is inactive at spot until a bootstrap ETH→hub swap crosses
      *         `tickUpper` downward) and §11 for the `this.offer` idiom.
      */
     function zzInit(IERC20 hub_, int24 tickLower, int24 tickUpper) external {
-        if (msg.sender != address(PROTO)) revert Unauthorized();
+        if (msg.sender != address(proto)) revert Unauthorized();
         hub = address(hub_);
         uint256 supply = hub_.balanceOf(address(this));
         // forge-lint: disable-next-line(erc20-unchecked-transfer)
