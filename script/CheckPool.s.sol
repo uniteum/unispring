@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {Fountain} from "../src/Fountain.sol";
+import {IFountainPoolConfig} from "../src/IFountainPoolConfig.sol";
 import {Unispring} from "../src/Unispring.sol";
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
@@ -20,7 +20,7 @@ contract CheckPool is Script {
 
     function run() external view {
         Unispring spring = Unispring(payable(vm.envAddress("Unispring")));
-        Fountain fountain = Fountain(address(spring.FOUNTAIN()));
+        IFountainPoolConfig fountain = IFountainPoolConfig(address(spring.FOUNTAIN()));
         address newToken = vm.envAddress("HelloWorld");
         address hub = spring.hub();
         bool newIsCurrency0 = newToken < hub;

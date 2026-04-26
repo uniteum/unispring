@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {Fountain} from "../src/Fountain.sol";
+import {IFountain} from "../src/IFountain.sol";
 import {Mimicoinage} from "../src/Mimicoinage.sol";
 import {ICoinage} from "ierc20/ICoinage.sol";
 import {Script, console2} from "forge-std/Script.sol";
@@ -22,7 +22,7 @@ contract MimicoinageDeploy is Script {
 
     function run() external {
         ICoinage coinage = ICoinage(vm.envAddress("ICoinage"));
-        Fountain fountain = Fountain(vm.envAddress("Fountain"));
+        IFountain fountain = IFountain(vm.envAddress("Fountain"));
 
         console2.log("coinage :", address(coinage));
         console2.log("fountain:", address(fountain));

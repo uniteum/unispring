@@ -5,6 +5,7 @@ import {Clones} from "clones/Clones.sol";
 import {IAddressLookup} from "ilookup/IAddressLookup.sol";
 import {IERC20} from "ierc20/IERC20.sol";
 import {IFountain} from "./IFountain.sol";
+import {IOwnableMaker} from "./IOwnableMaker.sol";
 import {Ownable} from "ownable/Ownable.sol";
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
@@ -78,7 +79,7 @@ interface IFountainActions {
  *         is preserved.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
-contract Fountain is IFountain, IUnlockCallback, Ownable {
+contract Fountain is IFountain, IOwnableMaker, IUnlockCallback, Ownable {
     string public constant VERSION = "0.5.0";
 
     /**
@@ -524,17 +525,21 @@ contract Fountain is IFountain, IUnlockCallback, Ownable {
      *         repeated calls with the same variant return the same clone.
      * @dev    Must be called on the prototype. Calling on a clone reverts
      *         with {Unauthorized} — `msg.sender` semantics cannot be
-     *         preserved across clone forwarding.
-     * @param  variant Discriminator letting one owner hold multiple Fountains.
+     *         preserved across clone forwarding. Return type is `address`
+     *         to satisfy {IOwnableMaker}; callers cast to {Fountain} when
+     *         they need the full surface.
+     * @param  variant  Discriminator letting one owner hold multiple Fountains.
+     * @return instance The Fountain clone address.
      */
-    function make(uint256 variant) external returns (Fountain instance) {
+    function make(uint256 variant) external returns (address instance) {
         if (address(this) != address(PROTO)) revert Unauthorized();
         (bool exists, address home, bytes32 salt) = made(msg.sender, variant);
-        instance = Fountain(home);
+        instance = home;
         if (!exists) {
             Clones.cloneDeterministic(address(PROTO), salt, 0);
-            instance.zzInit(msg.sender);
-            emit Made(msg.sender, variant, instance);
+            Fountain clone = Fountain(home);
+            clone.zzInit(msg.sender);
+            emit Made(msg.sender, variant, clone);
         }
     }
 
