@@ -5,6 +5,7 @@ import {Clones} from "clones/Clones.sol";
 import {IAddressLookup} from "ilookup/IAddressLookup.sol";
 import {IERC20} from "ierc20/IERC20.sol";
 import {IFountain} from "./IFountain.sol";
+import {IFountainPoolConfig} from "./IFountainPoolConfig.sol";
 import {IOwnableMaker} from "./IOwnableMaker.sol";
 import {Ownable} from "ownable/Ownable.sol";
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
@@ -79,7 +80,7 @@ interface IFountainActions {
  *         is preserved.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
-contract Fountain is IFountain, IOwnableMaker, IUnlockCallback, Ownable {
+contract Fountain is IFountain, IFountainPoolConfig, IOwnableMaker, IUnlockCallback, Ownable {
     string public constant VERSION = "0.5.0";
 
     /**
