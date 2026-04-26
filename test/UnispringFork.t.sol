@@ -115,9 +115,8 @@ contract UnispringForkTest is ForkBase {
         spoke.mint(address(this), supply);
         spoke.approve(address(clone), supply);
 
-        uint256 positionId = clone.offer(Currency.wrap(address(spoke)), supply, tickLower, tickUpper);
+        clone.offer(Currency.wrap(address(spoke)), supply, tickLower, tickUpper);
 
-        assertEq(positionId, 1, "spoke is the second position");
         assertEq(fountain.positionsCount(), 2, "hub + spoke");
 
         Position memory p = _positionAt(1);
@@ -157,9 +156,8 @@ contract UnispringForkTest is ForkBase {
         vm.deal(address(this), supply);
         uint256 pmBefore = address(fountain.POOL_MANAGER()).balance;
 
-        uint256 positionId = clone.offer{value: supply}(Currency.wrap(address(0)), supply, tickLower, tickUpper);
+        clone.offer{value: supply}(Currency.wrap(address(0)), supply, tickLower, tickUpper);
 
-        assertEq(positionId, 1, "spoke is the second position");
         assertEq(fountain.positionsCount(), 2, "hub + spoke");
 
         Position memory p = _positionAt(1);

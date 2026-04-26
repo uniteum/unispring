@@ -107,20 +107,13 @@ interface IFountain {
      *         absorbed; an above-`ticks[0]` one can be undone by anyone
      *         (no liquidity in the path) by walking spot back down with a
      *         1-wei swap before re-calling {offer}.
-     * @param  token           The currency whose supply seats the positions
-     *                         (`Currency.wrap(address(0))` for native ETH).
-     * @param  quote           The quote currency (`Currency.wrap(address(0))`
-     *                         for native ETH).
-     * @param  ticks           Strictly ascending ticks in "token/quote"
-     *                         price semantics. Length N + 1 for N positions.
-     * @param  amounts         Per-segment token amounts. Length N, all
-     *                         non-zero.
-     * @return firstPositionId Index of the first position created by this
-     *                         call; positions in this batch are at ids
-     *                         `firstPositionId .. firstPositionId + N - 1`.
+     * @param  token   The currency whose supply seats the positions
+     *                 (`Currency.wrap(address(0))` for native ETH).
+     * @param  quote   The quote currency (`Currency.wrap(address(0))`
+     *                 for native ETH).
+     * @param  ticks   Strictly ascending ticks in "token/quote" price
+     *                 semantics. Length N + 1 for N positions.
+     * @param  amounts Per-segment token amounts. Length N, all non-zero.
      */
-    function offer(Currency token, Currency quote, int24[] calldata ticks, uint256[] calldata amounts)
-        external
-        payable
-        returns (uint256 firstPositionId);
+    function offer(Currency token, Currency quote, int24[] calldata ticks, uint256[] calldata amounts) external payable;
 }

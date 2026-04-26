@@ -132,7 +132,6 @@ contract Fountain is IFountain, IFountainPoolConfig, IFountainTaker, IOwnableMak
         external
         payable
         override
-        returns (uint256 firstPositionId)
     {
         uint256 n = amounts.length;
         if (n == 0) revert NoPositions();
@@ -177,7 +176,7 @@ contract Fountain is IFountain, IFountainPoolConfig, IFountainTaker, IOwnableMak
             POOL_MANAGER.initialize(key, startingSqrtPriceX96);
         }
 
-        firstPositionId = positions.length;
+        uint256 firstPositionId = positions.length;
         POOL_MANAGER.unlock(abi.encodeCall(IFountainActions.offer, (key, ticks, amounts, tokenIsCurrency0)));
 
         emit Offered(msg.sender, token, quote, poolId, firstPositionId, n);

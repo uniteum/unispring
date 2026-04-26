@@ -81,9 +81,8 @@ contract FountainForkTest is ForkBase {
         int24[] memory ticks = _twoTicks(100, 500);
         uint256[] memory amounts = _oneAmount(SEGMENT_AMOUNT);
         _mint(SEGMENT_AMOUNT);
-        uint256 firstId = bot.offer(Currency.wrap(address(token)), Currency.wrap(ffffff), ticks, amounts);
+        bot.offer(Currency.wrap(address(token)), Currency.wrap(ffffff), ticks, amounts);
 
-        assertEq(firstId, 0, "first position id");
         assertEq(fountain.positionsCount(), 1, "one position created");
 
         Position memory p = _positionAt(0);
@@ -138,10 +137,8 @@ contract FountainForkTest is ForkBase {
         vm.deal(address(this), SEGMENT_AMOUNT);
         uint256 pmBefore = address(fountain.POOL_MANAGER()).balance;
 
-        uint256 firstId =
-            bot.offer{value: SEGMENT_AMOUNT}(Currency.wrap(address(0)), Currency.wrap(ffffff), ticks, amounts);
+        bot.offer{value: SEGMENT_AMOUNT}(Currency.wrap(address(0)), Currency.wrap(ffffff), ticks, amounts);
 
-        assertEq(firstId, 0, "first position id");
         assertEq(fountain.positionsCount(), 1, "one position created");
 
         Position memory p = _positionAt(0);
@@ -387,11 +384,10 @@ contract FountainForkTest is ForkBase {
     // ----------------------------------------------------------------------
 
     function test_MultipleOffersAppendToRegistry() public {
-        uint256 firstFlipId = _offerTwoFlip();
-        assertEq(firstFlipId, 0, "first flip batch starts at 0");
-        uint256 firstNoFlipId = _offerTwoNoFlip();
-        assertEq(firstNoFlipId, 2, "second batch appended after first");
-        assertEq(fountain.positionsCount(), 4, "four positions total");
+        _offerTwoFlip();
+        assertEq(fountain.positionsCount(), 2, "first batch seated two positions");
+        _offerTwoNoFlip();
+        assertEq(fountain.positionsCount(), 4, "second batch appended after first");
     }
 
     function test_PositionsSliceClampBranches() public {
@@ -499,10 +495,8 @@ contract FountainForkTest is ForkBase {
     function test_TakeBatchAcrossTwoPools() public {
         // Batch takes across a flip-case pool (zeros quote) and a no-flip
         // pool (ffffff quote) in one unlock.
-        uint256 flipFirst = _offerTwoFlip(); // ids 0, 1 against zeros
-        uint256 noFlipFirst = _offerTwoNoFlip(); // ids 2, 3 against ffffff
-        assertEq(flipFirst, 0);
-        assertEq(noFlipFirst, 2);
+        _offerTwoFlip(); // ids 0, 1 against zeros
+        _offerTwoNoFlip(); // ids 2, 3 against ffffff
 
         PoolKey memory flipKey = _keyFor(zeros, TICK_SPACING);
         PoolKey memory noFlipKey = _keyFor(ffffff, TICK_SPACING);
@@ -624,7 +618,7 @@ contract FountainForkTest is ForkBase {
     // Helpers
     // ----------------------------------------------------------------------
 
-    function _offerTwoFlip() internal returns (uint256 firstId) {
+    function _offerTwoFlip() internal {
         // token > zeros → flip case.
         int24[] memory ticks = new int24[](3);
         ticks[0] = 100;
@@ -634,10 +628,10 @@ contract FountainForkTest is ForkBase {
         amounts[0] = 1e18;
         amounts[1] = 2e18;
         _mint(3e18);
-        firstId = bot.offer(Currency.wrap(address(token)), Currency.wrap(zeros), ticks, amounts);
+        bot.offer(Currency.wrap(address(token)), Currency.wrap(zeros), ticks, amounts);
     }
 
-    function _offerTwoNoFlip() internal returns (uint256 firstId) {
+    function _offerTwoNoFlip() internal {
         // token < ffffff → no-flip case.
         int24[] memory ticks = new int24[](3);
         ticks[0] = 100;
@@ -647,7 +641,7 @@ contract FountainForkTest is ForkBase {
         amounts[0] = 1e18;
         amounts[1] = 2e18;
         _mint(3e18);
-        firstId = bot.offer(Currency.wrap(address(token)), Currency.wrap(ffffff), ticks, amounts);
+        bot.offer(Currency.wrap(address(token)), Currency.wrap(ffffff), ticks, amounts);
     }
 
     function _twoTicks(int24 a, int24 b) internal pure returns (int24[] memory ticks) {

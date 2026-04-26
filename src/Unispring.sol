@@ -66,23 +66,15 @@ contract Unispring {
     /**
      * @notice Emitted when a pool is initialized, paired against the hub (or
      *         ETH for the hub pool itself), and funded.
-     * @param offerer    The address that called {offer}. Equals this clone's
-     *                   own address on the hub-pool seed call from {zzInit}.
-     * @param token      The spoke currency (or the hub, for {zzInit}).
-     *                   `Currency.wrap(address(0))` for a native-ETH spoke.
-     * @param positionId The {FOUNTAIN} position id seated by this call.
-     * @param supply     The fixed supply funded into the pool.
-     * @param tickLower  V4-native lower tick of the funded position.
-     * @param tickUpper  V4-native upper tick of the funded position.
+     * @param offerer   The address that called {offer}. Equals this clone's
+     *                  own address on the hub-pool seed call from {zzInit}.
+     * @param token     The spoke currency (or the hub, for {zzInit}).
+     *                  `Currency.wrap(address(0))` for a native-ETH spoke.
+     * @param supply    The fixed supply funded into the pool.
+     * @param tickLower V4-native lower tick of the funded position.
+     * @param tickUpper V4-native upper tick of the funded position.
      */
-    event Offered(
-        address indexed offerer,
-        Currency indexed token,
-        uint256 indexed positionId,
-        uint256 supply,
-        int24 tickLower,
-        int24 tickUpper
-    );
+    event Offered(address indexed offerer, Currency indexed token, uint256 supply, int24 tickLower, int24 tickUpper);
 
     /**
      * @notice Thrown when `tickLower` is not strictly below `tickUpper`.
@@ -184,15 +176,10 @@ contract Unispring {
      * @param  supply     Amount of `token` to lock. Pulled from the caller
      *                    via `transferFrom` for ERC-20s; must arrive as
      *                    `msg.value` for a native-ETH spoke.
-     * @param  tickLower  V4-native lower tick; strictly below `tickUpper`.
-     * @param  tickUpper  V4-native upper tick.
-     * @return positionId The {FOUNTAIN} position id seated by this call.
+     * @param  tickLower V4-native lower tick; strictly below `tickUpper`.
+     * @param  tickUpper V4-native upper tick.
      */
-    function offer(Currency token, uint256 supply, int24 tickLower, int24 tickUpper)
-        external
-        payable
-        returns (uint256 positionId)
-    {
+    function offer(Currency token, uint256 supply, int24 tickLower, int24 tickUpper) external payable {
         if (tickLower >= tickUpper) revert TickLowerNotBelowUpper(tickLower, tickUpper);
 
         address tokenAddr = Currency.unwrap(token);
@@ -225,7 +212,7 @@ contract Unispring {
             quote = Currency.wrap(hub);
         }
 
-        positionId = FOUNTAIN.offer{value: msg.value}(token, quote, ticks, amounts);
-        emit Offered(msg.sender, token, positionId, supply, tickLower, tickUpper);
+        FOUNTAIN.offer{value: msg.value}(token, quote, ticks, amounts);
+        emit Offered(msg.sender, token, supply, tickLower, tickUpper);
     }
 }
