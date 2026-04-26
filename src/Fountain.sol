@@ -84,12 +84,13 @@ contract Fountain is IFountain, IFountainPoolConfig, IOwnableMaker, IUnlockCallb
     string public constant VERSION = "0.5.0";
 
     /**
-     * @notice Pool fee in hundredths of a bip (0.01%).
+     * @inheritdoc IFountainPoolConfig
      */
     uint24 public constant FEE = 100;
 
     /**
-     * @notice Pool tick spacing. Fixed at 1 for exact tick precision.
+     * @inheritdoc IFountainPoolConfig
+     * @dev Fixed at 1 for exact tick precision.
      */
     int24 public constant TICK_SPACING = 1;
 
@@ -100,9 +101,9 @@ contract Fountain is IFountain, IFountainPoolConfig, IOwnableMaker, IUnlockCallb
     Fountain public immutable PROTO = this;
 
     /**
-     * @notice The Uniswap V4 PoolManager, resolved from the `IAddressLookup`
-     *         supplied at construction. Shared by the prototype and every
-     *         clone (baked into the prototype's runtime bytecode).
+     * @inheritdoc IFountainPoolConfig
+     * @dev Resolved from the `IAddressLookup` supplied at construction.
+     *      Shared by the prototype and every clone.
      */
     IPoolManager public immutable POOL_MANAGER;
 
@@ -437,13 +438,7 @@ contract Fountain is IFountain, IFountainPoolConfig, IOwnableMaker, IUnlockCallb
     }
 
     /**
-     * @notice Predict the deterministic address of the Fountain owned by
-     *         `owner_` under `variant`, without deploying.
-     * @param  owner_  The address that would own the Fountain.
-     * @param  variant Discriminator letting one owner hold multiple Fountains.
-     * @return exists  True iff the Fountain has already been deployed.
-     * @return home    The predicted (or actual, if `exists`) clone address.
-     * @return salt    The CREATE2 salt used for the clone.
+     * @inheritdoc IOwnableMaker
      */
     function made(address owner_, uint256 variant) public view returns (bool exists, address home, bytes32 salt) {
         salt = keccak256(abi.encode(owner_, variant));
@@ -452,16 +447,10 @@ contract Fountain is IFountain, IFountainPoolConfig, IOwnableMaker, IUnlockCallb
     }
 
     /**
-     * @notice Deploy (or return) the Fountain owned by `msg.sender` under
-     *         `variant`. One Fountain exists per (owner, variant) pair;
-     *         repeated calls with the same variant return the same clone.
-     * @dev    Must be called on the prototype. Calling on a clone reverts
-     *         with {Unauthorized} — `msg.sender` semantics cannot be
-     *         preserved across clone forwarding. Return type is `address`
-     *         to satisfy {IOwnableMaker}; callers cast to {Fountain} when
-     *         they need the full surface.
-     * @param  variant  Discriminator letting one owner hold multiple Fountains.
-     * @return instance The Fountain clone address.
+     * @inheritdoc IOwnableMaker
+     * @dev Must be called on the prototype. Calling on a clone reverts
+     *      with {Unauthorized} — `msg.sender` semantics cannot be
+     *      preserved across clone forwarding.
      */
     function make(uint256 variant) external returns (address instance) {
         if (address(this) != address(PROTO)) revert Unauthorized();
