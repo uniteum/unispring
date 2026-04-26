@@ -17,7 +17,7 @@ import {Currency} from "v4-core/types/Currency.sol";
  * @dev    The mimic token carries the original's decimals (18 for native
  *         ETH) so the raw price of 1 at tick 0 corresponds to a 1:1
  *         human-unit peg. Each position
- *         uses {fee} = 100 (0.01%), {TICK_SPACING} = 1, and no hook. The
+ *         uses {fee} = 100 (0.01%), {tickSpacing} = 1, and no hook. The
  *         user-semantic range is `[0, 1)`; Fountain flips and negates into
  *         V4-native ticks internally when the mimic sorts above the
  *         original, so both orderings seat only the mimic at genesis with
@@ -29,7 +29,7 @@ contract Mimicoinage {
 
     /**
      * @notice Fixed raw supply minted for every mimic token. Sized to stay
-     *         well below the `maxLiquidityPerTick` cap at `TICK_SPACING = 1`
+     *         well below the `maxLiquidityPerTick` cap at `tickSpacing = 1`
      *         for any reasonable decimals.
      */
     uint128 public constant SUPPLY = 10 ** 27;

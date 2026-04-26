@@ -46,7 +46,8 @@ contract FountainForkTest is ForkBase {
     TestToken internal token;
 
     uint256 internal constant SEGMENT_AMOUNT = 1_000_000 ether;
-    int24 internal constant TICK_SPACING = 1;
+    // forge-lint: disable-next-line(screaming-snake-case-const)
+    int24 internal constant tickSpacing = 1;
 
     function setUp() public override {
         super.setUp();
@@ -231,7 +232,7 @@ contract FountainForkTest is ForkBase {
     function test_OfferIdempotentWhenPreInitAtCorrectPrice() public {
         int24[] memory ticks = _twoTicks(100, 500);
         uint256[] memory amounts = _oneAmount(SEGMENT_AMOUNT);
-        PoolKey memory key = _keyFor(ffffff, TICK_SPACING);
+        PoolKey memory key = _keyFor(ffffff);
         // No-flip case (token < ffffff): starting V4 tick = ticks[0] = 100.
         fountain.poolManager().initialize(key, TickMath.getSqrtPriceAtTick(100));
 
@@ -251,7 +252,7 @@ contract FountainForkTest is ForkBase {
     function test_OfferAbsorbsPreInitBelowTicksZero() public {
         int24[] memory ticks = _twoTicks(100, 500);
         uint256[] memory amounts = _oneAmount(SEGMENT_AMOUNT);
-        PoolKey memory key = _keyFor(ffffff, TICK_SPACING);
+        PoolKey memory key = _keyFor(ffffff);
         uint160 preInitSqrt = TickMath.getSqrtPriceAtTick(50);
         fountain.poolManager().initialize(key, preInitSqrt);
 
@@ -281,7 +282,7 @@ contract FountainForkTest is ForkBase {
     function test_OfferRevertsWhenPreInitAboveTicksZero() public {
         int24[] memory ticks = _twoTicks(100, 500);
         uint256[] memory amounts = _oneAmount(SEGMENT_AMOUNT);
-        PoolKey memory key = _keyFor(ffffff, TICK_SPACING);
+        PoolKey memory key = _keyFor(ffffff);
         fountain.poolManager().initialize(key, TickMath.getSqrtPriceAtTick(777));
 
         _mint(SEGMENT_AMOUNT);
@@ -444,7 +445,7 @@ contract FountainForkTest is ForkBase {
         _mint(SEGMENT_AMOUNT);
         bot.offer(Currency.wrap(address(token)), Currency.wrap(ffffff), ticks, amounts);
 
-        PoolKey memory key = _keyFor(ffffff, TICK_SPACING);
+        PoolKey memory key = _keyFor(ffffff);
         Trader alice = new Trader("alice", router);
         uint128 amountIn = 1e15;
         deal(ffffff, address(alice), uint256(amountIn));
@@ -474,7 +475,7 @@ contract FountainForkTest is ForkBase {
         _mint(SEGMENT_AMOUNT);
         bot.offer(Currency.wrap(address(token)), Currency.wrap(zeros), ticks, amounts);
 
-        PoolKey memory key = _keyFor(zeros, TICK_SPACING);
+        PoolKey memory key = _keyFor(zeros);
         Trader bobby = new Trader("bobby", router);
         uint128 amountIn = 1e15;
         deal(zeros, address(bobby), uint256(amountIn));
@@ -498,8 +499,8 @@ contract FountainForkTest is ForkBase {
         _offerTwoFlip(); // ids 0, 1 against zeros
         _offerTwoNoFlip(); // ids 2, 3 against ffffff
 
-        PoolKey memory flipKey = _keyFor(zeros, TICK_SPACING);
-        PoolKey memory noFlipKey = _keyFor(ffffff, TICK_SPACING);
+        PoolKey memory flipKey = _keyFor(zeros);
+        PoolKey memory noFlipKey = _keyFor(ffffff);
 
         Trader alice = new Trader("alice", router);
         Trader bobby = new Trader("bobby", router);
@@ -588,7 +589,7 @@ contract FountainForkTest is ForkBase {
         amounts[2] = 1e18;
         _mint(3e18);
         bot.offer(Currency.wrap(address(token)), Currency.wrap(zeros), ticks, amounts);
-        PoolKey memory key = _keyFor(zeros, TICK_SPACING);
+        PoolKey memory key = _keyFor(zeros);
 
         // Starting V4 tick is -100 (top of position 0 at V4 [-200, -100)).
         // Buyer spending zeros (currency0) for token (currency1) drives the
@@ -659,7 +660,7 @@ contract FountainForkTest is ForkBase {
         token.mint(address(bot), amt);
     }
 
-    function _keyFor(address quote, int24 tickSpacing) internal view returns (PoolKey memory) {
+    function _keyFor(address quote) internal view returns (PoolKey memory) {
         bool tokenIsCurrency0 = address(token) < quote;
         return PoolKey({
             currency0: Currency.wrap(tokenIsCurrency0 ? address(token) : quote),

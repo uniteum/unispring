@@ -400,7 +400,7 @@ contract MimicoinageForkTest is ForkBase {
             currency0: mimicIsToken0 ? Currency.wrap(mimic) : original,
             currency1: mimicIsToken0 ? original : Currency.wrap(mimic),
             fee: fountain.fee(),
-            tickSpacing: fountain.TICK_SPACING(),
+            tickSpacing: fountain.tickSpacing(),
             hooks: IHooks(address(0))
         });
     }

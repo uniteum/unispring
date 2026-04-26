@@ -19,12 +19,10 @@ interface IFountainPoolConfig {
     /**
      * @notice Pool tick spacing.
      */
-    // forge-lint: disable-next-line(mixed-case-function)
-    function TICK_SPACING() external view returns (int24);
+    function tickSpacing() external view returns (int24);
 
     /**
      * @notice The Uniswap V4 PoolManager.
      */
-    // forge-lint: disable-next-line(mixed-case-function)
     function poolManager() external view returns (IPoolManager);
 }

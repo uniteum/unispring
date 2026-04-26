@@ -54,7 +54,7 @@ interface IFountainActions {
  *         or unwinds liquidity. {take} forwards accrued swap fees to the
  *         clone's {owner}.
  * @dev    Fixed pool parameters: {fee} = 100 (0.01%),
- *         {TICK_SPACING} = 1, no hooks. Spacing 1 gives exact tick
+ *         {tickSpacing} = 1, no hooks. Spacing 1 gives exact tick
  *         precision for position bounds and the initial price; the
  *         extra bitmap-iteration cost on large swaps is negligible
  *         for Fountain's single-position usage pattern.
@@ -82,7 +82,8 @@ contract Fountain is IFountain, IFountainPoolConfig, IFountainTaker, IOwnableMak
      * @inheritdoc IFountainPoolConfig
      * @dev Fixed at 1 for exact tick precision.
      */
-    int24 public constant TICK_SPACING = 1;
+    // forge-lint: disable-next-line(screaming-snake-case-const)
+    int24 public constant tickSpacing = 1;
 
     /**
      * @notice The prototype instance. On clones, this points back to the
@@ -165,7 +166,7 @@ contract Fountain is IFountain, IFountainPoolConfig, IFountainTaker, IOwnableMak
             currency0: tokenIsCurrency0 ? token : quote,
             currency1: tokenIsCurrency0 ? quote : token,
             fee: fee,
-            tickSpacing: TICK_SPACING,
+            tickSpacing: tickSpacing,
             hooks: IHooks(address(0))
         });
         PoolId poolId = key.toId();
