@@ -2,6 +2,7 @@
 pragma solidity ^0.8.30;
 
 import {Fountain, Position} from "../src/Fountain.sol";
+import {IFountain} from "../src/IFountain.sol";
 import {Unispring} from "../src/Unispring.sol";
 import {ForkBase} from "./ForkBase.t.sol";
 import {Funder} from "./Funder.sol";
@@ -173,7 +174,7 @@ contract UnispringForkTest is ForkBase {
 
     /**
      * @notice ERC-20 spoke must not receive native value — Fountain reverts
-     *         with {Fountain.NativeValueMismatch} when forwarded a non-zero
+     *         with {IFountain.NativeValueMismatch} when forwarded a non-zero
      *         `msg.value`.
      */
     function test_OfferRevertsWhenERC20SpokeSentNativeValue() public {
@@ -183,7 +184,7 @@ contract UnispringForkTest is ForkBase {
         spoke.mint(address(this), supply);
         spoke.approve(address(clone), supply);
         vm.deal(address(this), 1);
-        vm.expectRevert(abi.encodeWithSelector(Fountain.NativeValueMismatch.selector, uint256(0), uint256(1)));
+        vm.expectRevert(abi.encodeWithSelector(IFountain.NativeValueMismatch.selector, uint256(0), uint256(1)));
         clone.offer{value: 1}(Currency.wrap(address(spoke)), supply, -120_000, TickMath.MAX_TICK - 1);
     }
 

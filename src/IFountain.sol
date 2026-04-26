@@ -2,6 +2,7 @@
 pragma solidity ^0.8.30;
 
 import {Currency} from "v4-core/types/Currency.sol";
+import {PoolId} from "v4-core/types/PoolId.sol";
 
 /**
  * @title IFountain
@@ -12,6 +13,64 @@ import {Currency} from "v4-core/types/Currency.sol";
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
 interface IFountain {
+    /**
+     * @notice Emitted when an {offer} call seats a contiguous batch of
+     *         positions.
+     * @param  offerer          The address that called {offer}.
+     * @param  token            The currency whose supply seats the positions
+     *                          (`Currency.wrap(address(0))` for native ETH).
+     * @param  quote            The quote currency (`Currency.wrap(address(0))`
+     *                          for native ETH).
+     * @param  poolId           The Uniswap V4 pool id.
+     * @param  firstPositionId  Index of the first position in the batch.
+     * @param  positionCount    Number of positions in the batch.
+     */
+    event Offered(
+        address indexed offerer,
+        Currency indexed token,
+        Currency quote,
+        PoolId indexed poolId,
+        uint256 firstPositionId,
+        uint256 positionCount
+    );
+
+    /**
+     * @notice Thrown when `amounts.length + 1 != ticks.length`.
+     */
+    error TickAmountLengthMismatch(uint256 ticksLength, uint256 amountsLength);
+
+    /**
+     * @notice Thrown when {offer} is called with an empty `amounts` array.
+     */
+    error NoPositions();
+
+    /**
+     * @notice Thrown when a tick falls outside `[MIN_TICK, MAX_TICK]`.
+     */
+    error TickOutOfRange(int24 tick);
+
+    /**
+     * @notice Thrown when ticks are not strictly ascending.
+     */
+    error TicksNotAscending(uint256 index, int24 prev, int24 curr);
+
+    /**
+     * @notice Thrown when a per-segment amount is zero.
+     */
+    error ZeroAmount(uint256 index);
+
+    /**
+     * @notice Thrown if liquidity computed from a segment's amount exceeds `uint128`.
+     */
+    error LiquidityOverflow();
+
+    /**
+     * @notice Thrown when `msg.value` does not match the native value
+     *         required by {offer}: `total` when `token` is native ETH,
+     *         zero when `token` is an ERC-20.
+     */
+    error NativeValueMismatch(uint256 expected, uint256 actual);
+
     /**
      * @notice Offer `token` for sale at the ticks you set, paired against
      *         `quote`. The `ticks` array partitions a "token/quote" price

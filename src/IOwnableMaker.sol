@@ -14,6 +14,22 @@ pragma solidity ^0.8.30;
  */
 interface IOwnableMaker {
     /**
+     * @notice Emitted when {make} deploys a new clone.
+     * @param  owner   The address that owns the new clone.
+     * @param  variant Discriminator under which the clone was deployed.
+     * @param  home    The clone's deterministic CREATE2 address.
+     */
+    event Made(address indexed owner, uint256 indexed variant, address indexed home);
+
+    /**
+     * @notice Thrown when an initialization or factory entrypoint is
+     *         called by the wrong party — typically {make} invoked on
+     *         a clone instead of the prototype, or a clone's
+     *         initializer invoked by anyone other than the prototype.
+     */
+    error Unauthorized();
+
+    /**
      * @notice Predict the deterministic clone address for
      *         `(owner, variant)` without deploying.
      * @param  owner   The address that would own the clone.
