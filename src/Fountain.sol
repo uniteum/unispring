@@ -131,7 +131,6 @@ contract Fountain is IFountain, IFountainPoolConfig, IFountainTaker, IOwnableMak
     function offer(Currency token, Currency quote, int24[] calldata ticks, uint256[] calldata amounts)
         external
         payable
-        override
     {
         uint256 n = amounts.length;
         if (n == 0) revert NoPositions();
