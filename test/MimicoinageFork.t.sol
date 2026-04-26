@@ -399,7 +399,7 @@ contract MimicoinageForkTest is ForkBase {
         return PoolKey({
             currency0: mimicIsToken0 ? Currency.wrap(mimic) : original,
             currency1: mimicIsToken0 ? original : Currency.wrap(mimic),
-            fee: fountain.FEE(),
+            fee: fountain.fee(),
             tickSpacing: fountain.TICK_SPACING(),
             hooks: IHooks(address(0))
         });

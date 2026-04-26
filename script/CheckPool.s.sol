@@ -28,7 +28,7 @@ contract CheckPool is Script {
         PoolKey memory key = PoolKey({
             currency0: Currency.wrap(newIsCurrency0 ? newToken : hub),
             currency1: Currency.wrap(newIsCurrency0 ? hub : newToken),
-            fee: fountain.FEE(),
+            fee: fountain.fee(),
             tickSpacing: 1,
             hooks: IHooks(address(0))
         });

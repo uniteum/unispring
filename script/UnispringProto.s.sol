@@ -10,7 +10,7 @@ import {Script, console2} from "forge-std/Script.sol";
  * @dev    Configuration comes from environment variables:
  *           Fountain — deployed Fountain that will seat every position
  *                      funded through this Unispring. Unispring mirrors
- *                      this Fountain's `poolManager`, `FEE`, and `OWNER`.
+ *                      this Fountain's `poolManager`, `fee`, and `OWNER`.
  *
  * Usage:
  * forge script script/UnispringProto.s.sol -f $chain --private-key $tx_key --broadcast --verify --delay 10 --retries 10

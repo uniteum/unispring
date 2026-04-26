@@ -14,8 +14,7 @@ interface IFountainPoolConfig {
     /**
      * @notice Pool fee in hundredths of a bip (0.01%).
      */
-    // forge-lint: disable-next-line(mixed-case-function)
-    function FEE() external view returns (uint24);
+    function fee() external view returns (uint24);
 
     /**
      * @notice Pool tick spacing.

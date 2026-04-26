@@ -69,7 +69,7 @@ contract FountainForkTest is ForkBase {
     function test_ConstructorRegistersImmutables() public view {
         assertEq(fountain.owner(), address(bot), "owner set at make");
         assertGt(address(fountain.poolManager()).code.length, 0, "poolManager resolves to live code");
-        assertEq(fountain.FEE(), uint24(100), "FEE constant");
+        assertEq(fountain.fee(), uint24(100), "fee constant");
     }
 
     // ----------------------------------------------------------------------
@@ -664,7 +664,7 @@ contract FountainForkTest is ForkBase {
         return PoolKey({
             currency0: Currency.wrap(tokenIsCurrency0 ? address(token) : quote),
             currency1: Currency.wrap(tokenIsCurrency0 ? quote : address(token)),
-            fee: fountain.FEE(),
+            fee: fountain.fee(),
             tickSpacing: tickSpacing,
             hooks: IHooks(address(0))
         });

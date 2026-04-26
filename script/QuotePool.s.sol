@@ -48,7 +48,7 @@ contract QuotePool is Script {
         PoolKey memory key = PoolKey({
             currency0: Currency.wrap(newToken),
             currency1: Currency.wrap(hub),
-            fee: fountain.FEE(),
+            fee: fountain.fee(),
             tickSpacing: 1,
             hooks: IHooks(address(0))
         });

@@ -16,7 +16,7 @@ import {Currency} from "v4-core/types/Currency.sol";
  *         take — lives on {FOUNTAIN}. Unispring only mints/tracks
  *         the clone-per-hub key, pre-approves {FOUNTAIN} against pulled
  *         tokens, and delegates to {IFountain.offer}. Pools inherit
- *         {Fountain.FEE} (0.01%) and accrued fees flow to Fountain's owner.
+ *         {Fountain.fee} (0.01%) and accrued fees flow to Fountain's owner.
  * @dev    Ticks: callers pass V4-native `(tickLower, tickUpper)` in the
  *         log_1.0001(currency1/currency0) convention. For the hub pool the
  *         hub sorts above ETH (currency1), so Unispring translates into
@@ -46,7 +46,7 @@ contract Unispring {
     /**
      * @notice The Fountain that seats and owns every position funded through
      *         this Unispring. Positions inherit {Fountain.poolManager} and
-     *         {Fountain.FEE}; accrued fees flow to `FOUNTAIN.owner()`.
+     *         {Fountain.fee}; accrued fees flow to `FOUNTAIN.owner()`.
      */
     IFountain public immutable FOUNTAIN;
 
