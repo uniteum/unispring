@@ -50,7 +50,7 @@ interface IFountainActions {
  * @dev    Bitsy factory: the prototype is permissionless and governance-free;
  *         clones are deployed per-caller via {make} and carry their own
  *         {owner} in storage. Each clone's owner is the `msg.sender` that
- *         called {make}; one clone exists per owner address.
+ *         called {make}; one clone exists per `(owner, variant)` pair.
  * @dev    Positions are permanent — no function on this contract decreases
  *         or unwinds liquidity. {take} forwards accrued swap fees to the
  *         clone's {owner}.
