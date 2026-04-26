@@ -55,7 +55,7 @@ contract FountainForkTest is ForkBase {
         Fountain proto = new Fountain(IAddressLookup(PoolManagerLookup));
         bot.makeFountain(proto);
         fountain = bot.fountain();
-        router = new SwapRouter(fountain.POOL_MANAGER());
+        router = new SwapRouter(fountain.poolManager());
         token = _makeToken("MockToken", "MOCK", 18);
 
         require(ffffff.code.length > 0, "ffffff lepton missing at forked block");
@@ -68,7 +68,7 @@ contract FountainForkTest is ForkBase {
 
     function test_ConstructorRegistersImmutables() public view {
         assertEq(fountain.owner(), address(bot), "owner set at make");
-        assertGt(address(fountain.POOL_MANAGER()).code.length, 0, "POOL_MANAGER resolves to live code");
+        assertGt(address(fountain.poolManager()).code.length, 0, "poolManager resolves to live code");
         assertEq(fountain.FEE(), uint24(100), "FEE constant");
     }
 
@@ -91,7 +91,7 @@ contract FountainForkTest is ForkBase {
         assertEq(p.tickLower, 100, "tickLower = ticks[0]");
         assertEq(p.tickUpper, 500, "tickUpper = ticks[1]");
 
-        (uint160 sqrtPriceX96,,,) = fountain.POOL_MANAGER().getSlot0(p.key.toId());
+        (uint160 sqrtPriceX96,,,) = fountain.poolManager().getSlot0(p.key.toId());
         assertEq(sqrtPriceX96, TickMath.getSqrtPriceAtTick(100), "starting price = ticks[0]");
     }
 
@@ -108,7 +108,7 @@ contract FountainForkTest is ForkBase {
         assertEq(p.tickLower, -500, "tickLower = -ticks[1]");
         assertEq(p.tickUpper, -100, "tickUpper = -ticks[0]");
 
-        (uint160 sqrtPriceX96,,,) = fountain.POOL_MANAGER().getSlot0(p.key.toId());
+        (uint160 sqrtPriceX96,,,) = fountain.poolManager().getSlot0(p.key.toId());
         assertEq(sqrtPriceX96, TickMath.getSqrtPriceAtTick(-100), "starting price = -ticks[0]");
     }
 
@@ -125,7 +125,7 @@ contract FountainForkTest is ForkBase {
         assertEq(p.tickLower, -500);
         assertEq(p.tickUpper, -100);
 
-        (uint160 sqrtPriceX96,,,) = fountain.POOL_MANAGER().getSlot0(p.key.toId());
+        (uint160 sqrtPriceX96,,,) = fountain.poolManager().getSlot0(p.key.toId());
         assertEq(sqrtPriceX96, TickMath.getSqrtPriceAtTick(-100), "starting price = -ticks[0]");
     }
 
@@ -135,7 +135,7 @@ contract FountainForkTest is ForkBase {
         int24[] memory ticks = _twoTicks(100, 500);
         uint256[] memory amounts = _oneAmount(SEGMENT_AMOUNT);
         vm.deal(address(this), SEGMENT_AMOUNT);
-        uint256 pmBefore = address(fountain.POOL_MANAGER()).balance;
+        uint256 pmBefore = address(fountain.poolManager()).balance;
 
         bot.offer{value: SEGMENT_AMOUNT}(Currency.wrap(address(0)), Currency.wrap(ffffff), ticks, amounts);
 
@@ -147,11 +147,11 @@ contract FountainForkTest is ForkBase {
         assertEq(p.tickLower, 100, "tickLower = ticks[0]");
         assertEq(p.tickUpper, 500, "tickUpper = ticks[1]");
 
-        (uint160 sqrtPriceX96,,,) = fountain.POOL_MANAGER().getSlot0(p.key.toId());
+        (uint160 sqrtPriceX96,,,) = fountain.poolManager().getSlot0(p.key.toId());
         assertEq(sqrtPriceX96, TickMath.getSqrtPriceAtTick(100), "starting price = ticks[0]");
 
         // ETH supply landed in PoolManager (modulo dust in Fountain).
-        uint256 pmDelta = address(fountain.POOL_MANAGER()).balance - pmBefore;
+        uint256 pmDelta = address(fountain.poolManager()).balance - pmBefore;
         uint256 inFountain = address(fountain).balance;
         assertEq(pmDelta + inFountain, SEGMENT_AMOUNT, "ETH conserved");
         assertGt(pmDelta, (SEGMENT_AMOUNT * 999) / 1000, "most ETH in PoolManager");
@@ -184,11 +184,11 @@ contract FountainForkTest is ForkBase {
         assertEq(p2.tickLower, 400);
         assertEq(p2.tickUpper, 800);
 
-        (uint160 sqrtPriceX96,,,) = fountain.POOL_MANAGER().getSlot0(p0.key.toId());
+        (uint160 sqrtPriceX96,,,) = fountain.poolManager().getSlot0(p0.key.toId());
         assertEq(sqrtPriceX96, TickMath.getSqrtPriceAtTick(100), "pool init at ticks[0]");
 
         // Token supply landed in PoolManager (modulo dust in Fountain).
-        uint256 inPoolManager = IERC20(address(token)).balanceOf(address(fountain.POOL_MANAGER()));
+        uint256 inPoolManager = IERC20(address(token)).balanceOf(address(fountain.poolManager()));
         uint256 inFountain = IERC20(address(token)).balanceOf(address(fountain));
         assertEq(inPoolManager + inFountain, total, "supply conserved");
         assertGt(inPoolManager, (total * 999) / 1000, "most supply in PoolManager");
@@ -220,7 +220,7 @@ contract FountainForkTest is ForkBase {
         assertEq(p2.tickLower, -800);
         assertEq(p2.tickUpper, -400);
 
-        (uint160 sqrtPriceX96,,,) = fountain.POOL_MANAGER().getSlot0(p0.key.toId());
+        (uint160 sqrtPriceX96,,,) = fountain.poolManager().getSlot0(p0.key.toId());
         assertEq(sqrtPriceX96, TickMath.getSqrtPriceAtTick(-100), "pool init at -ticks[0]");
     }
 
@@ -233,7 +233,7 @@ contract FountainForkTest is ForkBase {
         uint256[] memory amounts = _oneAmount(SEGMENT_AMOUNT);
         PoolKey memory key = _keyFor(ffffff, TICK_SPACING);
         // No-flip case (token < ffffff): starting V4 tick = ticks[0] = 100.
-        fountain.POOL_MANAGER().initialize(key, TickMath.getSqrtPriceAtTick(100));
+        fountain.poolManager().initialize(key, TickMath.getSqrtPriceAtTick(100));
 
         _mint(SEGMENT_AMOUNT);
         bot.offer(Currency.wrap(address(token)), Currency.wrap(ffffff), ticks, amounts);
@@ -253,16 +253,16 @@ contract FountainForkTest is ForkBase {
         uint256[] memory amounts = _oneAmount(SEGMENT_AMOUNT);
         PoolKey memory key = _keyFor(ffffff, TICK_SPACING);
         uint160 preInitSqrt = TickMath.getSqrtPriceAtTick(50);
-        fountain.POOL_MANAGER().initialize(key, preInitSqrt);
+        fountain.poolManager().initialize(key, preInitSqrt);
 
         _mint(SEGMENT_AMOUNT);
         bot.offer(Currency.wrap(address(token)), Currency.wrap(ffffff), ticks, amounts);
 
         assertEq(fountain.positionsCount(), 1, "position seated despite pre-init");
-        (uint160 sqrt,,,) = fountain.POOL_MANAGER().getSlot0(key.toId());
+        (uint160 sqrt,,,) = fountain.poolManager().getSlot0(key.toId());
         assertEq(sqrt, preInitSqrt, "spot stays at pre-init price, not ticks[0]");
 
-        uint256 inPoolManager = IERC20(address(token)).balanceOf(address(fountain.POOL_MANAGER()));
+        uint256 inPoolManager = IERC20(address(token)).balanceOf(address(fountain.poolManager()));
         uint256 inFountain = IERC20(address(token)).balanceOf(address(fountain));
         assertEq(inPoolManager + inFountain, SEGMENT_AMOUNT, "supply conserved");
         assertGt(inPoolManager, (SEGMENT_AMOUNT * 999) / 1000, "supply seated single-sided in token");
@@ -282,7 +282,7 @@ contract FountainForkTest is ForkBase {
         int24[] memory ticks = _twoTicks(100, 500);
         uint256[] memory amounts = _oneAmount(SEGMENT_AMOUNT);
         PoolKey memory key = _keyFor(ffffff, TICK_SPACING);
-        fountain.POOL_MANAGER().initialize(key, TickMath.getSqrtPriceAtTick(777));
+        fountain.poolManager().initialize(key, TickMath.getSqrtPriceAtTick(777));
 
         _mint(SEGMENT_AMOUNT);
         vm.expectRevert(IPoolManager.CurrencyNotSettled.selector);
@@ -593,7 +593,7 @@ contract FountainForkTest is ForkBase {
         // Starting V4 tick is -100 (top of position 0 at V4 [-200, -100)).
         // Buyer spending zeros (currency0) for token (currency1) drives the
         // V4 tick downward through positions 0, 1, 2 in order.
-        (, int24 tickBefore,,) = fountain.POOL_MANAGER().getSlot0(key.toId());
+        (, int24 tickBefore,,) = fountain.poolManager().getSlot0(key.toId());
         assertEq(tickBefore, int24(-100), "starts at -ticks[0]");
 
         Trader alice = new Trader("alice", router);
@@ -601,7 +601,7 @@ contract FountainForkTest is ForkBase {
         deal(zeros, address(alice), uint256(amountIn));
         alice.swap(key, true, amountIn);
 
-        (, int24 tickAfter,,) = fountain.POOL_MANAGER().getSlot0(key.toId());
+        (, int24 tickAfter,,) = fountain.poolManager().getSlot0(key.toId());
         assertLt(tickAfter, int24(-100), "tick advanced from start");
     }
 

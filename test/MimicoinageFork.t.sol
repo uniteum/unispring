@@ -64,7 +64,7 @@ contract MimicoinageForkTest is ForkBase {
         bot.makeFountain(proto);
         fountain = bot.fountain();
         mimicoinage = new Mimicoinage(fountain, Coinage(ICoinage));
-        router = new SwapRouter(fountain.POOL_MANAGER());
+        router = new SwapRouter(fountain.poolManager());
     }
 
     function test_PredictMimicMatchesMimic() public {
@@ -87,7 +87,7 @@ contract MimicoinageForkTest is ForkBase {
 
         // Pool is initialized at tick 0 (sqrtPriceX96 for tick 0 = 2**96).
         PoolId id = _poolKeyOf(IERC20Metadata(address(mimic))).toId();
-        (uint160 sqrtPriceX96, int24 tick,,) = fountain.POOL_MANAGER().getSlot0(id);
+        (uint160 sqrtPriceX96, int24 tick,,) = fountain.poolManager().getSlot0(id);
         assertEq(tick, int24(0), "pool must initialize at tick 0");
         assertGt(sqrtPriceX96, 0, "pool not initialized");
 
@@ -121,7 +121,7 @@ contract MimicoinageForkTest is ForkBase {
         assertEq(Currency.unwrap(key.currency1), address(mimic), "mimic is currency1");
 
         // Pool initialized at tick 0; entire mimic supply seated in Fountain position.
-        (uint160 sqrtPriceX96, int24 tick,,) = fountain.POOL_MANAGER().getSlot0(key.toId());
+        (uint160 sqrtPriceX96, int24 tick,,) = fountain.poolManager().getSlot0(key.toId());
         assertEq(tick, int24(0), "pool must initialize at tick 0");
         assertGt(sqrtPriceX96, 0, "pool not initialized");
         assertEq(
@@ -148,9 +148,9 @@ contract MimicoinageForkTest is ForkBase {
         assertGt(uint160(address(loMimic)), uint160(zeros), "mimic of low lepton must sort above (token1)");
 
         (uint160 hiSqrt, int24 hiTick,,) =
-            fountain.POOL_MANAGER().getSlot0(_poolKeyOf(IERC20Metadata(address(hiMimic))).toId());
+            fountain.poolManager().getSlot0(_poolKeyOf(IERC20Metadata(address(hiMimic))).toId());
         (uint160 loSqrt, int24 loTick,,) =
-            fountain.POOL_MANAGER().getSlot0(_poolKeyOf(IERC20Metadata(address(loMimic))).toId());
+            fountain.poolManager().getSlot0(_poolKeyOf(IERC20Metadata(address(loMimic))).toId());
 
         assertEq(hiTick, int24(0), "high-lepton pool must initialize at tick 0");
         assertEq(loTick, int24(0), "low-lepton pool must initialize at tick 0");
@@ -320,7 +320,7 @@ contract MimicoinageForkTest is ForkBase {
     function test_MimicIdempotentAtGenesisPrice() public {
         (, address predicted) = mimicoinage.predictMimic(Currency.wrap(ffffff), "mimicFF", "FFx1");
         PoolKey memory key = _predictedPoolKey(Currency.wrap(ffffff), "mimicFF", "FFx1");
-        fountain.POOL_MANAGER().initialize(key, TickMath.getSqrtPriceAtTick(0));
+        fountain.poolManager().initialize(key, TickMath.getSqrtPriceAtTick(0));
 
         IERC20Metadata mimic = mimicoinage.mimic(Currency.wrap(ffffff), "mimicFF", "FFx1");
         assertEq(address(mimic), predicted, "minted address != predicted");
@@ -338,12 +338,12 @@ contract MimicoinageForkTest is ForkBase {
     function test_MimicAbsorbsPreInitBelowTicksZero() public {
         PoolKey memory key = _predictedPoolKey(Currency.wrap(ffffff), "mimicFF", "FFx1");
         uint160 preInitSqrt = TickMath.getSqrtPriceAtTick(-100);
-        fountain.POOL_MANAGER().initialize(key, preInitSqrt);
+        fountain.poolManager().initialize(key, preInitSqrt);
 
         IERC20Metadata mimic = mimicoinage.mimic(Currency.wrap(ffffff), "mimicFF", "FFx1");
         assertTrue(mimicoinage.isMimic(IERC20Metadata(address(mimic))), "mimic registered after below-tick pre-init");
 
-        (uint160 sqrt,,,) = fountain.POOL_MANAGER().getSlot0(key.toId());
+        (uint160 sqrt,,,) = fountain.poolManager().getSlot0(key.toId());
         assertEq(sqrt, preInitSqrt, "spot stays at pre-init price, not at ticks[0]=0");
     }
 
@@ -359,7 +359,7 @@ contract MimicoinageForkTest is ForkBase {
      */
     function test_MimicRevertsOnPreInitAboveTicksZero() public {
         PoolKey memory key = _predictedPoolKey(Currency.wrap(ffffff), "mimicFF", "FFx1");
-        fountain.POOL_MANAGER().initialize(key, TickMath.getSqrtPriceAtTick(100));
+        fountain.poolManager().initialize(key, TickMath.getSqrtPriceAtTick(100));
 
         vm.expectRevert(IPoolManager.CurrencyNotSettled.selector);
         mimicoinage.mimic(Currency.wrap(ffffff), "mimicFF", "FFx1");

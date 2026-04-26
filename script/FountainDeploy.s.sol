@@ -23,7 +23,7 @@ contract FountainDeploy is Script {
         IAddressLookup poolManagerLookup = IAddressLookup(vm.envAddress("PoolManagerLookup"));
 
         console2.log("poolManagerLookup:", address(poolManagerLookup));
-        console2.log("poolManager      :", poolManagerLookup.value());
+        console2.log("pm      :", poolManagerLookup.value());
 
         bytes memory initCode = abi.encodePacked(type(Fountain).creationCode, abi.encode(poolManagerLookup));
         address predicted = vm.computeCreate2Address(bytes32(0), keccak256(initCode), NICK);

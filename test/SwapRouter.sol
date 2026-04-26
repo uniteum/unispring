@@ -19,7 +19,8 @@ import {SwapParams} from "v4-core/types/PoolOperation.sol";
  *         and the test contract.
  */
 contract SwapRouter is IUnlockCallback {
-    IPoolManager public immutable POOL_MANAGER;
+    // forge-lint: disable-next-line(screaming-snake-case-immutable)
+    IPoolManager public immutable poolManager;
 
     error InvalidUnlockCaller();
 
@@ -30,8 +31,8 @@ contract SwapRouter is IUnlockCallback {
         SwapParams params;
     }
 
-    constructor(IPoolManager poolManager) {
-        POOL_MANAGER = poolManager;
+    constructor(IPoolManager pm) {
+        poolManager = pm;
     }
 
     /**
@@ -56,7 +57,7 @@ contract SwapRouter is IUnlockCallback {
             amountSpecified: -int256(uint256(amountIn)),
             sqrtPriceLimitX96: limit
         });
-        bytes memory ret = POOL_MANAGER.unlock(
+        bytes memory ret = poolManager.unlock(
             abi.encode(Callback({payer: msg.sender, recipient: recipient, key: key, params: params}))
         );
         BalanceDelta delta = abi.decode(ret, (BalanceDelta));
@@ -66,10 +67,10 @@ contract SwapRouter is IUnlockCallback {
 
     /// @inheritdoc IUnlockCallback
     function unlockCallback(bytes calldata data) external returns (bytes memory) {
-        if (msg.sender != address(POOL_MANAGER)) revert InvalidUnlockCaller();
+        if (msg.sender != address(poolManager)) revert InvalidUnlockCaller();
         Callback memory cb = abi.decode(data, (Callback));
 
-        BalanceDelta delta = POOL_MANAGER.swap(cb.key, cb.params, "");
+        BalanceDelta delta = poolManager.swap(cb.key, cb.params, "");
         int128 a0 = delta.amount0();
         int128 a1 = delta.amount1();
 
@@ -78,9 +79,9 @@ contract SwapRouter is IUnlockCallback {
         // forge-lint: disable-next-line(unsafe-typecast)
         if (a1 < 0) _pay(cb.key.currency1, cb.payer, uint256(uint128(-a1)));
         // forge-lint: disable-next-line(unsafe-typecast)
-        if (a0 > 0) POOL_MANAGER.take(cb.key.currency0, cb.recipient, uint256(uint128(a0)));
+        if (a0 > 0) poolManager.take(cb.key.currency0, cb.recipient, uint256(uint128(a0)));
         // forge-lint: disable-next-line(unsafe-typecast)
-        if (a1 > 0) POOL_MANAGER.take(cb.key.currency1, cb.recipient, uint256(uint128(a1)));
+        if (a1 > 0) poolManager.take(cb.key.currency1, cb.recipient, uint256(uint128(a1)));
 
         return abi.encode(delta);
     }
@@ -90,9 +91,9 @@ contract SwapRouter is IUnlockCallback {
      *      `payer` must have approved this router for at least `owed`.
      */
     function _pay(Currency currency, address payer, uint256 owed) private {
-        POOL_MANAGER.sync(currency);
+        poolManager.sync(currency);
         // forge-lint: disable-next-line(erc20-unchecked-transfer)
-        IERC20(Currency.unwrap(currency)).transferFrom(payer, address(POOL_MANAGER), owed);
-        POOL_MANAGER.settle();
+        IERC20(Currency.unwrap(currency)).transferFrom(payer, address(poolManager), owed);
+        poolManager.settle();
     }
 }

@@ -45,7 +45,7 @@ contract Unispring {
 
     /**
      * @notice The Fountain that seats and owns every position funded through
-     *         this Unispring. Positions inherit {Fountain.POOL_MANAGER} and
+     *         this Unispring. Positions inherit {Fountain.poolManager} and
      *         {Fountain.FEE}; accrued fees flow to `FOUNTAIN.owner()`.
      */
     IFountain public immutable FOUNTAIN;

@@ -27,5 +27,5 @@ interface IFountainPoolConfig {
      * @notice The Uniswap V4 PoolManager.
      */
     // forge-lint: disable-next-line(mixed-case-function)
-    function POOL_MANAGER() external view returns (IPoolManager);
+    function poolManager() external view returns (IPoolManager);
 }

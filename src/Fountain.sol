@@ -95,7 +95,8 @@ contract Fountain is IFountain, IFountainPoolConfig, IFountainTaker, IOwnableMak
      * @dev Resolved from the `IAddressLookup` supplied at construction.
      *      Shared by the prototype and every clone.
      */
-    IPoolManager public immutable POOL_MANAGER;
+    // forge-lint: disable-next-line(screaming-snake-case-immutable)
+    IPoolManager public immutable poolManager;
 
     /**
      * @notice All positions seated by this contract, in creation order.
@@ -121,7 +122,7 @@ contract Fountain is IFountain, IFountainPoolConfig, IFountainTaker, IOwnableMak
      * @param  poolManagerLookup Lookup for the chain-local Uniswap V4 PoolManager.
      */
     constructor(IAddressLookup poolManagerLookup) Ownable(msg.sender) {
-        POOL_MANAGER = IPoolManager(poolManagerLookup.value());
+        poolManager = IPoolManager(poolManagerLookup.value());
     }
 
     using StateLibrary for IPoolManager;
@@ -171,13 +172,13 @@ contract Fountain is IFountain, IFountainPoolConfig, IFountainTaker, IOwnableMak
         int24 startingV4Tick = tokenIsCurrency0 ? ticks[0] : -ticks[0];
         uint160 startingSqrtPriceX96 = TickMath.getSqrtPriceAtTick(startingV4Tick);
 
-        (uint160 existingSqrtPriceX96,,,) = POOL_MANAGER.getSlot0(poolId);
+        (uint160 existingSqrtPriceX96,,,) = poolManager.getSlot0(poolId);
         if (existingSqrtPriceX96 == 0) {
-            POOL_MANAGER.initialize(key, startingSqrtPriceX96);
+            poolManager.initialize(key, startingSqrtPriceX96);
         }
 
         uint256 firstPositionId = positions.length;
-        POOL_MANAGER.unlock(abi.encodeCall(IFountainActions.offer, (key, ticks, amounts, tokenIsCurrency0)));
+        poolManager.unlock(abi.encodeCall(IFountainActions.offer, (key, ticks, amounts, tokenIsCurrency0)));
 
         emit Offered(msg.sender, token, quote, poolId, firstPositionId, n);
     }
@@ -243,7 +244,7 @@ contract Fountain is IFountain, IFountainPoolConfig, IFountainTaker, IOwnableMak
      *      of positions or iterates a batch of ids for fee take.
      */
     function unlockCallback(bytes calldata data) external returns (bytes memory) {
-        if (msg.sender != address(POOL_MANAGER)) revert InvalidUnlockCaller();
+        if (msg.sender != address(poolManager)) revert InvalidUnlockCaller();
         bytes4 selector = bytes4(data[:4]);
         if (selector == IFountainActions.offer.selector) {
             (PoolKey memory key, int24[] memory userTicks, uint256[] memory amounts, bool tokenIsCurrency0) =
@@ -271,7 +272,7 @@ contract Fountain is IFountain, IFountainPoolConfig, IFountainTaker, IOwnableMak
         for (uint256 i = 0; i < ids.length; i++) {
             if (ids[i] >= length) revert UnknownPosition(ids[i]);
         }
-        POOL_MANAGER.unlock(abi.encodeCall(IFountainActions.take, (ids)));
+        poolManager.unlock(abi.encodeCall(IFountainActions.take, (ids)));
     }
 
     /**
@@ -308,7 +309,7 @@ contract Fountain is IFountain, IFountainPoolConfig, IFountainTaker, IOwnableMak
                 ? _liquidity0(sqrtLower, sqrtUpper, amounts[i])
                 : _liquidity1(sqrtLower, sqrtUpper, amounts[i]);
 
-            (BalanceDelta delta,) = POOL_MANAGER.modifyLiquidity(
+            (BalanceDelta delta,) = poolManager.modifyLiquidity(
                 key,
                 ModifyLiquidityParams({
                     tickLower: tickLower,
@@ -329,13 +330,13 @@ contract Fountain is IFountain, IFountainPoolConfig, IFountainTaker, IOwnableMak
         // forge-lint: disable-next-line(unsafe-typecast)
         uint256 owed = uint256(-totalOwed);
         Currency currency = tokenIsCurrency0 ? key.currency0 : key.currency1;
-        POOL_MANAGER.sync(currency);
+        poolManager.sync(currency);
         if (currency.isAddressZero()) {
-            POOL_MANAGER.settle{value: owed}();
+            poolManager.settle{value: owed}();
         } else {
             // forge-lint: disable-next-line(erc20-unchecked-transfer)
-            IERC20(Currency.unwrap(currency)).transfer(address(POOL_MANAGER), owed);
-            POOL_MANAGER.settle();
+            IERC20(Currency.unwrap(currency)).transfer(address(poolManager), owed);
+            poolManager.settle();
         }
     }
 
@@ -344,7 +345,7 @@ contract Fountain is IFountain, IFountainPoolConfig, IFountainTaker, IOwnableMak
      *      modifyLiquidity and forward them to {owner}.
      */
     function _take(uint256 id, PoolKey memory key, int24 tickLower, int24 tickUpper) private {
-        (, BalanceDelta feesAccrued) = POOL_MANAGER.modifyLiquidity(
+        (, BalanceDelta feesAccrued) = poolManager.modifyLiquidity(
             key,
             ModifyLiquidityParams({tickLower: tickLower, tickUpper: tickUpper, liquidityDelta: 0, salt: bytes32(0)}),
             ""
@@ -356,8 +357,8 @@ contract Fountain is IFountain, IFountainPoolConfig, IFountainTaker, IOwnableMak
         // forge-lint: disable-next-line(unsafe-typecast)
         uint256 amount1 = fee1 > 0 ? uint256(uint128(fee1)) : 0;
         address recipient = owner();
-        if (amount0 > 0) POOL_MANAGER.take(key.currency0, recipient, amount0);
-        if (amount1 > 0) POOL_MANAGER.take(key.currency1, recipient, amount1);
+        if (amount0 > 0) poolManager.take(key.currency0, recipient, amount0);
+        if (amount1 > 0) poolManager.take(key.currency1, recipient, amount1);
         emit Taken(id, key.toId(), amount0, amount1);
     }
 
@@ -373,8 +374,8 @@ contract Fountain is IFountain, IFountainPoolConfig, IFountainTaker, IOwnableMak
     {
         PoolId poolId = key.toId();
         (uint128 liquidity, uint256 growth0Last, uint256 growth1Last) =
-            POOL_MANAGER.getPositionInfo(poolId, address(this), tickLower, tickUpper, bytes32(0));
-        (uint256 growth0Now, uint256 growth1Now) = POOL_MANAGER.getFeeGrowthInside(poolId, tickLower, tickUpper);
+            poolManager.getPositionInfo(poolId, address(this), tickLower, tickUpper, bytes32(0));
+        (uint256 growth0Now, uint256 growth1Now) = poolManager.getFeeGrowthInside(poolId, tickLower, tickUpper);
         unchecked {
             amount0 = FullMath.mulDiv(growth0Now - growth0Last, liquidity, FixedPoint128.Q128);
             amount1 = FullMath.mulDiv(growth1Now - growth1Last, liquidity, FixedPoint128.Q128);
