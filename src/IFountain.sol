@@ -7,9 +7,8 @@ import {PoolId} from "v4-core/types/PoolId.sol";
 /**
  * @title IFountain
  * @notice Minimal Fountain surface used by callers that only seat
- *         positions and never read fee/clone state. Lets factories like
- *         {Mimicoinage} depend on Fountain without pulling in its V4
- *         imports.
+ *         positions and never read fee/clone state. Lets callers depend
+ *         on Fountain without pulling in its V4 imports.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
 interface IFountain {
@@ -81,10 +80,9 @@ interface IFountain {
      *         have approved the Fountain for the sum of `amounts`; when
      *         `token` is native ETH (`Currency.wrap(address(0))`) the
      *         caller must send that sum as `msg.value` — this is why
-     *         `offer` is `payable`. The native-ETH-as-token path supports
-     *         e.g. seating an ETH spoke against a hub in {Unispring};
-     *         token-side ETH is unusual otherwise (most callers offer the
-     *         scarce token and quote in ETH or a stablecoin).
+     *         `offer` is `payable`. Token-side ETH is unusual (most
+     *         callers offer the scarce token and quote in ETH or a
+     *         stablecoin).
      * @dev    `ticks[0]` is the *intended* starting price: an uninitialized
      *         pool is initialized at that price, but if the pool already
      *         exists Fountain proceeds with whatever spot price it finds.

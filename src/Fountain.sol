@@ -42,11 +42,10 @@ interface IFountainActions {
  *         or native ETH) by seating multiple permanent, single-sided V4
  *         positions against a quote currency (ERC-20 or native ETH).
  *         Callers partition a price range with an ascending array of
- *         V4-native ticks (matching
- *         Unispring and Mimicoinage) and assign a token amount to each
- *         segment; Fountain flips and negates into V4-native tick ranges
- *         when the token sorts above the quote (forcing it into
- *         `currency1`), then seats every segment in a single unlock.
+ *         V4-native ticks and assign a token amount to each segment;
+ *         Fountain flips and negates into V4-native tick ranges when
+ *         the token sorts above the quote (forcing it into `currency1`),
+ *         then seats every segment in a single unlock.
  * @dev    Bitsy factory: the prototype is permissionless and governance-free;
  *         clones are deployed per-caller via {make} and carry their own
  *         {owner} in storage. Each clone's owner is the `msg.sender` that
@@ -280,13 +279,13 @@ contract Fountain is IFountain, IFountainPoolConfig, IFountainTaker, IOwnableMak
      * @dev Seat every segment of the caller-described curve in one unlock.
      *      User segment [userTicks[i], userTicks[i+1]) with amount[i]
      *      seats a V4 position at [userTicks[i], userTicks[i+1]) when the
-     *      token is currency0 (identity mapping; matches Unispring and
-     *      Mimicoinage), or at [-userTicks[i+1], -userTicks[i]) when the
-     *      token is currency1 (flipping under V4's price inversion). Net
-     *      token debit is accumulated across positions and settled
-     *      against the PoolManager once at the end. The non-token side of
-     *      each position has zero delta (single-sided), so no settlement
-     *      is needed for the quote currency.
+     *      token is currency0 (identity mapping), or at
+     *      [-userTicks[i+1], -userTicks[i]) when the token is currency1
+     *      (flipping under V4's price inversion). Net token debit is
+     *      accumulated across positions and settled against the
+     *      PoolManager once at the end. The non-token side of each
+     *      position has zero delta (single-sided), so no settlement is
+     *      needed for the quote currency.
      */
     function _offerAll(PoolKey memory key, int24[] memory userTicks, uint256[] memory amounts, bool tokenIsCurrency0)
         private
