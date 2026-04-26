@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {Fountain, Position} from "../src/Fountain.sol";
+import {Fountain} from "../src/Fountain.sol";
 import {IFountain} from "../src/IFountain.sol";
+import {IFountainTaker, Position} from "../src/IFountainTaker.sol";
 import {ForkBase} from "./ForkBase.t.sol";
 import {Funder} from "./Funder.sol";
 import {SwapRouter} from "./SwapRouter.sol";
@@ -434,7 +435,7 @@ contract FountainForkTest is ForkBase {
     function test_UntakenRevertsOnUnknownPosition() public {
         uint256[] memory ids = new uint256[](1);
         ids[0] = 99;
-        vm.expectRevert(abi.encodeWithSelector(Fountain.UnknownPosition.selector, uint256(99)));
+        vm.expectRevert(abi.encodeWithSelector(IFountainTaker.UnknownPosition.selector, uint256(99)));
         fountain.untaken(ids);
     }
 
@@ -551,7 +552,7 @@ contract FountainForkTest is ForkBase {
     }
 
     function test_TakeRevertsOnUnknownPosition() public {
-        vm.expectRevert(abi.encodeWithSelector(Fountain.UnknownPosition.selector, uint256(99)));
+        vm.expectRevert(abi.encodeWithSelector(IFountainTaker.UnknownPosition.selector, uint256(99)));
         bot.take(99);
     }
 
@@ -561,7 +562,7 @@ contract FountainForkTest is ForkBase {
         ids[0] = 0;
         ids[1] = 99;
         ids[2] = 1;
-        vm.expectRevert(abi.encodeWithSelector(Fountain.UnknownPosition.selector, uint256(99)));
+        vm.expectRevert(abi.encodeWithSelector(IFountainTaker.UnknownPosition.selector, uint256(99)));
         bot.takeBatch(ids);
     }
 

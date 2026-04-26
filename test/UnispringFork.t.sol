@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {Fountain, Position} from "../src/Fountain.sol";
+import {Fountain} from "../src/Fountain.sol";
 import {IFountain} from "../src/IFountain.sol";
+import {Position} from "../src/IFountainTaker.sol";
 import {Unispring} from "../src/Unispring.sol";
 import {ForkBase} from "./ForkBase.t.sol";
 import {Funder} from "./Funder.sol";

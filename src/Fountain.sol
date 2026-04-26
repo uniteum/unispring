@@ -6,6 +6,7 @@ import {IAddressLookup} from "ilookup/IAddressLookup.sol";
 import {IERC20} from "ierc20/IERC20.sol";
 import {IFountain} from "./IFountain.sol";
 import {IFountainPoolConfig} from "./IFountainPoolConfig.sol";
+import {IFountainTaker, Position} from "./IFountainTaker.sol";
 import {IOwnableMaker} from "./IOwnableMaker.sol";
 import {Ownable} from "ownable/Ownable.sol";
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
@@ -21,17 +22,6 @@ import {Currency} from "v4-core/types/Currency.sol";
 import {PoolId} from "v4-core/types/PoolId.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
 import {ModifyLiquidityParams} from "v4-core/types/PoolOperation.sol";
-
-/**
- * @dev Record of a single Fountain-owned liquidity position. Stored in the
- *      {Fountain.positions} registry so {Fountain.take} can reconstruct
- *      the position without re-deriving it from call inputs.
- */
-struct Position {
-    PoolKey key;
-    int24 tickLower;
-    int24 tickUpper;
-}
 
 /**
  * @dev Selector-dispatch interface for payloads passed through
@@ -80,7 +70,7 @@ interface IFountainActions {
  *         is preserved.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
-contract Fountain is IFountain, IFountainPoolConfig, IOwnableMaker, IUnlockCallback, Ownable {
+contract Fountain is IFountain, IFountainPoolConfig, IFountainTaker, IOwnableMaker, IUnlockCallback, Ownable {
     string public constant VERSION = "0.5.0";
 
     /**
@@ -115,11 +105,6 @@ contract Fountain is IFountain, IFountainPoolConfig, IOwnableMaker, IUnlockCallb
     Position[] public positions;
 
     /**
-     * @notice Emitted when {take} pulls fees for one position into Fountain.
-     */
-    event Taken(uint256 indexed positionId, PoolId indexed poolId, uint256 amount0, uint256 amount1);
-
-    /**
      * @notice Thrown when {unlockCallback} is invoked by anyone other than the PoolManager.
      */
     error InvalidUnlockCaller();
@@ -128,11 +113,6 @@ contract Fountain is IFountain, IFountainPoolConfig, IOwnableMaker, IUnlockCallb
      * @notice Thrown when {unlockCallback} receives a selector it does not handle.
      */
     error UnknownSelector(bytes4 selector);
-
-    /**
-     * @notice Thrown when {take} references a position index that does not exist.
-     */
-    error UnknownPosition(uint256 positionId);
 
     /**
      * @notice Construct the Fountain prototype. The deployer becomes the
@@ -205,8 +185,7 @@ contract Fountain is IFountain, IFountainPoolConfig, IOwnableMaker, IUnlockCallb
     }
 
     /**
-     * @notice Take accrued swap fees for a single position and forward
-     *         them to {owner}.
+     * @inheritdoc IFountainTaker
      */
     function take(uint256 positionId) external {
         uint256[] memory ids = new uint256[](1);
@@ -215,25 +194,21 @@ contract Fountain is IFountain, IFountainPoolConfig, IOwnableMaker, IUnlockCallb
     }
 
     /**
-     * @notice Take accrued swap fees for several positions in a single
-     *         unlock and forward them to {owner}. Reverts with
-     *         {UnknownPosition} if any id is out of range.
+     * @inheritdoc IFountainTaker
      */
     function take(uint256[] calldata ids) external {
         _takeMany(ids);
     }
 
     /**
-     * @notice The number of positions seated by this contract.
+     * @inheritdoc IFountainTaker
      */
     function positionsCount() external view returns (uint256) {
         return positions.length;
     }
 
     /**
-     * @notice Return a contiguous slice of {positions}. Clamps to the array
-     *         bounds: `offset` at or past the end returns an empty array;
-     *         `count` running past the end returns only the existing tail.
+     * @inheritdoc IFountainTaker
      */
     function positionsSlice(uint256 offset, uint256 count) external view returns (Position[] memory slice) {
         uint256 length = positions.length;
@@ -247,12 +222,7 @@ contract Fountain is IFountain, IFountainPoolConfig, IOwnableMaker, IUnlockCallb
     }
 
     /**
-     * @notice Return untaken swap fees owed to each referenced position.
-     *         Values match what {take} would transfer to {owner} if
-     *         called now. Amounts are ordered by each position's pool
-     *         currencies: `amounts0[i]` is for position `ids[i]`'s
-     *         `currency0`.
-     * @param  ids Position ids to query. Reverts on any out-of-range id.
+     * @inheritdoc IFountainTaker
      */
     function untaken(uint256[] calldata ids)
         external
