@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {Fountain} from "../src/Fountain.sol";
+import {Fountain, Position} from "../src/Fountain.sol";
 import {IERC20} from "ierc20/IERC20.sol";
 import {Currency} from "v4-core/types/Currency.sol";
 import {console} from "forge-std/console.sol";
@@ -30,7 +30,7 @@ contract Funder {
      *         once from test `setUp`.
      */
     function makeFountain(Fountain proto) external {
-        fountain = Fountain(proto.make(0));
+        fountain = Fountain(payable(proto.make(0)));
     }
 
     /**
@@ -50,16 +50,44 @@ contract Funder {
     }
 
     /**
-     * @notice Take a single position's fees through the Fountain.
+     * @notice Take a single position's fees through the Fountain, then
+     *         sweep both of the position's currencies into this Funder.
+     *         Take pulls fees from the PoolManager into Fountain;
+     *         withdraw routes them on to the owner.
      */
     function take(uint256 id) external {
         fountain.take(id);
+        Position memory p = fountain.positionsSlice(id, 1)[0];
+        _sweep(p.key.currency0);
+        _sweep(p.key.currency1);
     }
 
     /**
-     * @notice Batch-take several positions in one unlock.
+     * @notice Batch-take several positions in one unlock and sweep each
+     *         position's currencies into this Funder.
      */
     function takeBatch(uint256[] memory ids) external {
         fountain.take(ids);
+        for (uint256 i = 0; i < ids.length; i++) {
+            Position memory p = fountain.positionsSlice(ids[i], 1)[0];
+            _sweep(p.key.currency0);
+            _sweep(p.key.currency1);
+        }
+    }
+
+    /**
+     * @notice Withdraw `amount` of `currency` from Fountain to this Funder.
+     *         Thin pass-through for tests that drive withdraw directly.
+     */
+    function withdraw(Currency currency, uint256 amount) external {
+        fountain.withdraw(currency, amount, address(this));
+    }
+
+    receive() external payable {}
+
+    function _sweep(Currency c) private {
+        uint256 bal =
+            c.isAddressZero() ? address(fountain).balance : IERC20(Currency.unwrap(c)).balanceOf(address(fountain));
+        if (bal > 0) fountain.withdraw(c, bal, address(this));
     }
 }

@@ -15,6 +15,7 @@ import {IUnlockCallback} from "v4-core/interfaces/callback/IUnlockCallback.sol";
 import {FixedPoint128} from "v4-core/libraries/FixedPoint128.sol";
 import {FixedPoint96} from "v4-core/libraries/FixedPoint96.sol";
 import {FullMath} from "v4-core/libraries/FullMath.sol";
+import {SqrtPriceMath} from "v4-core/libraries/SqrtPriceMath.sol";
 import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
 import {TickMath} from "v4-core/libraries/TickMath.sol";
 import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
@@ -51,8 +52,15 @@ interface IFountainActions {
  *         {owner} in storage. Each clone's owner is the `msg.sender` that
  *         called {make}; one clone exists per `(owner, variant)` pair.
  * @dev    Positions are permanent — no function on this contract decreases
- *         or unwinds liquidity. {take} forwards accrued swap fees to the
- *         clone's {owner}.
+ *         or unwinds liquidity. {take} pulls accrued swap fees from the
+ *         PoolManager into Fountain's own balance; the {owner} reclaims
+ *         them via {withdraw}. Holding fees in Fountain lets {offer} use
+ *         a few hundred wei of dust to nudge the starting price one
+ *         sqrt-wei interior to the first segment in the flipped (token =
+ *         currency1) case, so position 0 has nonzero active liquidity at
+ *         genesis instead of sitting at the upper-boundary L=0 dead zone.
+ *         When Fountain doesn't have enough of the quote on hand the
+ *         start falls back to the boundary.
  * @dev    Fixed pool parameters: {fee} = 100 (0.01%),
  *         {tickSpacing} = 1, no hooks. Spacing 1 gives exact tick
  *         precision for position bounds and the initial price; the
@@ -70,7 +78,7 @@ interface IFountainActions {
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
 contract Fountain is IFountain, IFountainPoolConfig, IFountainTaker, IOwnableMaker, IUnlockCallback, Ownable {
-    string public constant VERSION = "0.5.0";
+    string public constant VERSION = "0.6.0";
 
     /**
      * @inheritdoc IFountainPoolConfig
@@ -108,6 +116,11 @@ contract Fountain is IFountain, IFountainPoolConfig, IFountainTaker, IOwnableMak
     Position[] public positions;
 
     /**
+     * @notice Emitted when {owner} pulls accumulated balance out of Fountain.
+     */
+    event Withdrawn(address indexed to, Currency indexed currency, uint256 amount);
+
+    /**
      * @notice Thrown when {unlockCallback} is invoked by anyone other than the PoolManager.
      */
     error InvalidUnlockCaller();
@@ -116,6 +129,12 @@ contract Fountain is IFountain, IFountainPoolConfig, IFountainTaker, IOwnableMak
      * @notice Thrown when {unlockCallback} receives a selector it does not handle.
      */
     error UnknownSelector(bytes4 selector);
+
+    /**
+     * @notice Thrown when a native-ETH {withdraw} fails because the recipient
+     *         rejected the transfer.
+     */
+    error WithdrawFailed();
 
     /**
      * @notice Construct the Fountain prototype. The deployer becomes the
@@ -176,6 +195,9 @@ contract Fountain is IFountain, IFountainPoolConfig, IFountainTaker, IOwnableMak
 
         (uint160 existingSqrtPriceX96,,,) = poolManager.getSlot0(poolId);
         if (existingSqrtPriceX96 == 0) {
+            if (!tokenIsCurrency0) {
+                startingSqrtPriceX96 = _maybeInteriorSqrt(key.currency0, ticks, amounts[0], startingSqrtPriceX96);
+            }
             poolManager.initialize(key, startingSqrtPriceX96);
         }
 
@@ -283,17 +305,18 @@ contract Fountain is IFountain, IFountainPoolConfig, IFountainTaker, IOwnableMak
      *      seats a V4 position at [userTicks[i], userTicks[i+1]) when the
      *      token is currency0 (identity mapping), or at
      *      [-userTicks[i+1], -userTicks[i]) when the token is currency1
-     *      (flipping under V4's price inversion). Net token debit is
-     *      accumulated across positions and settled against the
-     *      PoolManager once at the end. The non-token side of each
-     *      position has zero delta (single-sided), so no settlement is
-     *      needed for the quote currency.
+     *      (flipping under V4's price inversion). Net debits on both
+     *      currencies are accumulated across positions and settled at
+     *      the end. Out-of-range positions have zero delta on one side;
+     *      the in-range starting segment may have a small delta on both
+     *      sides (the interior-shift bootstrap path).
      */
     function _offerAll(PoolKey memory key, int24[] memory userTicks, uint256[] memory amounts, bool tokenIsCurrency0)
         private
     {
         uint256 n = amounts.length;
-        int256 totalOwed;
+        int256 totalOwed0;
+        int256 totalOwed1;
         for (uint256 i = 0; i < n; i++) {
             int24 tickLower;
             int24 tickUpper;
@@ -322,29 +345,69 @@ contract Fountain is IFountain, IFountainPoolConfig, IFountainTaker, IOwnableMak
                 ""
             );
 
-            int128 amount = tokenIsCurrency0 ? delta.amount0() : delta.amount1();
-            totalOwed += int256(amount);
+            totalOwed0 += int256(delta.amount0());
+            totalOwed1 += int256(delta.amount1());
 
             positions.push(Position({key: key, tickLower: tickLower, tickUpper: tickUpper}));
         }
 
-        // Total owed is non-positive across single-sided positions; negation is within uint256 range.
+        _settleOwed(key.currency0, totalOwed0);
+        _settleOwed(key.currency1, totalOwed1);
+    }
+
+    /**
+     * @dev Settle a non-positive owed amount against the PoolManager. If
+     *      Fountain's balance can't cover it, skip — V4 will revert with
+     *      {IPoolManager.CurrencyNotSettled} at unlock close, preserving
+     *      the original error surface for genuinely-underfunded offers.
+     */
+    function _settleOwed(Currency currency, int256 owedSigned) private {
+        if (owedSigned >= 0) return;
         // forge-lint: disable-next-line(unsafe-typecast)
-        uint256 owed = uint256(-totalOwed);
-        Currency currency = tokenIsCurrency0 ? key.currency0 : key.currency1;
-        poolManager.sync(currency);
+        uint256 owed = uint256(-owedSigned);
         if (currency.isAddressZero()) {
+            if (address(this).balance < owed) return;
+            poolManager.sync(currency);
             poolManager.settle{value: owed}();
         } else {
+            IERC20 erc = IERC20(Currency.unwrap(currency));
+            if (erc.balanceOf(address(this)) < owed) return;
+            poolManager.sync(currency);
             // forge-lint: disable-next-line(erc20-unchecked-transfer)
-            IERC20(Currency.unwrap(currency)).transfer(address(poolManager), owed);
+            erc.transfer(address(poolManager), owed);
             poolManager.settle();
         }
     }
 
     /**
+     * @dev In the flipped case, the boundary starting tick puts position 0
+     *      at its upper edge — out-of-range, active liquidity zero, quoter
+     *      dead zone. Shifting `startingSqrtPriceX96` down by a single
+     *      sqrt-wei pushes it interior so position 0 contributes its `L`
+     *      to active liquidity at genesis. The shift requires a few hundred
+     *      wei of `quote` (currency0) to settle position 0's mixed deposit;
+     *      use it iff Fountain holds enough, else fall back to the boundary.
+     */
+    function _maybeInteriorSqrt(Currency quote, int24[] calldata ticks, uint256 firstAmount, uint160 boundarySqrt)
+        private
+        view
+        returns (uint160)
+    {
+        if (boundarySqrt == 0) return boundarySqrt;
+        uint160 sqrtLower = TickMath.getSqrtPriceAtTick(-ticks[1]);
+        uint128 firstL = _liquidity1(sqrtLower, boundarySqrt, firstAmount);
+        if (firstL == 0) return boundarySqrt;
+        uint160 interiorSqrt = boundarySqrt - 1;
+        uint256 dustRequired = SqrtPriceMath.getAmount0Delta(interiorSqrt, boundarySqrt, firstL, true);
+        uint256 available =
+            quote.isAddressZero() ? address(this).balance : IERC20(Currency.unwrap(quote)).balanceOf(address(this));
+        return available >= dustRequired ? interiorSqrt : boundarySqrt;
+    }
+
+    /**
      * @dev Take fees from one Fountain-owned position via a zero-delta
-     *      modifyLiquidity and forward them to {owner}.
+     *      modifyLiquidity and pull them into Fountain's own balance.
+     *      {owner} reclaims accumulated balance via {withdraw}.
      */
     function _take(uint256 id, PoolKey memory key, int24 tickLower, int24 tickUpper) private {
         (, BalanceDelta feesAccrued) = poolManager.modifyLiquidity(
@@ -358,11 +421,37 @@ contract Fountain is IFountain, IFountainPoolConfig, IFountainTaker, IOwnableMak
         uint256 amount0 = fee0 > 0 ? uint256(uint128(fee0)) : 0;
         // forge-lint: disable-next-line(unsafe-typecast)
         uint256 amount1 = fee1 > 0 ? uint256(uint128(fee1)) : 0;
-        address recipient = owner();
-        if (amount0 > 0) poolManager.take(key.currency0, recipient, amount0);
-        if (amount1 > 0) poolManager.take(key.currency1, recipient, amount1);
+        if (amount0 > 0) poolManager.take(key.currency0, address(this), amount0);
+        if (amount1 > 0) poolManager.take(key.currency1, address(this), amount1);
         emit Taken(id, key.toId(), amount0, amount1);
     }
+
+    /**
+     * @notice Send `amount` of `currency` from Fountain's balance to `to`.
+     *         Lets {owner} reclaim fees collected by {take} and any prefund
+     *         the deployer dropped in to seed flipped-case bootstraps.
+     * @dev    Owner-only. Reverts with {WithdrawFailed} if a native-ETH
+     *         transfer is rejected by `to`. ERC-20 transfer failure
+     *         surfaces the token's own revert.
+     */
+    function withdraw(Currency currency, uint256 amount, address to) external onlyOwner {
+        if (currency.isAddressZero()) {
+            (bool ok,) = to.call{value: amount}("");
+            if (!ok) revert WithdrawFailed();
+        } else {
+            // forge-lint: disable-next-line(erc20-unchecked-transfer)
+            IERC20(Currency.unwrap(currency)).transfer(to, amount);
+        }
+        emit Withdrawn(to, currency, amount);
+    }
+
+    /**
+     * @notice Accept native ETH. Required so {take} can route ETH-side fees
+     *         from the PoolManager into Fountain's balance, and so the
+     *         deployer can prefund flipped-case ETH bootstraps with a
+     *         plain transfer.
+     */
+    receive() external payable {}
 
     /**
      * @dev Compute untaken fees for a Fountain-owned position. Mirrors
@@ -429,7 +518,7 @@ contract Fountain is IFountain, IFountainPoolConfig, IFountainTaker, IOwnableMak
         instance = home;
         if (!exists) {
             Clones.cloneDeterministic(address(proto), salt, 0);
-            Fountain(home).zzInit(msg.sender);
+            Fountain(payable(home)).zzInit(msg.sender);
             emit Made(msg.sender, variant, home);
         }
     }

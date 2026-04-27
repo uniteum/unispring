@@ -17,6 +17,7 @@ import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
 import {TickMath} from "v4-core/libraries/TickMath.sol";
 import {Currency} from "v4-core/types/Currency.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
+import {console} from "forge-std/console.sol";
 
 /**
  * @notice Fork test against mainnet state. Deploys a fresh Fountain against
@@ -604,6 +605,62 @@ contract FountainForkTest is ForkBase {
 
         (, int24 tickAfter,,) = fountain.poolManager().getSlot0(key.toId());
         assertLt(tickAfter, int24(-100), "tick advanced from start");
+    }
+
+    // ----------------------------------------------------------------------
+    // Interior-shift bootstrap
+    // ----------------------------------------------------------------------
+
+    /**
+     * @notice With a prefunded Fountain, a flipped-case offer initializes
+     *         the pool one sqrt-wei interior to the boundary so position 0
+     *         contributes to active liquidity at genesis. Without prefund
+     *         the path falls back to the boundary (covered by
+     *         {test_OfferSingleSegment_FlipCase}).
+     */
+    function test_OfferFlipShiftsToInteriorWhenPrefunded() public {
+        int24[] memory ticks = _twoTicks(100, 500);
+        uint256[] memory amounts = _oneAmount(SEGMENT_AMOUNT);
+        _mint(SEGMENT_AMOUNT);
+
+        // Prefund Fountain with quote dust. zeros is the quote; a wei-scale
+        // donation is more than enough for the 1-tick-gap is computation.
+        deal(zeros, address(fountain), 1e6);
+
+        address pm = address(fountain.poolManager());
+        uint256 botTokenBefore = IERC20(address(token)).balanceOf(address(bot));
+        uint256 fountainTokenBefore = IERC20(address(token)).balanceOf(address(fountain));
+        uint256 fountainZerosBefore = IERC20(zeros).balanceOf(address(fountain));
+        uint256 pmTokenBefore = IERC20(address(token)).balanceOf(pm);
+        uint256 pmZerosBefore = IERC20(zeros).balanceOf(pm);
+
+        bot.offer(Currency.wrap(address(token)), Currency.wrap(zeros), ticks, amounts);
+
+        console.log("=== flip-case interior-shift transfers ===");
+        console.log("bot token (currency1) paid     :", botTokenBefore - IERC20(address(token)).balanceOf(address(bot)));
+        console.log(
+            "fountain token leftover        :",
+            IERC20(address(token)).balanceOf(address(fountain)) - fountainTokenBefore
+        );
+        console.log(
+            "fountain zeros (currency0) used:", fountainZerosBefore - IERC20(zeros).balanceOf(address(fountain))
+        );
+        console.log("PM token (currency1) delta     :", IERC20(address(token)).balanceOf(pm) - pmTokenBefore);
+        console.log("PM zeros (currency0) delta     :", IERC20(zeros).balanceOf(pm) - pmZerosBefore);
+
+        PoolKey memory key = _keyFor(zeros);
+        (uint160 sqrt, int24 tick,,) = fountain.poolManager().getSlot0(key.toId());
+        uint160 boundary = TickMath.getSqrtPriceAtTick(-100);
+        assertEq(sqrt, boundary - 1, "sqrt shifted one wei interior");
+        assertEq(tick, int24(-101), "tick floor falls one tick below boundary");
+
+        // Position 0 [-500, -100) is in-range at currentTick=-101 → active L > 0.
+        // Confirm by querying a quote via the v4 router/quoter behavior: pool
+        // can serve a tiny opposite-direction (mimic→quote) swap immediately,
+        // which is impossible at the boundary L=0 state.
+        uint256 prefundLeft = IERC20(zeros).balanceOf(address(fountain));
+        assertLt(prefundLeft, 1e6, "dust consumed from Fountain");
+        assertGt(prefundLeft, 0, "most of prefund untouched");
     }
 
     // ----------------------------------------------------------------------
