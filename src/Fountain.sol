@@ -8,6 +8,7 @@ import {IPlacer} from "./IPlacer.sol";
 import {IPoolConfig} from "./IPoolConfig.sol";
 import {IFeeTaker, Position} from "./IFeeTaker.sol";
 import {IOwnableMaker} from "./IOwnableMaker.sol";
+import {IWithdrawer} from "./IWithdrawer.sol";
 import {Ownable} from "ownable/Ownable.sol";
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
@@ -64,7 +65,7 @@ import {ModifyLiquidityParams} from "v4-core/types/PoolOperation.sol";
  *         is preserved.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
-contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IUnlockCallback, Ownable {
+contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer, IUnlockCallback, Ownable {
     string public constant version = "0.7.0";
 
     /**
@@ -95,11 +96,6 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IUnlockCall
      *         {positionsCount} and {positionsSlice} for bulk reads.
      */
     Position[] public positions;
-
-    /**
-     * @notice Emitted when {owner} pulls accumulated balance out of Fountain.
-     */
-    event Withdrawn(Currency indexed currency, uint256 amount);
 
     /**
      * @notice Thrown when {unlockCallback} is invoked by anyone other than the PoolManager.
@@ -408,12 +404,11 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IUnlockCall
     }
 
     /**
-     * @notice Send `amount` of `currency` from Fountain's balance to {owner}.
-     *         Lets {owner} reclaim fees collected by {take} and any prefund
-     *         the deployer dropped in to seed flipped-case bootstraps.
-     * @dev    Owner-only. Native-ETH transfer failure bubbles the owner's
-     *         revert data; ERC-20 transfer failure surfaces the token's own
-     *         revert.
+     * @inheritdoc IWithdrawer
+     * @dev Lets {owner} reclaim fees collected by {take} and any prefund
+     *      the deployer dropped in to seed flipped-case bootstraps.
+     *      Native-ETH transfer failure bubbles the owner's revert data;
+     *      ERC-20 transfer failure surfaces the token's own revert.
      */
     function withdraw(Currency currency, uint256 amount) external onlyOwner {
         address to = owner();
