@@ -82,8 +82,7 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IUnlockCall
     int24 public constant tickSpacing = 1;
 
     /**
-     * @notice The prototype instance. On clones, this points back to the
-     *         original deployment.
+     * @notice The prototype instance; on clones, points to the original.
      */
     // forge-lint: disable-next-line(screaming-snake-case-immutable)
     Fountain public immutable proto = this;
