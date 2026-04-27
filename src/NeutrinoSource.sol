@@ -24,7 +24,8 @@ import {Unispring} from "./Unispring.sol";
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
 contract NeutrinoSource {
-    string public constant VERSION = "0.1.0";
+    // forge-lint: disable-next-line(screaming-snake-case-const)
+    string public constant version = "0.7.0";
 
     /**
      * @notice The prototype instance that acts as the Bitsy factory.
