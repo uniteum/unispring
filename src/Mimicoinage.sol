@@ -36,7 +36,7 @@ contract Mimicoinage {
      *         and the original's total supply; native ETH mimics (no
      *         on-chain `totalSupply` to mirror) always use this value.
      */
-    uint128 public constant MAX_SUPPLY = 10 ** 27;
+    uint128 public constant maxSupply = 10 ** 27;
 
     /**
      * @notice The Fountain that holds each mimic's single-tick position
@@ -144,17 +144,17 @@ contract Mimicoinage {
     /**
      * @dev Resolve the decimals and supply used to mint a mimic of
      *      `original`. ERC-20 originals contribute their decimals 1:1
-     *      and the lesser of `original.totalSupply()` and {MAX_SUPPLY} —
-     *      capping at {MAX_SUPPLY} so an oversized original cannot overflow
+     *      and the lesser of `original.totalSupply()` and {maxSupply} —
+     *      capping at {maxSupply} so an oversized original cannot overflow
      *      `maxLiquidityPerTick` when its mimic is seated single-sided
      *      in a one-tick range. Native ETH (`address(0)`) has no on-chain
      *      metadata, so the mimic uses 18 decimals (the conventional
-     *      human-unit semantics) and {MAX_SUPPLY}.
+     *      human-unit semantics) and {maxSupply}.
      */
     function _mimicMetadata(Currency original) private view returns (uint8 decimals, uint256 supply) {
-        if (original.isAddressZero()) return (18, MAX_SUPPLY);
+        if (original.isAddressZero()) return (18, maxSupply);
         IERC20Metadata erc = IERC20Metadata(Currency.unwrap(original));
         uint256 originalSupply = erc.totalSupply();
-        return (erc.decimals(), originalSupply < MAX_SUPPLY ? originalSupply : MAX_SUPPLY);
+        return (erc.decimals(), originalSupply < maxSupply ? originalSupply : maxSupply);
     }
 }
