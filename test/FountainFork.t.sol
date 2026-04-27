@@ -6,6 +6,7 @@ import {IPlacer} from "../src/IPlacer.sol";
 import {IFeeTaker, Position} from "../src/IFeeTaker.sol";
 import {ForkBase} from "./ForkBase.t.sol";
 import {Funder} from "./Funder.sol";
+import {RevertingRecipient} from "./RevertingRecipient.sol";
 import {SwapRouter} from "./SwapRouter.sol";
 import {TestToken} from "./TestToken.sol";
 import {Trader} from "./Trader.sol";
@@ -615,6 +616,22 @@ contract FountainForkTest is ForkBase {
         uint256 prefundLeft = IERC20(zeros).balanceOf(address(fountain));
         assertLt(prefundLeft, 1e6, "dust consumed from Fountain");
         assertGt(prefundLeft, 0, "most of prefund untouched");
+    }
+
+    // ----------------------------------------------------------------------
+    // Withdraw
+    // ----------------------------------------------------------------------
+
+    /**
+     * @notice A native-ETH withdraw to a recipient that rejects ETH must
+     *         bubble the recipient's own revert data verbatim, rather than
+     *         hiding it behind a generic Fountain-level error.
+     */
+    function test_WithdrawNativeBubblesRecipientRevert() public {
+        deal(address(fountain), 1 ether);
+        RevertingRecipient sink = new RevertingRecipient();
+        vm.expectRevert(abi.encodeWithSelector(RevertingRecipient.Nope.selector, "nope"));
+        bot.withdrawTo(Currency.wrap(address(0)), 1 ether, address(sink));
     }
 
     // ----------------------------------------------------------------------

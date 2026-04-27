@@ -82,6 +82,15 @@ contract Funder {
         fountain.withdraw(currency, amount, address(this));
     }
 
+    /**
+     * @notice Withdraw `amount` of `currency` from Fountain to a specified
+     *         recipient. Thin pass-through for tests that need to target a
+     *         non-Funder address (e.g. a rejecting recipient).
+     */
+    function withdrawTo(Currency currency, uint256 amount, address to) external {
+        fountain.withdraw(currency, amount, to);
+    }
+
     receive() external payable {}
 
     function _sweep(Currency c) private {
