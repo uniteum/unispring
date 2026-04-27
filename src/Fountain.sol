@@ -208,121 +208,6 @@ contract Fountain is IFountain, IFountainPoolConfig, IFountainTaker, IOwnableMak
     }
 
     /**
-     * @inheritdoc IFountainTaker
-     */
-    function positionsCount() external view returns (uint256) {
-        return positions.length;
-    }
-
-    /**
-     * @inheritdoc IFountainTaker
-     */
-    function positionsSlice(uint256 offset, uint256 count) external view returns (Position[] memory slice) {
-        uint256 length = positions.length;
-        if (offset >= length) return new Position[](0);
-        uint256 end = offset + count;
-        if (end > length) end = length;
-        slice = new Position[](end - offset);
-        for (uint256 i = 0; i < slice.length; i++) {
-            slice[i] = positions[offset + i];
-        }
-    }
-
-    /**
-     * @inheritdoc IFountainTaker
-     */
-    function untaken(uint256[] calldata ids)
-        external
-        view
-        returns (uint256[] memory amounts0, uint256[] memory amounts1)
-    {
-        amounts0 = new uint256[](ids.length);
-        amounts1 = new uint256[](ids.length);
-        uint256 length = positions.length;
-        for (uint256 i = 0; i < ids.length; i++) {
-            if (ids[i] >= length) revert UnknownPosition(ids[i]);
-            Position storage p = positions[ids[i]];
-            (amounts0[i], amounts1[i]) = _untaken(p.key, p.tickLower, p.tickUpper);
-        }
-    }
-
-    /**
-     * @inheritdoc IFountainTaker
-     */
-    function take(uint256 positionId) external {
-        uint256[] memory ids = new uint256[](1);
-        ids[0] = positionId;
-        _takeMany(ids);
-    }
-
-    /**
-     * @inheritdoc IFountainTaker
-     */
-    function take(uint256[] calldata ids) external {
-        _takeMany(ids);
-    }
-
-    /**
-     * @dev Validate ids against the registry and dispatch a single unlock
-     *      that takes all of them.
-     */
-    function _takeMany(uint256[] memory ids) private {
-        if (ids.length == 0) return;
-        uint256 length = positions.length;
-        for (uint256 i = 0; i < ids.length; i++) {
-            if (ids[i] >= length) revert UnknownPosition(ids[i]);
-        }
-        poolManager.unlock(abi.encodeCall(IFountainActions.take, (ids)));
-    }
-
-    /**
-     * @dev Take fees from one Fountain-owned position via a zero-delta
-     *      modifyLiquidity and pull them into Fountain's own balance.
-     *      {owner} reclaims accumulated balance via {withdraw}.
-     *      Precondition: PoolManager unlocked to this contract.
-     */
-    function _takeUnlocked(uint256 id, PoolKey memory key, int24 tickLower, int24 tickUpper) private {
-        (, BalanceDelta feesAccrued) = poolManager.modifyLiquidity(
-            key,
-            ModifyLiquidityParams({tickLower: tickLower, tickUpper: tickUpper, liquidityDelta: 0, salt: bytes32(0)}),
-            ""
-        );
-        int128 fee0 = feesAccrued.amount0();
-        int128 fee1 = feesAccrued.amount1();
-        // forge-lint: disable-next-line(unsafe-typecast)
-        uint256 amount0 = fee0 > 0 ? uint256(uint128(fee0)) : 0;
-        // forge-lint: disable-next-line(unsafe-typecast)
-        uint256 amount1 = fee1 > 0 ? uint256(uint128(fee1)) : 0;
-        if (amount0 > 0) poolManager.take(key.currency0, address(this), amount0);
-        if (amount1 > 0) poolManager.take(key.currency1, address(this), amount1);
-        emit Taken(id, key.toId(), amount0, amount1);
-    }
-
-    /**
-     * @inheritdoc IUnlockCallback
-     * @dev Selector-dispatches on {IFountainActions}: either seats a batch
-     *      of positions or iterates a batch of ids for fee take.
-     */
-    function unlockCallback(bytes calldata data) external returns (bytes memory) {
-        if (msg.sender != address(poolManager)) revert InvalidUnlockCaller();
-        bytes4 selector = bytes4(data[:4]);
-        if (selector == IFountainActions.offer.selector) {
-            (PoolKey memory key, int24[] memory userTicks, uint256[] memory amounts, bool tokenIsCurrency0) =
-                abi.decode(data[4:], (PoolKey, int24[], uint256[], bool));
-            _offerUnlocked(key, userTicks, amounts, tokenIsCurrency0);
-        } else if (selector == IFountainActions.take.selector) {
-            uint256[] memory ids = abi.decode(data[4:], (uint256[]));
-            for (uint256 i = 0; i < ids.length; i++) {
-                Position storage p = positions[ids[i]];
-                _takeUnlocked(ids[i], p.key, p.tickLower, p.tickUpper);
-            }
-        } else {
-            revert UnknownSelector(selector);
-        }
-        return "";
-    }
-
-    /**
      * @dev Seat every segment of the caller-described curve in one unlock.
      *      User segment [userTicks[i], userTicks[i+1]) with amount[i]
      *      seats a V4 position at [userTicks[i], userTicks[i+1]) when the
@@ -433,6 +318,141 @@ contract Fountain is IFountain, IFountainPoolConfig, IFountainTaker, IOwnableMak
     }
 
     /**
+     * @inheritdoc IFountainTaker
+     */
+    function positionsCount() external view returns (uint256) {
+        return positions.length;
+    }
+
+    /**
+     * @inheritdoc IFountainTaker
+     */
+    function positionsSlice(uint256 offset, uint256 count) external view returns (Position[] memory slice) {
+        uint256 length = positions.length;
+        if (offset >= length) return new Position[](0);
+        uint256 end = offset + count;
+        if (end > length) end = length;
+        slice = new Position[](end - offset);
+        for (uint256 i = 0; i < slice.length; i++) {
+            slice[i] = positions[offset + i];
+        }
+    }
+
+    /**
+     * @inheritdoc IFountainTaker
+     */
+    function untaken(uint256[] calldata ids)
+        external
+        view
+        returns (uint256[] memory amounts0, uint256[] memory amounts1)
+    {
+        amounts0 = new uint256[](ids.length);
+        amounts1 = new uint256[](ids.length);
+        uint256 length = positions.length;
+        for (uint256 i = 0; i < ids.length; i++) {
+            if (ids[i] >= length) revert UnknownPosition(ids[i]);
+            Position storage p = positions[ids[i]];
+            (amounts0[i], amounts1[i]) = _untaken(p.key, p.tickLower, p.tickUpper);
+        }
+    }
+
+    /**
+     * @dev Compute untaken fees for a Fountain-owned position. Mirrors
+     *      Uniswap's feeGrowthInside delta formula and uses unchecked
+     *      subtraction to handle X128 wraparound.
+     */
+    function _untaken(PoolKey memory key, int24 tickLower, int24 tickUpper)
+        private
+        view
+        returns (uint256 amount0, uint256 amount1)
+    {
+        PoolId poolId = key.toId();
+        (uint128 liquidity, uint256 growth0Last, uint256 growth1Last) =
+            poolManager.getPositionInfo(poolId, address(this), tickLower, tickUpper, bytes32(0));
+        (uint256 growth0Now, uint256 growth1Now) = poolManager.getFeeGrowthInside(poolId, tickLower, tickUpper);
+        unchecked {
+            amount0 = FullMath.mulDiv(growth0Now - growth0Last, liquidity, FixedPoint128.Q128);
+            amount1 = FullMath.mulDiv(growth1Now - growth1Last, liquidity, FixedPoint128.Q128);
+        }
+    }
+
+    /**
+     * @inheritdoc IFountainTaker
+     */
+    function take(uint256 positionId) external {
+        uint256[] memory ids = new uint256[](1);
+        ids[0] = positionId;
+        _takeMany(ids);
+    }
+
+    /**
+     * @inheritdoc IFountainTaker
+     */
+    function take(uint256[] calldata ids) external {
+        _takeMany(ids);
+    }
+
+    /**
+     * @dev Validate ids against the registry and dispatch a single unlock
+     *      that takes all of them.
+     */
+    function _takeMany(uint256[] memory ids) private {
+        if (ids.length == 0) return;
+        uint256 length = positions.length;
+        for (uint256 i = 0; i < ids.length; i++) {
+            if (ids[i] >= length) revert UnknownPosition(ids[i]);
+        }
+        poolManager.unlock(abi.encodeCall(IFountainActions.take, (ids)));
+    }
+
+    /**
+     * @dev Take fees from one Fountain-owned position via a zero-delta
+     *      modifyLiquidity and pull them into Fountain's own balance.
+     *      {owner} reclaims accumulated balance via {withdraw}.
+     *      Precondition: PoolManager unlocked to this contract.
+     */
+    function _takeUnlocked(uint256 id, PoolKey memory key, int24 tickLower, int24 tickUpper) private {
+        (, BalanceDelta feesAccrued) = poolManager.modifyLiquidity(
+            key,
+            ModifyLiquidityParams({tickLower: tickLower, tickUpper: tickUpper, liquidityDelta: 0, salt: bytes32(0)}),
+            ""
+        );
+        int128 fee0 = feesAccrued.amount0();
+        int128 fee1 = feesAccrued.amount1();
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 amount0 = fee0 > 0 ? uint256(uint128(fee0)) : 0;
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 amount1 = fee1 > 0 ? uint256(uint128(fee1)) : 0;
+        if (amount0 > 0) poolManager.take(key.currency0, address(this), amount0);
+        if (amount1 > 0) poolManager.take(key.currency1, address(this), amount1);
+        emit Taken(id, key.toId(), amount0, amount1);
+    }
+
+    /**
+     * @inheritdoc IUnlockCallback
+     * @dev Selector-dispatches on {IFountainActions}: either seats a batch
+     *      of positions or iterates a batch of ids for fee take.
+     */
+    function unlockCallback(bytes calldata data) external returns (bytes memory) {
+        if (msg.sender != address(poolManager)) revert InvalidUnlockCaller();
+        bytes4 selector = bytes4(data[:4]);
+        if (selector == IFountainActions.offer.selector) {
+            (PoolKey memory key, int24[] memory userTicks, uint256[] memory amounts, bool tokenIsCurrency0) =
+                abi.decode(data[4:], (PoolKey, int24[], uint256[], bool));
+            _offerUnlocked(key, userTicks, amounts, tokenIsCurrency0);
+        } else if (selector == IFountainActions.take.selector) {
+            uint256[] memory ids = abi.decode(data[4:], (uint256[]));
+            for (uint256 i = 0; i < ids.length; i++) {
+                Position storage p = positions[ids[i]];
+                _takeUnlocked(ids[i], p.key, p.tickLower, p.tickUpper);
+            }
+        } else {
+            revert UnknownSelector(selector);
+        }
+        return "";
+    }
+
+    /**
      * @notice Send `amount` of `currency` from Fountain's balance to `to`.
      *         Lets {owner} reclaim fees collected by {take} and any prefund
      *         the deployer dropped in to seed flipped-case bootstraps.
@@ -458,26 +478,6 @@ contract Fountain is IFountain, IFountainPoolConfig, IFountainTaker, IOwnableMak
      *         plain transfer.
      */
     receive() external payable {}
-
-    /**
-     * @dev Compute untaken fees for a Fountain-owned position. Mirrors
-     *      Uniswap's feeGrowthInside delta formula and uses unchecked
-     *      subtraction to handle X128 wraparound.
-     */
-    function _untaken(PoolKey memory key, int24 tickLower, int24 tickUpper)
-        private
-        view
-        returns (uint256 amount0, uint256 amount1)
-    {
-        PoolId poolId = key.toId();
-        (uint128 liquidity, uint256 growth0Last, uint256 growth1Last) =
-            poolManager.getPositionInfo(poolId, address(this), tickLower, tickUpper, bytes32(0));
-        (uint256 growth0Now, uint256 growth1Now) = poolManager.getFeeGrowthInside(poolId, tickLower, tickUpper);
-        unchecked {
-            amount0 = FullMath.mulDiv(growth0Now - growth0Last, liquidity, FixedPoint128.Q128);
-            amount1 = FullMath.mulDiv(growth1Now - growth1Last, liquidity, FixedPoint128.Q128);
-        }
-    }
 
     /**
      * @dev Liquidity for a single-sided position in currency0.
