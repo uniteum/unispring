@@ -85,8 +85,6 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IUnlockCall
 
     /**
      * @inheritdoc IPoolConfig
-     * @dev Resolved from the `IAddressLookup` supplied at construction.
-     *      Shared by the prototype and every clone.
      */
     IPoolManager public immutable poolManager;
 
