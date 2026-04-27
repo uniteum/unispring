@@ -65,11 +65,6 @@ interface IFeeTaker {
         returns (uint256[] memory amounts0, uint256[] memory amounts1);
 
     /**
-     * @notice Take accrued swap fees for a single position.
-     */
-    function take(uint256 positionId) external;
-
-    /**
      * @notice Take accrued swap fees for several positions in a single
      *         unlock. Reverts with {UnknownPosition} if any id is out
      *         of range.

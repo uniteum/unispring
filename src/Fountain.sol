@@ -380,24 +380,7 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IUnlockCall
     /**
      * @inheritdoc IFeeTaker
      */
-    function take(uint256 positionId) external {
-        uint256[] memory ids = new uint256[](1);
-        ids[0] = positionId;
-        _takeMany(ids);
-    }
-
-    /**
-     * @inheritdoc IFeeTaker
-     */
     function take(uint256[] calldata ids) external {
-        _takeMany(ids);
-    }
-
-    /**
-     * @dev Validate ids against the registry and dispatch a single unlock
-     *      that takes all of them.
-     */
-    function _takeMany(uint256[] memory ids) private {
         if (ids.length == 0) return;
         uint256 length = positions.length;
         for (uint256 i = 0; i < ids.length; i++) {

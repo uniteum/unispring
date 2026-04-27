@@ -56,7 +56,9 @@ contract Funder {
      *         withdraw routes them on to the owner.
      */
     function take(uint256 id) external {
-        fountain.take(id);
+        uint256[] memory ids = new uint256[](1);
+        ids[0] = id;
+        fountain.take(ids);
         Position memory p = fountain.positionsSlice(id, 1)[0];
         _sweep(p.key.currency0);
         _sweep(p.key.currency1);
