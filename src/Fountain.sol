@@ -279,8 +279,9 @@ contract Fountain is IFountain, IFountainPoolConfig, IFountainTaker, IOwnableMak
      * @dev Take fees from one Fountain-owned position via a zero-delta
      *      modifyLiquidity and pull them into Fountain's own balance.
      *      {owner} reclaims accumulated balance via {withdraw}.
+     *      Precondition: PoolManager unlocked to this contract.
      */
-    function _take(uint256 id, PoolKey memory key, int24 tickLower, int24 tickUpper) private {
+    function _takeUnlocked(uint256 id, PoolKey memory key, int24 tickLower, int24 tickUpper) private {
         (, BalanceDelta feesAccrued) = poolManager.modifyLiquidity(
             key,
             ModifyLiquidityParams({tickLower: tickLower, tickUpper: tickUpper, liquidityDelta: 0, salt: bytes32(0)}),
@@ -308,12 +309,12 @@ contract Fountain is IFountain, IFountainPoolConfig, IFountainTaker, IOwnableMak
         if (selector == IFountainActions.offer.selector) {
             (PoolKey memory key, int24[] memory userTicks, uint256[] memory amounts, bool tokenIsCurrency0) =
                 abi.decode(data[4:], (PoolKey, int24[], uint256[], bool));
-            _offer(key, userTicks, amounts, tokenIsCurrency0);
+            _offerUnlocked(key, userTicks, amounts, tokenIsCurrency0);
         } else if (selector == IFountainActions.take.selector) {
             uint256[] memory ids = abi.decode(data[4:], (uint256[]));
             for (uint256 i = 0; i < ids.length; i++) {
                 Position storage p = positions[ids[i]];
-                _take(ids[i], p.key, p.tickLower, p.tickUpper);
+                _takeUnlocked(ids[i], p.key, p.tickLower, p.tickUpper);
             }
         } else {
             revert UnknownSelector(selector);
@@ -332,10 +333,14 @@ contract Fountain is IFountain, IFountainPoolConfig, IFountainTaker, IOwnableMak
      *      the end. Out-of-range positions have zero delta on one side;
      *      the in-range starting segment may have a small delta on both
      *      sides (the interior-shift bootstrap path).
+     *      Precondition: PoolManager unlocked to this contract.
      */
-    function _offer(PoolKey memory key, int24[] memory userTicks, uint256[] memory amounts, bool tokenIsCurrency0)
-        private
-    {
+    function _offerUnlocked(
+        PoolKey memory key,
+        int24[] memory userTicks,
+        uint256[] memory amounts,
+        bool tokenIsCurrency0
+    ) private {
         uint256 n = amounts.length;
         int256 totalOwed0;
         int256 totalOwed1;
@@ -373,8 +378,8 @@ contract Fountain is IFountain, IFountainPoolConfig, IFountainTaker, IOwnableMak
             positions.push(Position({key: key, tickLower: tickLower, tickUpper: tickUpper}));
         }
 
-        _settleOwed(key.currency0, totalOwed0);
-        _settleOwed(key.currency1, totalOwed1);
+        _settleOwedUnlocked(key.currency0, totalOwed0);
+        _settleOwedUnlocked(key.currency1, totalOwed1);
     }
 
     /**
@@ -382,8 +387,9 @@ contract Fountain is IFountain, IFountainPoolConfig, IFountainTaker, IOwnableMak
      *      Fountain's balance can't cover it, skip — V4 will revert with
      *      {IPoolManager.CurrencyNotSettled} at unlock close, preserving
      *      the original error surface for genuinely-underfunded offers.
+     *      Precondition: PoolManager unlocked to this contract.
      */
-    function _settleOwed(Currency currency, int256 owedSigned) private {
+    function _settleOwedUnlocked(Currency currency, int256 owedSigned) private {
         if (owedSigned >= 0) return;
         // forge-lint: disable-next-line(unsafe-typecast)
         uint256 owed = uint256(-owedSigned);
