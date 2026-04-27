@@ -34,19 +34,16 @@ contract Funder {
     }
 
     /**
-     * @notice Approve the Fountain for the sum of `amounts` (when `token`
-     *         is an ERC-20) and forward `msg.value` (when `token` is
-     *         native ETH), then offer.
+     * @notice Approve the Fountain for the sum of `amounts`, then offer.
+     *         `token` must be an ERC-20.
      */
-    function offer(Currency token, Currency quote, int24[] memory ticks, uint256[] memory amounts) external payable {
+    function offer(Currency token, Currency quote, int24[] memory ticks, uint256[] memory amounts) external {
         uint256 total;
         for (uint256 i = 0; i < amounts.length; i++) {
             total += amounts[i];
         }
-        if (!token.isAddressZero()) {
-            IERC20(Currency.unwrap(token)).approve(address(fountain), total);
-        }
-        fountain.offer{value: msg.value}(token, quote, ticks, amounts);
+        IERC20(Currency.unwrap(token)).approve(address(fountain), total);
+        fountain.offer(token, quote, ticks, amounts);
     }
 
     /**

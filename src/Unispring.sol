@@ -72,7 +72,6 @@ contract Unispring {
      * @param offerer   The address that called {offer}. Equals this clone's
      *                  own address on the hub-pool seed call from {zzInit}.
      * @param token     The spoke currency (or the hub, for {zzInit}).
-     *                  `Currency.wrap(address(0))` for a native-ETH spoke.
      * @param supply    The fixed supply funded into the pool.
      * @param tickLower V4-native lower tick of the funded position.
      * @param tickUpper V4-native upper tick of the funded position.
@@ -86,9 +85,7 @@ contract Unispring {
 
     /**
      * @notice Thrown when the spoke token does not sort strictly below {hub}.
-     * @dev    Only applies to ERC-20 spokes; a native-ETH spoke
-     *         (`address(0)`) always sorts below {hub}. For ERC-20 spokes,
-     *         mine a different spoke salt until the deterministic address
+     * @dev    Mine a different spoke salt until the deterministic address
      *         sorts below {hub}. See DESIGN.md §6 for why the ordering is
      *         required.
      */
@@ -167,35 +164,30 @@ contract Unispring {
      * @notice Lock `supply` of `token` into a single-sided V4 position paired
      *         against {hub} (or ETH when `token` is the hub). Permissionless —
      *         anyone can pair any currency, any number of times.
-     * @dev    Spokes must sort strictly below {hub} (become `currency0`); a
-     *         native-ETH spoke (`Currency.wrap(address(0))`) always satisfies
-     *         this. For ERC-20 spokes the caller must approve this contract
-     *         for `supply` tokens; for a native-ETH spoke the caller must
-     *         send `supply` as `msg.value`. See DESIGN.md §9 for the
-     *         permissionless + re-call semantics, §10 for the spoke-isolation
-     *         argument, and README §Patterns for common re-funding use cases.
-     * @param  token      The currency to pair. The hub itself pairs against ETH;
-     *                    any other currency pairs against {hub}.
+     * @dev    Spokes must sort strictly below {hub} (become `currency0`).
+     *         The caller must approve this contract for `supply` tokens.
+     *         See DESIGN.md §9 for the permissionless + re-call semantics,
+     *         §10 for the spoke-isolation argument, and README §Patterns
+     *         for common re-funding use cases.
+     * @param  token      The ERC-20 currency to pair. The hub itself pairs
+     *                    against ETH; any other currency pairs against {hub}.
      * @param  supply     Amount of `token` to lock. Pulled from the caller
-     *                    via `transferFrom` for ERC-20s; must arrive as
-     *                    `msg.value` for a native-ETH spoke.
+     *                    via `transferFrom`.
      * @param  tickLower V4-native lower tick; strictly below `tickUpper`.
      * @param  tickUpper V4-native upper tick.
      */
-    function offer(Currency token, uint256 supply, int24 tickLower, int24 tickUpper) external payable {
+    function offer(Currency token, uint256 supply, int24 tickLower, int24 tickUpper) external {
         if (tickLower >= tickUpper) revert TickLowerNotBelowUpper(tickLower, tickUpper);
 
         address tokenAddr = Currency.unwrap(token);
         bool isHub = tokenAddr == hub;
         if (!isHub && tokenAddr >= hub) revert SpokeMustSortBelowHub(tokenAddr);
 
-        if (!token.isAddressZero()) {
-            IERC20 erc = IERC20(tokenAddr);
-            // forge-lint: disable-next-line(erc20-unchecked-transfer)
-            erc.transferFrom(msg.sender, address(this), supply);
-            // forge-lint: disable-next-line(erc20-unchecked-transfer)
-            erc.approve(address(placer), supply);
-        }
+        IERC20 erc = IERC20(tokenAddr);
+        // forge-lint: disable-next-line(erc20-unchecked-transfer)
+        erc.transferFrom(msg.sender, address(this), supply);
+        // forge-lint: disable-next-line(erc20-unchecked-transfer)
+        erc.approve(address(placer), supply);
 
         int24[] memory ticks = new int24[](2);
         uint256[] memory amounts = new uint256[](1);
@@ -215,7 +207,7 @@ contract Unispring {
             quote = Currency.wrap(hub);
         }
 
-        placer.offer{value: msg.value}(token, quote, ticks, amounts);
+        placer.offer(token, quote, ticks, amounts);
         emit Offered(msg.sender, token, supply, tickLower, tickUpper);
     }
 }

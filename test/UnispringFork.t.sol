@@ -2,7 +2,6 @@
 pragma solidity ^0.8.30;
 
 import {Fountain} from "../src/Fountain.sol";
-import {IPlacer} from "../src/IPlacer.sol";
 import {Position} from "../src/IFeeTaker.sol";
 import {Unispring} from "../src/Unispring.sol";
 import {ForkBase} from "./ForkBase.t.sol";
@@ -132,59 +131,6 @@ contract UnispringForkTest is ForkBase {
         // Caller's spoke supply ended up in PoolManager.
         assertGt(IERC20(address(spoke)).balanceOf(address(fountain.poolManager())), 0, "spoke in PoolManager");
         assertEq(IERC20(address(spoke)).balanceOf(address(this)), 0, "caller debited fully");
-    }
-
-    /**
-     * @notice Native ETH as the spoke: caller sends `supply` as `msg.value`
-     *         and Unispring forwards through Fountain which settles via
-     *         `settle{value:}`. The spoke pool is `(ETH, hub)` — the same
-     *         currency pair as the hub's own ETH pool seated by {zzInit}, so
-     *         this lands on a pre-initialized pool and only succeeds when the
-     *         spoke's lower-edge price matches the hub pool's current price.
-     *         We pin `tickLower = HUB_TICK_UPPER` to satisfy that constraint
-     *         and verify ETH lands in the PoolManager via the native-settle
-     *         path on a fresh position id.
-     */
-    function test_OfferSeatsNativeETHSpokeAgainstHub() public {
-        Unispring clone = _makeHub();
-
-        uint256 supply = 1_000_000 ether;
-        // Spoke V4 tickLower must equal the hub pool's init tick (HUB_TICK_UPPER
-        // after the hub-side negate-and-swap maps to V4 tick HUB_TICK_UPPER).
-        int24 tickLower = HUB_TICK_UPPER;
-        int24 tickUpper = TickMath.MAX_TICK - 1;
-        vm.deal(address(this), supply);
-        uint256 pmBefore = address(fountain.poolManager()).balance;
-
-        clone.offer{value: supply}(Currency.wrap(address(0)), supply, tickLower, tickUpper);
-
-        assertEq(fountain.positionsCount(), 2, "hub + spoke");
-
-        Position memory p = _positionAt(1);
-        assertEq(Currency.unwrap(p.key.currency0), address(0), "ETH spoke is currency0");
-        assertEq(Currency.unwrap(p.key.currency1), ffffff, "hub is currency1");
-        assertEq(p.tickLower, tickLower, "V4 tickLower = user tickLower (no flip)");
-        assertEq(p.tickUpper, tickUpper, "V4 tickUpper = user tickUpper (no flip)");
-
-        uint256 pmDelta = address(fountain.poolManager()).balance - pmBefore;
-        assertGt(pmDelta, (supply * 999) / 1000, "most ETH in PoolManager");
-        assertEq(address(this).balance, 0, "caller debited fully");
-    }
-
-    /**
-     * @notice ERC-20 spoke must not receive native value — Fountain reverts
-     *         with {IPlacer.NativeValueMismatch} when forwarded a non-zero
-     *         `msg.value`.
-     */
-    function test_OfferRevertsWhenERC20SpokeSentNativeValue() public {
-        Unispring clone = _makeHub();
-        TestToken spoke = _makeToken("Spoke", "SPK", 18);
-        uint256 supply = 1 ether;
-        spoke.mint(address(this), supply);
-        spoke.approve(address(clone), supply);
-        vm.deal(address(this), 1);
-        vm.expectRevert(abi.encodeWithSelector(IPlacer.NativeValueMismatch.selector, uint256(0), uint256(1)));
-        clone.offer{value: 1}(Currency.wrap(address(spoke)), supply, -120_000, TickMath.MAX_TICK - 1);
     }
 
     // ----------------------------------------------------------------------

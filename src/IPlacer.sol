@@ -64,11 +64,11 @@ interface IPlacer {
     error LiquidityOverflow();
 
     /**
-     * @notice Thrown when `msg.value` does not match the native value
-     *         required by {offer}: `total` when `token` is native ETH,
-     *         zero when `token` is an ERC-20.
+     * @notice Thrown when {offer} is called with a native-ETH token. Only
+     *         ERC-20 tokens may seat positions; the quote side may still be
+     *         native ETH.
      */
-    error NativeValueMismatch(uint256 expected, uint256 actual);
+    error TokenIsNative();
 
     /**
      * @notice Offer `token` for sale at the ticks you set, paired against
@@ -76,13 +76,10 @@ interface IPlacer {
      *         range into N = `amounts.length` segments; `amounts[i]` seats
      *         the segment bounded by `ticks[i]` and `ticks[i + 1]`
      *         single-sided in `token`. Trading fees accrue to the
-     *         Fountain's owner. When `token` is an ERC-20 the caller must
-     *         have approved the Fountain for the sum of `amounts`; when
-     *         `token` is native ETH (`Currency.wrap(address(0))`) the
-     *         caller must send that sum as `msg.value` — this is why
-     *         `offer` is `payable`. Token-side ETH is unusual (most
-     *         callers offer the scarce token and quote in ETH or a
-     *         stablecoin).
+     *         Fountain's owner. The caller must have approved the Fountain
+     *         for the sum of `amounts`. `token` must be an ERC-20; passing
+     *         native ETH reverts with {TokenIsNative}. The quote side may
+     *         still be native ETH.
      * @dev    `ticks[0]` is the *intended* starting price: an uninitialized
      *         pool is initialized at that price, but if the pool already
      *         exists Fountain proceeds with whatever spot price it finds.
@@ -115,5 +112,5 @@ interface IPlacer {
      *                 semantics. Length N + 1 for N positions.
      * @param  amounts Per-segment token amounts. Length N, all non-zero.
      */
-    function offer(Currency token, Currency quote, int24[] calldata ticks, uint256[] calldata amounts) external payable;
+    function offer(Currency token, Currency quote, int24[] calldata ticks, uint256[] calldata amounts) external;
 }

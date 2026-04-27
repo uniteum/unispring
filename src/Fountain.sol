@@ -150,10 +150,9 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IUnlockCall
     /**
      * @inheritdoc IPlacer
      */
-    function offer(Currency token, Currency quote, int24[] calldata ticks, uint256[] calldata amounts)
-        external
-        payable
-    {
+    function offer(Currency token, Currency quote, int24[] calldata ticks, uint256[] calldata amounts) external {
+        if (token.isAddressZero()) revert TokenIsNative();
+
         uint256 n = amounts.length;
         if (n == 0) revert NoPositions();
         if (ticks.length != n + 1) revert TickAmountLengthMismatch(ticks.length, n);
@@ -172,13 +171,8 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IUnlockCall
 
         bool tokenIsCurrency0 = token < quote;
 
-        if (token.isAddressZero()) {
-            if (msg.value != total) revert NativeValueMismatch(total, msg.value);
-        } else {
-            if (msg.value != 0) revert NativeValueMismatch(0, msg.value);
-            // forge-lint: disable-next-line(erc20-unchecked-transfer)
-            IERC20(Currency.unwrap(token)).transferFrom(msg.sender, address(this), total);
-        }
+        // forge-lint: disable-next-line(erc20-unchecked-transfer)
+        IERC20(Currency.unwrap(token)).transferFrom(msg.sender, address(this), total);
 
         PoolKey memory key = PoolKey({
             currency0: tokenIsCurrency0 ? token : quote,

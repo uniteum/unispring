@@ -131,34 +131,6 @@ contract FountainForkTest is ForkBase {
         assertEq(sqrtPriceX96, TickMath.getSqrtPriceAtTick(-100), "starting price = -ticks[0]");
     }
 
-    function test_OfferSingleSegment_NativeETHAsToken() public {
-        // token = ETH (address 0) → token < quote, no flip: V4 = [ticks[0], ticks[1]).
-        // Caller sends `total` as msg.value; Fountain settles via settle{value:}.
-        int24[] memory ticks = _twoTicks(100, 500);
-        uint256[] memory amounts = _oneAmount(SEGMENT_AMOUNT);
-        vm.deal(address(this), SEGMENT_AMOUNT);
-        uint256 pmBefore = address(fountain.poolManager()).balance;
-
-        bot.offer{value: SEGMENT_AMOUNT}(Currency.wrap(address(0)), Currency.wrap(ffffff), ticks, amounts);
-
-        assertEq(fountain.positionsCount(), 1, "one position created");
-
-        Position memory p = _positionAt(0);
-        assertEq(Currency.unwrap(p.key.currency0), address(0), "ETH is currency0");
-        assertEq(Currency.unwrap(p.key.currency1), ffffff, "ffffff is currency1");
-        assertEq(p.tickLower, 100, "tickLower = ticks[0]");
-        assertEq(p.tickUpper, 500, "tickUpper = ticks[1]");
-
-        (uint160 sqrtPriceX96,,,) = fountain.poolManager().getSlot0(p.key.toId());
-        assertEq(sqrtPriceX96, TickMath.getSqrtPriceAtTick(100), "starting price = ticks[0]");
-
-        // ETH supply landed in PoolManager (modulo dust in Fountain).
-        uint256 pmDelta = address(fountain.poolManager()).balance - pmBefore;
-        uint256 inFountain = address(fountain).balance;
-        assertEq(pmDelta + inFountain, SEGMENT_AMOUNT, "ETH conserved");
-        assertGt(pmDelta, (SEGMENT_AMOUNT * 999) / 1000, "most ETH in PoolManager");
-    }
-
     function test_OfferMultiSegment_NoFlipCase() public {
         // token < ffffff → no flip; V4 ranges = user ranges.
         int24[] memory ticks = new int24[](4);
@@ -356,25 +328,11 @@ contract FountainForkTest is ForkBase {
         bot.offer(Currency.wrap(address(token)), Currency.wrap(ffffff), ticks, amounts);
     }
 
-    function test_OfferRevertsWhenNativeTokenMsgValueMismatches() public {
-        // token = native, msg.value short of `total` by 1 wei.
+    function test_OfferRevertsWhenTokenIsNative() public {
         int24[] memory ticks = _twoTicks(100, 500);
         uint256[] memory amounts = _oneAmount(SEGMENT_AMOUNT);
-        vm.deal(address(this), SEGMENT_AMOUNT);
-        vm.expectRevert(
-            abi.encodeWithSelector(IPlacer.NativeValueMismatch.selector, SEGMENT_AMOUNT, SEGMENT_AMOUNT - 1)
-        );
-        bot.offer{value: SEGMENT_AMOUNT - 1}(Currency.wrap(address(0)), Currency.wrap(ffffff), ticks, amounts);
-    }
-
-    function test_OfferRevertsWhenERC20TokenSentNativeValue() public {
-        // token = ERC-20, msg.value must be zero.
-        int24[] memory ticks = _twoTicks(100, 500);
-        uint256[] memory amounts = _oneAmount(SEGMENT_AMOUNT);
-        _mint(SEGMENT_AMOUNT);
-        vm.deal(address(this), 1);
-        vm.expectRevert(abi.encodeWithSelector(IPlacer.NativeValueMismatch.selector, uint256(0), uint256(1)));
-        bot.offer{value: 1}(Currency.wrap(address(token)), Currency.wrap(ffffff), ticks, amounts);
+        vm.expectRevert(IPlacer.TokenIsNative.selector);
+        fountain.offer(Currency.wrap(address(0)), Currency.wrap(ffffff), ticks, amounts);
     }
 
     // ----------------------------------------------------------------------
