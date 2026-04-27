@@ -119,12 +119,6 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IUnlockCall
     error UnknownSelector(bytes4 selector);
 
     /**
-     * @notice Thrown when a native-ETH {withdraw} fails because the recipient
-     *         rejected the transfer.
-     */
-    error WithdrawFailed();
-
-    /**
      * @notice Construct the Fountain prototype. The deployer becomes the
      *         prototype's owner; clones receive their own owner via
      *         {zzInit} at {make} time.
@@ -424,14 +418,18 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IUnlockCall
      * @notice Send `amount` of `currency` from Fountain's balance to `to`.
      *         Lets {owner} reclaim fees collected by {take} and any prefund
      *         the deployer dropped in to seed flipped-case bootstraps.
-     * @dev    Owner-only. Reverts with {WithdrawFailed} if a native-ETH
-     *         transfer is rejected by `to`. ERC-20 transfer failure
-     *         surfaces the token's own revert.
+     * @dev    Owner-only. Native-ETH transfer failure bubbles the recipient's
+     *         revert data; ERC-20 transfer failure surfaces the token's own
+     *         revert.
      */
     function withdraw(Currency currency, uint256 amount, address to) external onlyOwner {
         if (currency.isAddressZero()) {
-            (bool ok,) = to.call{value: amount}("");
-            if (!ok) revert WithdrawFailed();
+            (bool ok, bytes memory ret) = to.call{value: amount}("");
+            if (!ok) {
+                assembly ("memory-safe") {
+                    revert(add(ret, 0x20), mload(ret))
+                }
+            }
         } else {
             // forge-lint: disable-next-line(erc20-unchecked-transfer)
             IERC20(Currency.unwrap(currency)).transfer(to, amount);
