@@ -25,14 +25,18 @@ import {Currency} from "v4-core/types/Currency.sol";
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
 contract Mimicoinage {
-    string public constant VERSION = "0.4.0";
+    string public constant VERSION = "0.6.0";
 
     /**
-     * @notice Fixed raw supply minted for every mimic token. Sized to stay
+     * @notice Cap on the raw supply minted for any mimic. Sized to stay
      *         well below the `maxLiquidityPerTick` cap at `tickSpacing = 1`
-     *         for any reasonable decimals.
+     *         for any reasonable decimals, so a single-tick position
+     *         seating the full mimic supply cannot overflow V4's per-tick
+     *         liquidity limit. ERC-20 mimics use the lesser of this cap
+     *         and the original's total supply; native ETH mimics (no
+     *         on-chain `totalSupply` to mirror) always use this value.
      */
-    uint128 public constant SUPPLY = 10 ** 27;
+    uint128 public constant MAX_SUPPLY = 10 ** 27;
 
     /**
      * @notice The Fountain that holds each mimic's single-tick position
@@ -96,7 +100,8 @@ contract Mimicoinage {
         view
         returns (bool exists, address token)
     {
-        (exists, token,) = COINAGE.made(address(this), name, symbol, _mimicDecimals(original), SUPPLY, bytes32(0));
+        (uint8 decimals, uint256 supply) = _mimicMetadata(original);
+        (exists, token,) = COINAGE.made(address(this), name, symbol, decimals, supply, bytes32(0));
     }
 
     /**
@@ -116,19 +121,20 @@ contract Mimicoinage {
         external
         returns (IERC20Metadata token)
     {
-        token = COINAGE.make(name, symbol, _mimicDecimals(original), SUPPLY, bytes32(0));
+        (uint8 decimals, uint256 supply) = _mimicMetadata(original);
+        token = COINAGE.make(name, symbol, decimals, supply, bytes32(0));
         IERC20Metadata mimicErc = IERC20Metadata(address(token));
         originalOf[mimicErc] = original;
         isMimic[mimicErc] = true;
 
         // forge-lint: disable-next-line(erc20-unchecked-transfer)
-        mimicErc.approve(address(FOUNTAIN), SUPPLY);
+        mimicErc.approve(address(FOUNTAIN), supply);
 
         int24[] memory ticks = new int24[](2);
         ticks[0] = 0;
         ticks[1] = 1;
         uint256[] memory amounts = new uint256[](1);
-        amounts[0] = SUPPLY;
+        amounts[0] = supply;
 
         FOUNTAIN.offer(Currency.wrap(address(mimicErc)), original, ticks, amounts);
 
@@ -136,12 +142,19 @@ contract Mimicoinage {
     }
 
     /**
-     * @dev Resolve the decimals used to mint a mimic of `original`. Native
-     *      ETH (`address(0)`) has no on-chain metadata, so the mimic uses
-     *      18 decimals to match the conventional human-unit semantics.
+     * @dev Resolve the decimals and supply used to mint a mimic of
+     *      `original`. ERC-20 originals contribute their decimals 1:1
+     *      and the lesser of `original.totalSupply()` and {MAX_SUPPLY} —
+     *      capping at {MAX_SUPPLY} so an oversized original cannot overflow
+     *      `maxLiquidityPerTick` when its mimic is seated single-sided
+     *      in a one-tick range. Native ETH (`address(0)`) has no on-chain
+     *      metadata, so the mimic uses 18 decimals (the conventional
+     *      human-unit semantics) and {MAX_SUPPLY}.
      */
-    function _mimicDecimals(Currency original) private view returns (uint8) {
-        if (original.isAddressZero()) return 18;
-        return IERC20Metadata(Currency.unwrap(original)).decimals();
+    function _mimicMetadata(Currency original) private view returns (uint8 decimals, uint256 supply) {
+        if (original.isAddressZero()) return (18, MAX_SUPPLY);
+        IERC20Metadata erc = IERC20Metadata(Currency.unwrap(original));
+        uint256 originalSupply = erc.totalSupply();
+        return (erc.decimals(), originalSupply < MAX_SUPPLY ? originalSupply : MAX_SUPPLY);
     }
 }
