@@ -406,26 +406,35 @@ contract Fountain is IFountain, IFountainPoolConfig, IFountainTaker, IOwnableMak
     }
 
     /**
-     * @dev Take fees from one Fountain-owned position via a zero-delta
-     *      modifyLiquidity and pull them into Fountain's own balance.
+     * @dev Take fees from a batch of Fountain-owned positions via zero-delta
+     *      modifyLiquidity calls and pull them into Fountain's own balance.
      *      {owner} reclaims accumulated balance via {withdraw}.
      *      Precondition: PoolManager unlocked to this contract.
      */
-    function _takeUnlocked(uint256 id, PoolKey memory key, int24 tickLower, int24 tickUpper) private {
-        (, BalanceDelta feesAccrued) = poolManager.modifyLiquidity(
-            key,
-            ModifyLiquidityParams({tickLower: tickLower, tickUpper: tickUpper, liquidityDelta: 0, salt: bytes32(0)}),
-            ""
-        );
-        int128 fee0 = feesAccrued.amount0();
-        int128 fee1 = feesAccrued.amount1();
-        // forge-lint: disable-next-line(unsafe-typecast)
-        uint256 amount0 = fee0 > 0 ? uint256(uint128(fee0)) : 0;
-        // forge-lint: disable-next-line(unsafe-typecast)
-        uint256 amount1 = fee1 > 0 ? uint256(uint128(fee1)) : 0;
-        if (amount0 > 0) poolManager.take(key.currency0, address(this), amount0);
-        if (amount1 > 0) poolManager.take(key.currency1, address(this), amount1);
-        emit Taken(id, key.toId(), amount0, amount1);
+    function _takeManyUnlocked(uint256[] memory ids) private {
+        for (uint256 i = 0; i < ids.length; i++) {
+            uint256 id = ids[i];
+            Position storage p = positions[id];
+            PoolKey memory key = p.key;
+            int24 tickLower = p.tickLower;
+            int24 tickUpper = p.tickUpper;
+            (, BalanceDelta feesAccrued) = poolManager.modifyLiquidity(
+                key,
+                ModifyLiquidityParams({
+                    tickLower: tickLower, tickUpper: tickUpper, liquidityDelta: 0, salt: bytes32(0)
+                }),
+                ""
+            );
+            int128 fee0 = feesAccrued.amount0();
+            int128 fee1 = feesAccrued.amount1();
+            // forge-lint: disable-next-line(unsafe-typecast)
+            uint256 amount0 = fee0 > 0 ? uint256(uint128(fee0)) : 0;
+            // forge-lint: disable-next-line(unsafe-typecast)
+            uint256 amount1 = fee1 > 0 ? uint256(uint128(fee1)) : 0;
+            if (amount0 > 0) poolManager.take(key.currency0, address(this), amount0);
+            if (amount1 > 0) poolManager.take(key.currency1, address(this), amount1);
+            emit Taken(id, key.toId(), amount0, amount1);
+        }
     }
 
     /**
@@ -442,10 +451,7 @@ contract Fountain is IFountain, IFountainPoolConfig, IFountainTaker, IOwnableMak
             _offerUnlocked(key, userTicks, amounts, tokenIsCurrency0);
         } else if (selector == IFountainActions.take.selector) {
             uint256[] memory ids = abi.decode(data[4:], (uint256[]));
-            for (uint256 i = 0; i < ids.length; i++) {
-                Position storage p = positions[ids[i]];
-                _takeUnlocked(ids[i], p.key, p.tickLower, p.tickUpper);
-            }
+            _takeManyUnlocked(ids);
         } else {
             revert UnknownSelector(selector);
         }
