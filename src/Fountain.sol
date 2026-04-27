@@ -5,7 +5,7 @@ import {Clones} from "clones/Clones.sol";
 import {IAddressLookup} from "ilookup/IAddressLookup.sol";
 import {IERC20} from "ierc20/IERC20.sol";
 import {IPlacer} from "./IPlacer.sol";
-import {IFountainPoolConfig} from "./IFountainPoolConfig.sol";
+import {IPoolConfig} from "./IPoolConfig.sol";
 import {IFountainTaker, Position} from "./IFountainTaker.sol";
 import {IOwnableMaker} from "./IOwnableMaker.sol";
 import {Ownable} from "ownable/Ownable.sol";
@@ -77,17 +77,17 @@ interface IFountainActions {
  *         is preserved.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
-contract Fountain is IPlacer, IFountainPoolConfig, IFountainTaker, IOwnableMaker, IUnlockCallback, Ownable {
+contract Fountain is IPlacer, IPoolConfig, IFountainTaker, IOwnableMaker, IUnlockCallback, Ownable {
     string public constant VERSION = "0.6.0";
 
     /**
-     * @inheritdoc IFountainPoolConfig
+     * @inheritdoc IPoolConfig
      */
     // forge-lint: disable-next-line(screaming-snake-case-const)
     uint24 public constant fee = 100;
 
     /**
-     * @inheritdoc IFountainPoolConfig
+     * @inheritdoc IPoolConfig
      * @dev Fixed at 1 for exact tick precision.
      */
     // forge-lint: disable-next-line(screaming-snake-case-const)
@@ -101,7 +101,7 @@ contract Fountain is IPlacer, IFountainPoolConfig, IFountainTaker, IOwnableMaker
     Fountain public immutable proto = this;
 
     /**
-     * @inheritdoc IFountainPoolConfig
+     * @inheritdoc IPoolConfig
      * @dev Resolved from the `IAddressLookup` supplied at construction.
      *      Shared by the prototype and every clone.
      */

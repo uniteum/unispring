@@ -4,13 +4,13 @@ pragma solidity ^0.8.30;
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 
 /**
- * @title IFountainPoolConfig
- * @notice Read-only view of a Fountain's pool parameters — the values
- *         needed to construct a {PoolKey} or read pool state from the
+ * @title IPoolConfig
+ * @notice Read-only view of a pool's parameters — the values needed to
+ *         construct a {PoolKey} or read pool state from the
  *         {PoolManager}. Typically used by off-chain scripts.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
-interface IFountainPoolConfig {
+interface IPoolConfig {
     /**
      * @notice Pool fee in hundredths of a bip (0.01%).
      */
