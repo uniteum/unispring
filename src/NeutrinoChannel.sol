@@ -10,7 +10,7 @@ import {IERC20Metadata} from "ierc20/IERC20Metadata.sol";
  * @notice Lightweight relay cloned per tick range so that each (tickLower,
  *         tickUpper) pair produces a distinct Coinage deployer address — and
  *         therefore a distinct minted-token address — without consuming the
- *         coinage salt. The minted tokens are neutrinos — fair-launched
+ *         minter salt. The minted tokens are neutrinos — fair-launched
  *         (neutral) leptons.
  * @dev    Pure factory. Once {mint} returns, this contract has no further
  *         authority over the minted token — all post-mint behavior is
@@ -98,7 +98,7 @@ contract NeutrinoChannel {
      *         supply to the caller. Because each clone has a tick-dependent
      *         address, Coinage sees a different deployer per tick range.
      *         Only {source} may call.
-     * @param coinage  Coinage prototype to mint through.
+     * @param minter  Coinage prototype to mint through.
      * @param name     Token name.
      * @param symbol   Token symbol.
      * @param decimals Token decimals.
@@ -107,7 +107,7 @@ contract NeutrinoChannel {
      * @return token The minted token.
      */
     function mint(
-        ICoinage coinage,
+        ICoinage minter,
         string calldata name,
         string calldata symbol,
         uint8 decimals,
@@ -115,7 +115,7 @@ contract NeutrinoChannel {
         bytes32 salt
     ) external returns (IERC20Metadata token) {
         if (msg.sender != source) revert Unauthorized();
-        token = coinage.make(name, symbol, decimals, supply, salt);
+        token = minter.make(name, symbol, decimals, supply, salt);
         // forge-lint: disable-next-line(erc20-unchecked-transfer)
         token.transfer(msg.sender, supply);
     }

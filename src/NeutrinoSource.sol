@@ -48,7 +48,8 @@ contract NeutrinoSource {
     /**
      * @notice The Coinage prototype used to create hub and spoke tokens.
      */
-    ICoinage public immutable COINAGE;
+    // forge-lint: disable-next-line(screaming-snake-case-immutable)
+    ICoinage public immutable coinage;
 
     /**
      * @notice The Unispring clone for this clone's hub token, set by {zzInit}.
@@ -81,13 +82,13 @@ contract NeutrinoSource {
      * @notice Construct the prototype.
      * @param unispring The Unispring prototype.
      * @param channel   The NeutrinoChannel prototype.
-     * @param coinage   The Coinage prototype.
+     * @param minter   The Coinage prototype.
      */
-    constructor(Unispring unispring, NeutrinoChannel channel, ICoinage coinage) {
+    constructor(Unispring unispring, NeutrinoChannel channel, ICoinage minter) {
         proto = this;
         UNISPRING = unispring;
         CHANNEL = channel;
-        COINAGE = coinage;
+        coinage = minter;
     }
 
     // ---- Bitsy factory ----
@@ -119,7 +120,7 @@ contract NeutrinoSource {
         home = Clones.predictDeterministicAddress(address(proto), salt, address(proto));
         exists = home.code.length > 0;
         (, address channel,) = CHANNEL.made(address(proto), tickLower, tickUpper);
-        (, hubHome,) = COINAGE.made(channel, name, symbol, decimals, supply, tokenSalt);
+        (, hubHome,) = coinage.made(channel, name, symbol, decimals, supply, tokenSalt);
     }
 
     /**
@@ -151,7 +152,7 @@ contract NeutrinoSource {
             clone = NeutrinoSource(home);
             if (!exists) {
                 NeutrinoChannel hubChannel = CHANNEL.make(tickLower, tickUpper);
-                IERC20Metadata hubToken = hubChannel.mint(COINAGE, name, symbol, decimals, supply, tokenSalt);
+                IERC20Metadata hubToken = hubChannel.mint(coinage, name, symbol, decimals, supply, tokenSalt);
 
                 (, address springHome,) = UNISPRING.made(hubToken, tickLower, tickUpper);
                 // forge-lint: disable-next-line(erc20-unchecked-transfer)
@@ -199,7 +200,7 @@ contract NeutrinoSource {
         int24 tickUpper
     ) external returns (IERC20Metadata token) {
         NeutrinoChannel channel = CHANNEL.make(tickLower, tickUpper);
-        token = channel.mint(COINAGE, name, symbol, decimals, supply, salt);
+        token = channel.mint(coinage, name, symbol, decimals, supply, salt);
         token.approve(address(spring), supply);
         spring.offer(Currency.wrap(address(token)), supply, tickLower, tickUpper);
         emit Launch(token, supply, tickLower, tickUpper);

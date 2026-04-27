@@ -8,7 +8,7 @@ import {TestToken} from "./TestToken.sol";
 import {Test} from "forge-std/Test.sol";
 
 /**
- * @notice Mock coinage that records mint calls and returns a fresh {TestToken}
+ * @notice Mock minter that records mint calls and returns a fresh {TestToken}
  *         with the requested supply pre-minted to the caller.
  */
 contract MockCoinage is ICoinage {
@@ -35,11 +35,11 @@ contract MockCoinage is ICoinage {
 
 contract NeutrinoChannelTest is Test {
     NeutrinoChannel internal proto;
-    MockCoinage internal coinage;
+    MockCoinage internal minter;
 
     function setUp() public {
         proto = new NeutrinoChannel();
-        coinage = new MockCoinage();
+        minter = new MockCoinage();
     }
 
     // ---- proto immutable ----
@@ -103,10 +103,10 @@ contract NeutrinoChannelTest is Test {
         NeutrinoChannel clone = proto.make(int24(-100), int24(100));
         uint256 supply = 1_000_000 ether;
 
-        IERC20Metadata token = clone.mint(coinage, "TestToken", "TT", 18, supply, bytes32(0));
+        IERC20Metadata token = clone.mint(minter, "TestToken", "TT", 18, supply, bytes32(0));
 
-        // Token was created via coinage.
-        assertEq(address(token), address(coinage.lastToken()), "token should come from coinage");
+        // Token was created via minter.
+        assertEq(address(token), address(minter.lastToken()), "token should come from minter");
         // Entire supply forwarded to the caller (this contract, the source).
         assertEq(TestToken(address(token)).balanceOf(address(this)), supply, "source should hold full supply");
         assertEq(TestToken(address(token)).balanceOf(address(clone)), 0, "clone should hold zero");
@@ -116,6 +116,6 @@ contract NeutrinoChannelTest is Test {
         NeutrinoChannel clone = proto.make(int24(-100), int24(100));
         vm.prank(address(0xBEEF));
         vm.expectRevert(NeutrinoChannel.Unauthorized.selector);
-        clone.mint(coinage, "TestToken", "TT", 18, 1 ether, bytes32(0));
+        clone.mint(minter, "TestToken", "TT", 18, 1 ether, bytes32(0));
     }
 }

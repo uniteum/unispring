@@ -50,7 +50,8 @@ contract Mimicoinage {
     /**
      * @notice The Coinage factory used to mint the mimic ERC-20.
      */
-    ICoinage public immutable COINAGE;
+    // forge-lint: disable-next-line(screaming-snake-case-immutable)
+    ICoinage public immutable coinage;
 
     /**
      * @notice Original currency paired with each mimic, indexed by the mimic
@@ -79,11 +80,11 @@ contract Mimicoinage {
      * @notice Construct the singleton factory.
      * @param  fountain The Fountain that will hold mimic positions and
      *                  forward their swap fees.
-     * @param  coinage  The Coinage factory used to mint mimics.
+     * @param  minter  The Coinage factory used to mint mimics.
      */
-    constructor(IPlacer fountain, ICoinage coinage) {
+    constructor(IPlacer fountain, ICoinage minter) {
         placer = fountain;
-        COINAGE = coinage;
+        coinage = minter;
     }
 
     /**
@@ -104,7 +105,7 @@ contract Mimicoinage {
         returns (bool exists, address token)
     {
         (uint8 decimals, uint256 supply) = _mimicMetadata(original);
-        (exists, token,) = COINAGE.made(address(this), name, symbol, decimals, supply, bytes32(0));
+        (exists, token,) = coinage.made(address(this), name, symbol, decimals, supply, bytes32(0));
     }
 
     /**
@@ -125,7 +126,7 @@ contract Mimicoinage {
         returns (IERC20Metadata token)
     {
         (uint8 decimals, uint256 supply) = _mimicMetadata(original);
-        token = COINAGE.make(name, symbol, decimals, supply, bytes32(0));
+        token = coinage.make(name, symbol, decimals, supply, bytes32(0));
         IERC20Metadata mimicErc = IERC20Metadata(address(token));
         originalOf[mimicErc] = original;
         isMimic[mimicErc] = true;

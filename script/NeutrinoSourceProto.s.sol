@@ -21,17 +21,17 @@ contract NeutrinoSourceProto is Script {
     address constant NICK = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
 
     function run() external {
-        ICoinage coinage = ICoinage(vm.envAddress("ICoinage"));
+        ICoinage minter = ICoinage(vm.envAddress("ICoinage"));
         NeutrinoChannel channel = NeutrinoChannel(vm.envAddress("NeutrinoChannelProto"));
         Unispring unispring = Unispring(payable(vm.envAddress("UnispringProto")));
 
-        console2.log("coinage:", address(coinage));
+        console2.log("minter:", address(minter));
         console2.log("channel:", address(channel));
         console2.log("unispring:", address(unispring));
 
         // Compute the deterministic prototype CREATE2 address.
         bytes memory initCode =
-            abi.encodePacked(type(NeutrinoSource).creationCode, abi.encode(unispring, channel, coinage));
+            abi.encodePacked(type(NeutrinoSource).creationCode, abi.encode(unispring, channel, minter));
         address predictedProto = vm.computeCreate2Address(bytes32(0), keccak256(initCode), NICK);
         console2.log("predicted proto:", predictedProto);
 

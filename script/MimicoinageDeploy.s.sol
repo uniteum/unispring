@@ -21,13 +21,13 @@ contract MimicoinageDeploy is Script {
     address constant NICK = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
 
     function run() external {
-        ICoinage coinage = ICoinage(vm.envAddress("ICoinage"));
+        ICoinage minter = ICoinage(vm.envAddress("ICoinage"));
         IPlacer fountain = IPlacer(vm.envAddress("Fountain"));
 
-        console2.log("coinage :", address(coinage));
+        console2.log("minter :", address(minter));
         console2.log("fountain:", address(fountain));
 
-        bytes memory initCode = abi.encodePacked(type(Mimicoinage).creationCode, abi.encode(fountain, coinage));
+        bytes memory initCode = abi.encodePacked(type(Mimicoinage).creationCode, abi.encode(fountain, minter));
         address predicted = vm.computeCreate2Address(bytes32(0), keccak256(initCode), NICK);
         console2.log("predicted        :", predicted);
 
