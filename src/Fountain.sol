@@ -380,7 +380,7 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IUnlockCall
      *      {owner} reclaims accumulated balance via {withdraw}.
      *      Precondition: PoolManager unlocked to this contract.
      */
-    function _takeManyUnlocked(uint256[] memory ids) private {
+    function _takeUnlocked(uint256[] memory ids) private {
         for (uint256 i = 0; i < ids.length; i++) {
             uint256 id = ids[i];
             Position storage p = positions[id];
@@ -421,7 +421,7 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IUnlockCall
             _offerUnlocked(token, quote, ticks, amounts);
         } else if (selector == IFeeTaker.take.selector) {
             uint256[] memory ids = abi.decode(data[4:], (uint256[]));
-            _takeManyUnlocked(ids);
+            _takeUnlocked(ids);
         } else {
             revert UnknownSelector(selector);
         }
