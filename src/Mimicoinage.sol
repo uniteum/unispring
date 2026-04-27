@@ -36,6 +36,7 @@ contract Mimicoinage {
      *         and the original's total supply; native ETH mimics (no
      *         on-chain `totalSupply` to mirror) always use this value.
      */
+    // forge-lint: disable-next-line(screaming-snake-case-const)
     uint128 public constant maxSupply = 10 ** 27;
 
     /**
