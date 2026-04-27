@@ -164,15 +164,7 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IUnlockCall
         uint256 firstPositionId = positions.length;
         poolManager.unlock(msg.data);
 
-        bool tokenIsCurrency0 = token < quote;
-        PoolKey memory key = PoolKey({
-            currency0: tokenIsCurrency0 ? token : quote,
-            currency1: tokenIsCurrency0 ? quote : token,
-            fee: fee,
-            tickSpacing: tickSpacing,
-            hooks: IHooks(address(0))
-        });
-        emit Offered(msg.sender, token, quote, key.toId(), firstPositionId, n);
+        emit Offered(msg.sender, token, quote, firstPositionId, n);
     }
 
     /**

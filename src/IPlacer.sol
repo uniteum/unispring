@@ -2,7 +2,6 @@
 pragma solidity ^0.8.30;
 
 import {Currency} from "v4-core/types/Currency.sol";
-import {PoolId} from "v4-core/types/PoolId.sol";
 
 /**
  * @title IPlacer
@@ -20,7 +19,6 @@ interface IPlacer {
      *                          (`Currency.wrap(address(0))` for native ETH).
      * @param  quote            The quote currency (`Currency.wrap(address(0))`
      *                          for native ETH).
-     * @param  poolId           The Uniswap V4 pool id.
      * @param  firstPositionId  Index of the first position in the batch.
      * @param  positionCount    Number of positions in the batch.
      */
@@ -28,7 +26,6 @@ interface IPlacer {
         address indexed offerer,
         Currency indexed token,
         Currency quote,
-        PoolId indexed poolId,
         uint256 firstPositionId,
         uint256 positionCount
     );
