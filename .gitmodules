@@ -25,3 +25,6 @@
 [submodule "lib/ownable"]
 	path = lib/ownable
 	url = https://github.com/uniteum/ownable.git
+[submodule "lib/erc20"]
+	path = lib/erc20
+	url = git@github.com:uniteum/erc20.git

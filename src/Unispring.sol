@@ -4,6 +4,7 @@ pragma solidity ^0.8.30;
 import {Clones} from "clones/Clones.sol";
 import {IPlacer} from "./IPlacer.sol";
 import {IERC20} from "ierc20/IERC20.sol";
+import {SafeERC20} from "erc20/SafeERC20.sol";
 import {Currency} from "v4-core/types/Currency.sol";
 
 /**
@@ -35,6 +36,8 @@ import {Currency} from "v4-core/types/Currency.sol";
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
 contract Unispring {
+    using SafeERC20 for IERC20;
+
     string public constant version = "0.7.0";
 
     /**
@@ -152,8 +155,7 @@ contract Unispring {
         if (msg.sender != address(proto)) revert Unauthorized();
         hub = address(hub_);
         uint256 supply = hub_.balanceOf(address(this));
-        // forge-lint: disable-next-line(erc20-unchecked-transfer)
-        hub_.approve(address(this), supply);
+        hub_.forceApprove(address(this), supply);
         this.offer(Currency.wrap(address(hub_)), supply, tickLower, tickUpper);
     }
 
@@ -181,10 +183,8 @@ contract Unispring {
         if (!isHub && tokenAddr >= hub) revert SpokeMustSortBelowHub(tokenAddr);
 
         IERC20 erc = IERC20(tokenAddr);
-        // forge-lint: disable-next-line(erc20-unchecked-transfer)
-        erc.transferFrom(msg.sender, address(this), supply);
-        // forge-lint: disable-next-line(erc20-unchecked-transfer)
-        erc.approve(address(placer), supply);
+        erc.safeTransferFrom(msg.sender, address(this), supply);
+        erc.forceApprove(address(placer), supply);
 
         int24[] memory ticks = new int24[](2);
         uint256[] memory amounts = new uint256[](1);

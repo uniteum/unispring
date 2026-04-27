@@ -2,6 +2,7 @@
 pragma solidity ^0.8.30;
 
 import {Clones} from "clones/Clones.sol";
+import {SafeERC20} from "erc20/SafeERC20.sol";
 import {IAddressLookup} from "ilookup/IAddressLookup.sol";
 import {IERC20} from "ierc20/IERC20.sol";
 import {IPlacer} from "./IPlacer.sol";
@@ -118,6 +119,7 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
     }
 
     using StateLibrary for IPoolManager;
+    using SafeERC20 for IERC20;
 
     /**
      * @inheritdoc IPlacer
@@ -141,8 +143,7 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
             total += amounts[i];
         }
 
-        // forge-lint: disable-next-line(erc20-unchecked-transfer)
-        IERC20(Currency.unwrap(token)).transferFrom(msg.sender, address(this), total);
+        IERC20(Currency.unwrap(token)).safeTransferFrom(msg.sender, address(this), total);
 
         uint256 firstPositionId = positions.length;
         poolManager.unlock(msg.data);
@@ -247,8 +248,7 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
             IERC20 erc = IERC20(Currency.unwrap(currency));
             if (erc.balanceOf(address(this)) < owed) return;
             poolManager.sync(currency);
-            // forge-lint: disable-next-line(erc20-unchecked-transfer)
-            erc.transfer(address(poolManager), owed);
+            erc.safeTransfer(address(poolManager), owed);
             poolManager.settle();
         }
     }
@@ -408,7 +408,9 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
      * @dev Lets {owner} reclaim fees collected by {take} and any prefund
      *      the deployer dropped in to seed flipped-case bootstraps.
      *      Native-ETH transfer failure bubbles the owner's revert data;
-     *      ERC-20 transfer failure surfaces the token's own revert.
+     *      ERC-20 transfer failure reverts via {SafeERC20} (bubbling the
+     *      token's own revert, or {SafeERC20.SafeERC20FailedOperation} for
+     *      tokens that signal failure by returning false).
      */
     function withdraw(Currency currency, uint256 amount) external onlyOwner {
         address to = owner();
@@ -421,8 +423,7 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
                 }
             }
         } else {
-            // forge-lint: disable-next-line(erc20-unchecked-transfer)
-            IERC20(Currency.unwrap(currency)).transfer(to, amount);
+            IERC20(Currency.unwrap(currency)).safeTransfer(to, amount);
         }
         emit Withdrawn(currency, amount);
     }
