@@ -44,7 +44,8 @@ contract NeutrinoSource {
      *         minted-token address — for both hubs (minted by {make}) and
      *         spokes (minted by {launch}).
      */
-    NeutrinoChannel public immutable CHANNEL;
+    // forge-lint: disable-next-line(screaming-snake-case-immutable)
+    NeutrinoChannel public immutable channelProto;
 
     /**
      * @notice The Coinage prototype used to create hub and spoke tokens.
@@ -88,7 +89,7 @@ contract NeutrinoSource {
     constructor(Unispring unispring, NeutrinoChannel channel, ICoinage minter) {
         proto = this;
         springProto = unispring;
-        CHANNEL = channel;
+        channelProto = channel;
         coinage = minter;
     }
 
@@ -120,7 +121,7 @@ contract NeutrinoSource {
         salt = keccak256(abi.encode(name, symbol, decimals, supply, tickLower, tickUpper, tokenSalt));
         home = Clones.predictDeterministicAddress(address(proto), salt, address(proto));
         exists = home.code.length > 0;
-        (, address channel,) = CHANNEL.made(address(proto), tickLower, tickUpper);
+        (, address channel,) = channelProto.made(address(proto), tickLower, tickUpper);
         (, hubHome,) = coinage.made(channel, name, symbol, decimals, supply, tokenSalt);
     }
 
@@ -152,7 +153,7 @@ contract NeutrinoSource {
                 made(name, symbol, decimals, supply, tickLower, tickUpper, tokenSalt);
             clone = NeutrinoSource(home);
             if (!exists) {
-                NeutrinoChannel hubChannel = CHANNEL.make(tickLower, tickUpper);
+                NeutrinoChannel hubChannel = channelProto.make(tickLower, tickUpper);
                 IERC20Metadata hubToken = hubChannel.mint(coinage, name, symbol, decimals, supply, tokenSalt);
 
                 (, address springHome,) = springProto.made(hubToken, tickLower, tickUpper);
@@ -200,7 +201,7 @@ contract NeutrinoSource {
         int24 tickLower,
         int24 tickUpper
     ) external returns (IERC20Metadata token) {
-        NeutrinoChannel channel = CHANNEL.make(tickLower, tickUpper);
+        NeutrinoChannel channel = channelProto.make(tickLower, tickUpper);
         token = channel.mint(coinage, name, symbol, decimals, supply, salt);
         token.approve(address(spring), supply);
         spring.offer(Currency.wrap(address(token)), supply, tickLower, tickUpper);
