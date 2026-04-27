@@ -25,17 +25,6 @@ import {PoolKey} from "v4-core/types/PoolKey.sol";
 import {ModifyLiquidityParams} from "v4-core/types/PoolOperation.sol";
 
 /**
- * @dev Selector-dispatch interface for payloads passed through
- *      {Fountain.unlockCallback}. Fountain never implements or exposes
- *      these functions; the signatures exist only so `abi.encodeCall` can
- *      type-check arguments and derive selectors at compile time.
- */
-interface IFountainActions {
-    function offer(PoolKey calldata key, int24[] calldata userTicks, uint256[] calldata amounts, bool tokenIsCurrency0)
-        external;
-}
-
-/**
  * @title Fountain
  * @notice Shapes a bonding curve for an externally-supplied token (ERC-20
  *         or native ETH) by seating multiple permanent, single-sided V4
@@ -169,11 +158,41 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IUnlockCall
             total += amounts[i];
         }
 
-        bool tokenIsCurrency0 = token < quote;
-
         // forge-lint: disable-next-line(erc20-unchecked-transfer)
         IERC20(Currency.unwrap(token)).transferFrom(msg.sender, address(this), total);
 
+        uint256 firstPositionId = positions.length;
+        poolManager.unlock(msg.data);
+
+        bool tokenIsCurrency0 = token < quote;
+        PoolKey memory key = PoolKey({
+            currency0: tokenIsCurrency0 ? token : quote,
+            currency1: tokenIsCurrency0 ? quote : token,
+            fee: fee,
+            tickSpacing: tickSpacing,
+            hooks: IHooks(address(0))
+        });
+        emit Offered(msg.sender, token, quote, key.toId(), firstPositionId, n);
+    }
+
+    /**
+     * @dev Derive the {PoolKey}, initialize the pool if it does not yet
+     *      exist, and seat every segment of the caller-described curve in
+     *      one unlock. User segment [ticks[i], ticks[i+1]) with amounts[i]
+     *      seats a V4 position at [ticks[i], ticks[i+1]) when the token is
+     *      currency0 (identity mapping), or at [-ticks[i+1], -ticks[i])
+     *      when the token is currency1 (flipping under V4's price
+     *      inversion). Net debits on both currencies are accumulated across
+     *      positions and settled at the end. Out-of-range positions have
+     *      zero delta on one side; the in-range starting segment may have a
+     *      small delta on both sides (the interior-shift bootstrap path).
+     *      Precondition: ticks/amounts validated by {offer}; PoolManager
+     *      unlocked to this contract.
+     */
+    function _offerUnlocked(Currency token, Currency quote, int24[] memory ticks, uint256[] memory amounts) private {
+        uint256 n = amounts.length;
+
+        bool tokenIsCurrency0 = token < quote;
         PoolKey memory key = PoolKey({
             currency0: tokenIsCurrency0 ? token : quote,
             currency1: tokenIsCurrency0 ? quote : token,
@@ -194,43 +213,17 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IUnlockCall
             poolManager.initialize(key, startingSqrtPriceX96);
         }
 
-        uint256 firstPositionId = positions.length;
-        poolManager.unlock(abi.encodeCall(IFountainActions.offer, (key, ticks, amounts, tokenIsCurrency0)));
-
-        emit Offered(msg.sender, token, quote, poolId, firstPositionId, n);
-    }
-
-    /**
-     * @dev Seat every segment of the caller-described curve in one unlock.
-     *      User segment [userTicks[i], userTicks[i+1]) with amount[i]
-     *      seats a V4 position at [userTicks[i], userTicks[i+1]) when the
-     *      token is currency0 (identity mapping), or at
-     *      [-userTicks[i+1], -userTicks[i]) when the token is currency1
-     *      (flipping under V4's price inversion). Net debits on both
-     *      currencies are accumulated across positions and settled at
-     *      the end. Out-of-range positions have zero delta on one side;
-     *      the in-range starting segment may have a small delta on both
-     *      sides (the interior-shift bootstrap path).
-     *      Precondition: PoolManager unlocked to this contract.
-     */
-    function _offerUnlocked(
-        PoolKey memory key,
-        int24[] memory userTicks,
-        uint256[] memory amounts,
-        bool tokenIsCurrency0
-    ) private {
-        uint256 n = amounts.length;
         int256 totalOwed0;
         int256 totalOwed1;
         for (uint256 i = 0; i < n; i++) {
             int24 tickLower;
             int24 tickUpper;
             if (tokenIsCurrency0) {
-                tickLower = userTicks[i];
-                tickUpper = userTicks[i + 1];
+                tickLower = ticks[i];
+                tickUpper = ticks[i + 1];
             } else {
-                tickLower = -userTicks[i + 1];
-                tickUpper = -userTicks[i];
+                tickLower = -ticks[i + 1];
+                tickUpper = -ticks[i];
             }
 
             uint160 sqrtLower = TickMath.getSqrtPriceAtTick(tickLower);
@@ -294,7 +287,7 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IUnlockCall
      *      wei of `quote` (currency0) to settle position 0's mixed deposit;
      *      use it iff Fountain holds enough, else fall back to the boundary.
      */
-    function _maybeInteriorSqrt(Currency quote, int24[] calldata ticks, uint256 firstAmount, uint160 boundarySqrt)
+    function _maybeInteriorSqrt(Currency quote, int24[] memory ticks, uint256 firstAmount, uint160 boundarySqrt)
         private
         view
         returns (uint160)
@@ -415,16 +408,17 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IUnlockCall
 
     /**
      * @inheritdoc IUnlockCallback
-     * @dev Selector-dispatches on {IFountainActions}: either seats a batch
-     *      of positions or iterates a batch of ids for fee take.
+     * @dev Selector-dispatches on the original entrypoint's calldata:
+     *      {IPlacer.offer} seats a batch of positions; {IFeeTaker.take}
+     *      iterates a batch of ids for fee take.
      */
     function unlockCallback(bytes calldata data) external returns (bytes memory) {
         if (msg.sender != address(poolManager)) revert InvalidUnlockCaller();
         bytes4 selector = bytes4(data[:4]);
-        if (selector == IFountainActions.offer.selector) {
-            (PoolKey memory key, int24[] memory userTicks, uint256[] memory amounts, bool tokenIsCurrency0) =
-                abi.decode(data[4:], (PoolKey, int24[], uint256[], bool));
-            _offerUnlocked(key, userTicks, amounts, tokenIsCurrency0);
+        if (selector == IPlacer.offer.selector) {
+            (Currency token, Currency quote, int24[] memory ticks, uint256[] memory amounts) =
+                abi.decode(data[4:], (Currency, Currency, int24[], uint256[]));
+            _offerUnlocked(token, quote, ticks, amounts);
         } else if (selector == IFeeTaker.take.selector) {
             uint256[] memory ids = abi.decode(data[4:], (uint256[]));
             _takeManyUnlocked(ids);
