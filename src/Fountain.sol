@@ -69,6 +69,7 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IUnlockCall
 
     /**
      * @inheritdoc IPoolConfig
+     * @notice Fixed 0.01% for all positions.
      */
     uint24 public constant fee = 100;
 
