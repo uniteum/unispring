@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {PoolId} from "v4-core/types/PoolId.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
 
 /**
@@ -27,11 +26,10 @@ interface IFeeTaker {
     /**
      * @notice Emitted when {take} pulls fees for one position.
      * @param  positionId The id of the position whose fees were taken.
-     * @param  poolId     The Uniswap V4 pool the position belongs to.
      * @param  amount0    Fees taken on the pool's currency0.
      * @param  amount1    Fees taken on the pool's currency1.
      */
-    event Taken(uint256 indexed positionId, PoolId indexed poolId, uint256 amount0, uint256 amount1);
+    event Taken(uint256 indexed positionId, uint256 amount0, uint256 amount1);
 
     /**
      * @notice Thrown when a take or untaken call references a position

@@ -402,7 +402,7 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IUnlockCall
             uint256 amount1 = fee1 > 0 ? uint256(uint128(fee1)) : 0;
             if (amount0 > 0) poolManager.take(key.currency0, address(this), amount0);
             if (amount1 > 0) poolManager.take(key.currency1, address(this), amount1);
-            emit Taken(id, key.toId(), amount0, amount1);
+            emit Taken(id, amount0, amount1);
         }
     }
 
