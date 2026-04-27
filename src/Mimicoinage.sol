@@ -10,7 +10,7 @@ import {Currency} from "v4-core/types/Currency.sol";
  * @title Mimicoinage
  * @notice Thin factory that mints an ERC-20 pegged 1:1 against an original
  *         currency (ERC-20 or native ETH) and seats its entire supply as a
- *         single-tick segment in {FOUNTAIN}. All fee machinery — {Fountain.take},
+ *         single-tick segment in {placer}. All fee machinery — {Fountain.take},
  *         {Fountain.untaken}, {Fountain.owner} — lives on Fountain;
  *         Mimicoinage only records the mimic→position mapping and exposes
  *         the pool parameters needed to look up pool state.
@@ -25,7 +25,8 @@ import {Currency} from "v4-core/types/Currency.sol";
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
 contract Mimicoinage {
-    string public constant VERSION = "0.6.0";
+    // forge-lint: disable-next-line(screaming-snake-case-const)
+    string public constant version = "0.7.0";
 
     /**
      * @notice Cap on the raw supply minted for any mimic. Sized to stay
@@ -43,7 +44,8 @@ contract Mimicoinage {
      * @notice The Fountain that holds each mimic's single-tick position
      *         and routes its swap fees to {Fountain.owner}.
      */
-    IPlacer public immutable FOUNTAIN;
+    // forge-lint: disable-next-line(screaming-snake-case-immutable)
+    IPlacer public immutable placer;
 
     /**
      * @notice The Coinage factory used to mint the mimic ERC-20.
@@ -80,7 +82,7 @@ contract Mimicoinage {
      * @param  coinage  The Coinage factory used to mint mimics.
      */
     constructor(IPlacer fountain, ICoinage coinage) {
-        FOUNTAIN = fountain;
+        placer = fountain;
         COINAGE = coinage;
     }
 
@@ -107,7 +109,7 @@ contract Mimicoinage {
 
     /**
      * @notice Mint a mimic of `original` and seat its entire supply as a
-     *         single-tick segment in {FOUNTAIN} at the 1:1 edge. The
+     *         single-tick segment in {placer} at the 1:1 edge. The
      *         segment spans user ticks `[0, 1)`; Fountain handles the
      *         V4-native tick flip when the mimic sorts above `original`.
      *         The position is permanent.
@@ -129,7 +131,7 @@ contract Mimicoinage {
         isMimic[mimicErc] = true;
 
         // forge-lint: disable-next-line(erc20-unchecked-transfer)
-        mimicErc.approve(address(FOUNTAIN), supply);
+        mimicErc.approve(address(placer), supply);
 
         int24[] memory ticks = new int24[](2);
         ticks[0] = 0;
@@ -137,7 +139,7 @@ contract Mimicoinage {
         uint256[] memory amounts = new uint256[](1);
         amounts[0] = supply;
 
-        FOUNTAIN.offer(Currency.wrap(address(mimicErc)), original, ticks, amounts);
+        placer.offer(Currency.wrap(address(mimicErc)), original, ticks, amounts);
 
         emit Mimicked(token, original);
     }

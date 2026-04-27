@@ -39,7 +39,7 @@ contract QuotePool is Script {
 
     function run() external {
         Unispring unispring = Unispring(payable(vm.envAddress("Unispring")));
-        IPoolConfig fountain = IPoolConfig(address(unispring.FOUNTAIN()));
+        IPoolConfig fountain = IPoolConfig(address(unispring.placer()));
         address newToken = vm.envAddress("HelloWorld");
         address hub = unispring.hub();
         uint128 hubAmount = uint128(vm.envUint("HubAmount"));

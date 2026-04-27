@@ -20,7 +20,7 @@ contract CheckPool is Script {
 
     function run() external view {
         Unispring spring = Unispring(payable(vm.envAddress("Unispring")));
-        IPoolConfig fountain = IPoolConfig(address(spring.FOUNTAIN()));
+        IPoolConfig fountain = IPoolConfig(address(spring.placer()));
         address newToken = vm.envAddress("HelloWorld");
         address hub = spring.hub();
         bool newIsCurrency0 = newToken < hub;

@@ -78,7 +78,8 @@ interface IFountainActions {
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
 contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IUnlockCallback, Ownable {
-    string public constant VERSION = "0.6.0";
+    // forge-lint: disable-next-line(screaming-snake-case-const)
+    string public constant version = "0.7.0";
 
     /**
      * @inheritdoc IPoolConfig

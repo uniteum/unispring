@@ -8,13 +8,13 @@ import {Currency} from "v4-core/types/Currency.sol";
 
 /**
  * @title Unispring
- * @notice Clone-per-hub factory that seats fair-launch pools on {FOUNTAIN}.
+ * @notice Clone-per-hub factory that seats fair-launch pools on {placer}.
  *         Each clone owns a single hub token and pairs it against spokes
  *         supplied by callers. The hub's own ETH pool is seated single-sided
  *         by {zzInit}; spoke pools are seated single-sided by {offer}.
  * @dev    All V4 plumbing — unlock, modifyLiquidity, liquidity math, fee
- *         take — lives on {FOUNTAIN}. Unispring only mints/tracks
- *         the clone-per-hub key, pre-approves {FOUNTAIN} against pulled
+ *         take — lives on {placer}. Unispring only mints/tracks
+ *         the clone-per-hub key, pre-approves {placer} against pulled
  *         tokens, and delegates to {IPlacer.offer}. Pools inherit
  *         {Fountain.fee} (0.01%) and accrued fees flow to Fountain's owner.
  * @dev    Ticks: callers pass V4-native `(tickLower, tickUpper)` in the
@@ -35,7 +35,8 @@ import {Currency} from "v4-core/types/Currency.sol";
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
 contract Unispring {
-    string public constant VERSION = "0.4.0";
+    // forge-lint: disable-next-line(screaming-snake-case-const)
+    string public constant version = "0.7.0";
 
     /**
      * @notice The prototype instance that acts as the Bitsy factory.
@@ -46,9 +47,10 @@ contract Unispring {
     /**
      * @notice The Fountain that seats and owns every position funded through
      *         this Unispring. Positions inherit {Fountain.poolManager} and
-     *         {Fountain.fee}; accrued fees flow to `FOUNTAIN.owner()`.
+     *         {Fountain.fee}; accrued fees flow to `placer.owner()`.
      */
-    IPlacer public immutable FOUNTAIN;
+    // forge-lint: disable-next-line(screaming-snake-case-immutable)
+    IPlacer public immutable placer;
 
     /**
      * @notice The hub token, set by {zzInit} on each clone.
@@ -104,7 +106,7 @@ contract Unispring {
      */
     constructor(IPlacer fountain) {
         proto = this;
-        FOUNTAIN = fountain;
+        placer = fountain;
     }
 
     // ---- Bitsy factory ----
@@ -192,7 +194,7 @@ contract Unispring {
             // forge-lint: disable-next-line(erc20-unchecked-transfer)
             erc.transferFrom(msg.sender, address(this), supply);
             // forge-lint: disable-next-line(erc20-unchecked-transfer)
-            erc.approve(address(FOUNTAIN), supply);
+            erc.approve(address(placer), supply);
         }
 
         int24[] memory ticks = new int24[](2);
@@ -213,7 +215,7 @@ contract Unispring {
             quote = Currency.wrap(hub);
         }
 
-        FOUNTAIN.offer{value: msg.value}(token, quote, ticks, amounts);
+        placer.offer{value: msg.value}(token, quote, ticks, amounts);
         emit Offered(msg.sender, token, supply, tickLower, tickUpper);
     }
 }

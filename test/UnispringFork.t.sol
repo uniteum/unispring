@@ -56,7 +56,7 @@ contract UnispringForkTest is ForkBase {
 
     function test_ConstructorRegistersImmutables() public view {
         assertEq(address(proto.proto()), address(proto), "proto is self on prototype");
-        assertEq(address(proto.FOUNTAIN()), address(fountain), "FOUNTAIN immutable");
+        assertEq(address(proto.placer()), address(fountain), "placer immutable");
         assertEq(proto.hub(), address(0), "hub unset on prototype");
     }
 

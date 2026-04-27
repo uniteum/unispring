@@ -39,7 +39,7 @@ contract QuoteHub is Script {
 
     function run() external {
         Unispring unispring = Unispring(payable(vm.envAddress("Unispring")));
-        IPoolConfig fountain = IPoolConfig(address(unispring.FOUNTAIN()));
+        IPoolConfig fountain = IPoolConfig(address(unispring.placer()));
 
         PoolKey memory key = PoolKey({
             currency0: Currency.wrap(address(0)),
