@@ -65,26 +65,22 @@ import {ModifyLiquidityParams} from "v4-core/types/PoolOperation.sol";
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
 contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IUnlockCallback, Ownable {
-    // forge-lint: disable-next-line(screaming-snake-case-const)
     string public constant version = "0.7.0";
 
     /**
      * @inheritdoc IPoolConfig
      */
-    // forge-lint: disable-next-line(screaming-snake-case-const)
     uint24 public constant fee = 100;
 
     /**
      * @inheritdoc IPoolConfig
      * @dev Fixed at 1 for exact tick precision.
      */
-    // forge-lint: disable-next-line(screaming-snake-case-const)
     int24 public constant tickSpacing = 1;
 
     /**
      * @notice The prototype instance; on clones, points to the original.
      */
-    // forge-lint: disable-next-line(screaming-snake-case-immutable)
     Fountain public immutable proto = this;
 
     /**
@@ -92,7 +88,6 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IUnlockCall
      * @dev Resolved from the `IAddressLookup` supplied at construction.
      *      Shared by the prototype and every clone.
      */
-    // forge-lint: disable-next-line(screaming-snake-case-immutable)
     IPoolManager public immutable poolManager;
 
     /**

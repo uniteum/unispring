@@ -19,14 +19,12 @@ import {IERC20Metadata} from "ierc20/IERC20Metadata.sol";
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
 contract NeutrinoChannel {
-    // forge-lint: disable-next-line(screaming-snake-case-const)
     string public constant version = "0.7.0";
 
     /**
      * @notice The prototype instance. On clones, this points back to the
      *         original deployment.
      */
-    // forge-lint: disable-next-line(screaming-snake-case-immutable)
     NeutrinoChannel public immutable proto;
 
     /**

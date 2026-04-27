@@ -35,13 +35,11 @@ import {Currency} from "v4-core/types/Currency.sol";
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
 contract Unispring {
-    // forge-lint: disable-next-line(screaming-snake-case-const)
     string public constant version = "0.7.0";
 
     /**
      * @notice The prototype instance that acts as the Bitsy factory.
      */
-    // forge-lint: disable-next-line(screaming-snake-case-immutable)
     Unispring public immutable proto;
 
     /**
@@ -49,7 +47,6 @@ contract Unispring {
      *         this Unispring. Positions inherit {Fountain.poolManager} and
      *         {Fountain.fee}; accrued fees flow to `placer.owner()`.
      */
-    // forge-lint: disable-next-line(screaming-snake-case-immutable)
     IPlacer public immutable placer;
 
     /**

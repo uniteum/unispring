@@ -48,7 +48,6 @@ contract FountainForkTest is ForkBase {
     TestToken internal token;
 
     uint256 internal constant SEGMENT_AMOUNT = 1_000_000 ether;
-    // forge-lint: disable-next-line(screaming-snake-case-const)
     int24 internal constant tickSpacing = 1;
 
     function setUp() public override {

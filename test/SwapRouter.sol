@@ -19,7 +19,6 @@ import {SwapParams} from "v4-core/types/PoolOperation.sol";
  *         and the test contract.
  */
 contract SwapRouter is IUnlockCallback {
-    // forge-lint: disable-next-line(screaming-snake-case-immutable)
     IPoolManager public immutable poolManager;
 
     error InvalidUnlockCaller();

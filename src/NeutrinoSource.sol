@@ -24,19 +24,16 @@ import {Unispring} from "./Unispring.sol";
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
 contract NeutrinoSource {
-    // forge-lint: disable-next-line(screaming-snake-case-const)
     string public constant version = "0.7.0";
 
     /**
      * @notice The prototype instance that acts as the Bitsy factory.
      */
-    // forge-lint: disable-next-line(screaming-snake-case-immutable)
     NeutrinoSource public immutable proto;
 
     /**
      * @notice The Unispring prototype used to create fair-launch pools.
      */
-    // forge-lint: disable-next-line(screaming-snake-case-immutable)
     Unispring public immutable springProto;
 
     /**
@@ -45,13 +42,11 @@ contract NeutrinoSource {
      *         minted-token address — for both hubs (minted by {make}) and
      *         spokes (minted by {launch}).
      */
-    // forge-lint: disable-next-line(screaming-snake-case-immutable)
     NeutrinoChannel public immutable channelProto;
 
     /**
      * @notice The Coinage prototype used to create hub and spoke tokens.
      */
-    // forge-lint: disable-next-line(screaming-snake-case-immutable)
     ICoinage public immutable coinage;
 
     /**

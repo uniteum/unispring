@@ -13,16 +13,11 @@ import {Test} from "forge-std/Test.sol";
  *         Subclasses override {setUp} and must call `super.setUp()` first.
  */
 contract ForkBase is Test {
-    // forge-lint: disable-next-line(screaming-snake-case-immutable)
     address internal immutable PoolManagerLookup;
-    // forge-lint: disable-next-line(screaming-snake-case-immutable)
     address internal immutable ICoinage;
     address internal immutable USDC;
-    // forge-lint: disable-next-line(screaming-snake-case-immutable)
     address internal immutable V4Quoter;
-    // forge-lint: disable-next-line(screaming-snake-case-immutable)
     address internal immutable ffffff;
-    // forge-lint: disable-next-line(screaming-snake-case-immutable)
     address internal immutable zeros;
 
     constructor() {
