@@ -6,7 +6,7 @@ import {IAddressLookup} from "ilookup/IAddressLookup.sol";
 import {IERC20} from "ierc20/IERC20.sol";
 import {IPlacer} from "./IPlacer.sol";
 import {IPoolConfig} from "./IPoolConfig.sol";
-import {IFountainTaker, Position} from "./IFountainTaker.sol";
+import {IFeeTaker, Position} from "./IFeeTaker.sol";
 import {IOwnableMaker} from "./IOwnableMaker.sol";
 import {Ownable} from "ownable/Ownable.sol";
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
@@ -77,7 +77,7 @@ interface IFountainActions {
  *         is preserved.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
-contract Fountain is IPlacer, IPoolConfig, IFountainTaker, IOwnableMaker, IUnlockCallback, Ownable {
+contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IUnlockCallback, Ownable {
     string public constant VERSION = "0.6.0";
 
     /**
@@ -318,14 +318,14 @@ contract Fountain is IPlacer, IPoolConfig, IFountainTaker, IOwnableMaker, IUnloc
     }
 
     /**
-     * @inheritdoc IFountainTaker
+     * @inheritdoc IFeeTaker
      */
     function positionsCount() external view returns (uint256) {
         return positions.length;
     }
 
     /**
-     * @inheritdoc IFountainTaker
+     * @inheritdoc IFeeTaker
      */
     function positionsSlice(uint256 offset, uint256 count) external view returns (Position[] memory slice) {
         uint256 length = positions.length;
@@ -339,7 +339,7 @@ contract Fountain is IPlacer, IPoolConfig, IFountainTaker, IOwnableMaker, IUnloc
     }
 
     /**
-     * @inheritdoc IFountainTaker
+     * @inheritdoc IFeeTaker
      */
     function untaken(uint256[] calldata ids)
         external
@@ -377,7 +377,7 @@ contract Fountain is IPlacer, IPoolConfig, IFountainTaker, IOwnableMaker, IUnloc
     }
 
     /**
-     * @inheritdoc IFountainTaker
+     * @inheritdoc IFeeTaker
      */
     function take(uint256 positionId) external {
         uint256[] memory ids = new uint256[](1);
@@ -386,7 +386,7 @@ contract Fountain is IPlacer, IPoolConfig, IFountainTaker, IOwnableMaker, IUnloc
     }
 
     /**
-     * @inheritdoc IFountainTaker
+     * @inheritdoc IFeeTaker
      */
     function take(uint256[] calldata ids) external {
         _takeMany(ids);

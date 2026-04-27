@@ -5,8 +5,8 @@ import {PoolId} from "v4-core/types/PoolId.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
 
 /**
- * @dev Record of a single seated liquidity position in a Fountain. The
- *      registry of these is the data structure {IFountainTaker} operates
+ * @dev Record of a single seated liquidity position in a pool. The
+ *      registry of these is the data structure {IFeeTaker} operates
  *      on.
  */
 struct Position {
@@ -16,20 +16,16 @@ struct Position {
 }
 
 /**
- * @title IFountainTaker
+ * @title IFeeTaker
  * @notice Surface for callers that work with seated positions and the
  *         fees they accrue: enumerate the registry, forecast pending
  *         fees, and claim them. Centered on {take} as the operational
  *         verb; the registry-view methods exist to support it.
- * @dev    The "Taker" role here means *fee taker*. This overrides the
- *         broader DeFi convention where "taker" usually means liquidity
- *         taker (the maker/taker pair). In this codebase {take} is firmly
- *         fee-claiming.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
-interface IFountainTaker {
+interface IFeeTaker {
     /**
-     * @notice Emitted when {take} pulls fees for one position into Fountain.
+     * @notice Emitted when {take} pulls fees for one position.
      * @param  positionId The id of the position whose fees were taken.
      * @param  poolId     The Uniswap V4 pool the position belongs to.
      * @param  amount0    Fees taken on the pool's currency0.
