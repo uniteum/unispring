@@ -426,6 +426,7 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IUnlockCall
         if (currency.isAddressZero()) {
             (bool ok, bytes memory ret) = to.call{value: amount}("");
             if (!ok) {
+                // Solidity has no `revert(bytes)`; bubble the recipient's revert data verbatim.
                 assembly ("memory-safe") {
                     revert(add(ret, 0x20), mload(ret))
                 }
