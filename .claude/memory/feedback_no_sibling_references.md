@@ -4,7 +4,7 @@ description: contracts/interfaces shouldn't name other contracts unless they act
 type: feedback
 ---
 
-A contract or interface's NatSpec should not mention other contracts unless that contract must know about them (i.e. imports them or its public surface references them). Lower-level pieces in particular should never name their callers — Fountain shouldn't mention Unispring or Mimicoinage; IFountain shouldn't name "factories like Mimicoinage" as the reason it exists.
+A contract or interface's NatSpec should not mention other contracts unless that contract must know about them (i.e. imports them or its public surface references them). Lower-level pieces in particular should never name their callers — Fountain shouldn't mention Unispring or Mimicoinage; IPlacer shouldn't name "factories like Mimicoinage" as the reason it exists.
 
 **Why:** keeps dependency direction clean and prevents docs from rotting when sibling contracts are renamed/added/removed. The interface's purpose can be stated in its own terms.
 

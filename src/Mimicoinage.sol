@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {IFountain} from "./IFountain.sol";
+import {IPlacer} from "./IPlacer.sol";
 import {ICoinage} from "ierc20/ICoinage.sol";
 import {IERC20Metadata} from "ierc20/IERC20Metadata.sol";
 import {Currency} from "v4-core/types/Currency.sol";
@@ -42,7 +42,7 @@ contract Mimicoinage {
      * @notice The Fountain that holds each mimic's single-tick position
      *         and routes its swap fees to {Fountain.owner}.
      */
-    IFountain public immutable FOUNTAIN;
+    IPlacer public immutable FOUNTAIN;
 
     /**
      * @notice The Coinage factory used to mint the mimic ERC-20.
@@ -78,7 +78,7 @@ contract Mimicoinage {
      *                  forward their swap fees.
      * @param  coinage  The Coinage factory used to mint mimics.
      */
-    constructor(IFountain fountain, ICoinage coinage) {
+    constructor(IPlacer fountain, ICoinage coinage) {
         FOUNTAIN = fountain;
         COINAGE = coinage;
     }

@@ -5,13 +5,13 @@ import {Currency} from "v4-core/types/Currency.sol";
 import {PoolId} from "v4-core/types/PoolId.sol";
 
 /**
- * @title IFountain
- * @notice Minimal Fountain surface used by callers that only seat
- *         positions and never read fee/clone state. Lets callers depend
- *         on Fountain without pulling in its V4 imports.
+ * @title IPlacer
+ * @notice Minimal placer surface used by callers that only seat
+ *         positions and never read fee/clone state. Lets callers
+ *         depend on a placer without pulling in V4 imports.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
-interface IFountain {
+interface IPlacer {
     /**
      * @notice Emitted when an {offer} call seats a contiguous batch of
      *         positions.

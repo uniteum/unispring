@@ -2,7 +2,7 @@
 pragma solidity ^0.8.30;
 
 import {Fountain} from "../src/Fountain.sol";
-import {IFountain} from "../src/IFountain.sol";
+import {IPlacer} from "../src/IPlacer.sol";
 import {IFountainTaker, Position} from "../src/IFountainTaker.sol";
 import {ForkBase} from "./ForkBase.t.sol";
 import {Funder} from "./Funder.sol";
@@ -298,7 +298,7 @@ contract FountainForkTest is ForkBase {
     function test_OfferRevertsOnNoPositions() public {
         int24[] memory ticks = new int24[](0);
         uint256[] memory amounts = new uint256[](0);
-        vm.expectRevert(IFountain.NoPositions.selector);
+        vm.expectRevert(IPlacer.NoPositions.selector);
         bot.offer(Currency.wrap(address(token)), Currency.wrap(ffffff), ticks, amounts);
     }
 
@@ -307,7 +307,7 @@ contract FountainForkTest is ForkBase {
         uint256[] memory amounts = new uint256[](2);
         amounts[0] = 1e18;
         amounts[1] = 1e18;
-        vm.expectRevert(abi.encodeWithSelector(IFountain.TickAmountLengthMismatch.selector, uint256(2), uint256(2)));
+        vm.expectRevert(abi.encodeWithSelector(IPlacer.TickAmountLengthMismatch.selector, uint256(2), uint256(2)));
         bot.offer(Currency.wrap(address(token)), Currency.wrap(ffffff), ticks, amounts);
     }
 
@@ -316,7 +316,7 @@ contract FountainForkTest is ForkBase {
         ticks[0] = 100;
         ticks[1] = TickMath.MAX_TICK + 1;
         uint256[] memory amounts = _oneAmount(SEGMENT_AMOUNT);
-        vm.expectRevert(abi.encodeWithSelector(IFountain.TickOutOfRange.selector, TickMath.MAX_TICK + 1));
+        vm.expectRevert(abi.encodeWithSelector(IPlacer.TickOutOfRange.selector, TickMath.MAX_TICK + 1));
         bot.offer(Currency.wrap(address(token)), Currency.wrap(ffffff), ticks, amounts);
     }
 
@@ -328,9 +328,7 @@ contract FountainForkTest is ForkBase {
         uint256[] memory amounts = new uint256[](2);
         amounts[0] = 1e18;
         amounts[1] = 1e18;
-        vm.expectRevert(
-            abi.encodeWithSelector(IFountain.TicksNotAscending.selector, uint256(2), int24(300), int24(200))
-        );
+        vm.expectRevert(abi.encodeWithSelector(IPlacer.TicksNotAscending.selector, uint256(2), int24(300), int24(200)));
         bot.offer(Currency.wrap(address(token)), Currency.wrap(ffffff), ticks, amounts);
     }
 
@@ -342,9 +340,7 @@ contract FountainForkTest is ForkBase {
         uint256[] memory amounts = new uint256[](2);
         amounts[0] = 1e18;
         amounts[1] = 1e18;
-        vm.expectRevert(
-            abi.encodeWithSelector(IFountain.TicksNotAscending.selector, uint256(1), int24(100), int24(100))
-        );
+        vm.expectRevert(abi.encodeWithSelector(IPlacer.TicksNotAscending.selector, uint256(1), int24(100), int24(100)));
         bot.offer(Currency.wrap(address(token)), Currency.wrap(ffffff), ticks, amounts);
     }
 
@@ -356,7 +352,7 @@ contract FountainForkTest is ForkBase {
         uint256[] memory amounts = new uint256[](2);
         amounts[0] = 1e18;
         amounts[1] = 0;
-        vm.expectRevert(abi.encodeWithSelector(IFountain.ZeroAmount.selector, uint256(1)));
+        vm.expectRevert(abi.encodeWithSelector(IPlacer.ZeroAmount.selector, uint256(1)));
         bot.offer(Currency.wrap(address(token)), Currency.wrap(ffffff), ticks, amounts);
     }
 
@@ -366,7 +362,7 @@ contract FountainForkTest is ForkBase {
         uint256[] memory amounts = _oneAmount(SEGMENT_AMOUNT);
         vm.deal(address(this), SEGMENT_AMOUNT);
         vm.expectRevert(
-            abi.encodeWithSelector(IFountain.NativeValueMismatch.selector, SEGMENT_AMOUNT, SEGMENT_AMOUNT - 1)
+            abi.encodeWithSelector(IPlacer.NativeValueMismatch.selector, SEGMENT_AMOUNT, SEGMENT_AMOUNT - 1)
         );
         bot.offer{value: SEGMENT_AMOUNT - 1}(Currency.wrap(address(0)), Currency.wrap(ffffff), ticks, amounts);
     }
@@ -377,7 +373,7 @@ contract FountainForkTest is ForkBase {
         uint256[] memory amounts = _oneAmount(SEGMENT_AMOUNT);
         _mint(SEGMENT_AMOUNT);
         vm.deal(address(this), 1);
-        vm.expectRevert(abi.encodeWithSelector(IFountain.NativeValueMismatch.selector, uint256(0), uint256(1)));
+        vm.expectRevert(abi.encodeWithSelector(IPlacer.NativeValueMismatch.selector, uint256(0), uint256(1)));
         bot.offer{value: 1}(Currency.wrap(address(token)), Currency.wrap(ffffff), ticks, amounts);
     }
 

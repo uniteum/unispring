@@ -4,7 +4,7 @@ pragma solidity ^0.8.30;
 import {Clones} from "clones/Clones.sol";
 import {IAddressLookup} from "ilookup/IAddressLookup.sol";
 import {IERC20} from "ierc20/IERC20.sol";
-import {IFountain} from "./IFountain.sol";
+import {IPlacer} from "./IPlacer.sol";
 import {IFountainPoolConfig} from "./IFountainPoolConfig.sol";
 import {IFountainTaker, Position} from "./IFountainTaker.sol";
 import {IOwnableMaker} from "./IOwnableMaker.sol";
@@ -77,7 +77,7 @@ interface IFountainActions {
  *         is preserved.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
-contract Fountain is IFountain, IFountainPoolConfig, IFountainTaker, IOwnableMaker, IUnlockCallback, Ownable {
+contract Fountain is IPlacer, IFountainPoolConfig, IFountainTaker, IOwnableMaker, IUnlockCallback, Ownable {
     string public constant VERSION = "0.6.0";
 
     /**
@@ -149,7 +149,7 @@ contract Fountain is IFountain, IFountainPoolConfig, IFountainTaker, IOwnableMak
     using StateLibrary for IPoolManager;
 
     /**
-     * @inheritdoc IFountain
+     * @inheritdoc IPlacer
      */
     function offer(Currency token, Currency quote, int24[] calldata ticks, uint256[] calldata amounts)
         external
