@@ -158,10 +158,10 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
      *      seats a V4 position at [ticks[i], ticks[i+1]) when the token is
      *      currency0 (identity mapping), or at [-ticks[i+1], -ticks[i])
      *      when the token is currency1 (flipping under V4's price
-     *      inversion). Net debits on both currencies are accumulated across
-     *      positions and settled at the end. Out-of-range positions have
-     *      zero delta on one side; the in-range starting segment may have a
-     *      small delta on both sides (the interior-shift bootstrap path).
+     *      inversion). Per-position deltas are accumulated and settled as
+     *      net debits at the end. Out-of-range positions have zero delta
+     *      on one side; an in-range segment has delta on both sides — at
+     *      genesis this is segment 0 via the interior-shift bootstrap.
      *      Precondition: ticks/amounts validated by {offer}; PoolManager
      *      unlocked to this contract.
      */
