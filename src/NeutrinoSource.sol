@@ -35,7 +35,8 @@ contract NeutrinoSource {
     /**
      * @notice The Unispring prototype used to create fair-launch pools.
      */
-    Unispring public immutable UNISPRING;
+    // forge-lint: disable-next-line(screaming-snake-case-immutable)
+    Unispring public immutable springProto;
 
     /**
      * @notice The NeutrinoChannel prototype cloned per tick range so each range
@@ -86,7 +87,7 @@ contract NeutrinoSource {
      */
     constructor(Unispring unispring, NeutrinoChannel channel, ICoinage minter) {
         proto = this;
-        UNISPRING = unispring;
+        springProto = unispring;
         CHANNEL = channel;
         coinage = minter;
     }
@@ -154,10 +155,10 @@ contract NeutrinoSource {
                 NeutrinoChannel hubChannel = CHANNEL.make(tickLower, tickUpper);
                 IERC20Metadata hubToken = hubChannel.mint(coinage, name, symbol, decimals, supply, tokenSalt);
 
-                (, address springHome,) = UNISPRING.made(hubToken, tickLower, tickUpper);
+                (, address springHome,) = springProto.made(hubToken, tickLower, tickUpper);
                 // forge-lint: disable-next-line(erc20-unchecked-transfer)
                 IERC20Metadata(address(hubToken)).transfer(springHome, supply);
-                Unispring unispring = UNISPRING.make(hubToken, tickLower, tickUpper);
+                Unispring unispring = springProto.make(hubToken, tickLower, tickUpper);
 
                 Clones.cloneDeterministic(address(proto), salt, 0);
                 NeutrinoSource(home).zzInit(unispring);
