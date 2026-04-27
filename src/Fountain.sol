@@ -33,8 +33,6 @@ import {ModifyLiquidityParams} from "v4-core/types/PoolOperation.sol";
 interface IFountainActions {
     function offer(PoolKey calldata key, int24[] calldata userTicks, uint256[] calldata amounts, bool tokenIsCurrency0)
         external;
-
-    function take(uint256[] calldata ids) external;
 }
 
 /**
@@ -433,7 +431,7 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IUnlockCall
             (PoolKey memory key, int24[] memory userTicks, uint256[] memory amounts, bool tokenIsCurrency0) =
                 abi.decode(data[4:], (PoolKey, int24[], uint256[], bool));
             _offerUnlocked(key, userTicks, amounts, tokenIsCurrency0);
-        } else if (selector == IFountainActions.take.selector) {
+        } else if (selector == IFeeTaker.take.selector) {
             uint256[] memory ids = abi.decode(data[4:], (uint256[]));
             _takeManyUnlocked(ids);
         } else {
