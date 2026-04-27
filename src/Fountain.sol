@@ -386,7 +386,7 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IUnlockCall
         for (uint256 i = 0; i < ids.length; i++) {
             if (ids[i] >= length) revert UnknownPosition(ids[i]);
         }
-        poolManager.unlock(abi.encodeCall(IFountainActions.take, (ids)));
+        poolManager.unlock(msg.data);
     }
 
     /**
