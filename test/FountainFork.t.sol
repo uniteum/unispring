@@ -623,15 +623,16 @@ contract FountainForkTest is ForkBase {
     // ----------------------------------------------------------------------
 
     /**
-     * @notice A native-ETH withdraw to a recipient that rejects ETH must
-     *         bubble the recipient's own revert data verbatim, rather than
-     *         hiding it behind a generic Fountain-level error.
+     * @notice A native-ETH withdraw must bubble the owner's own revert data
+     *         verbatim when the owner rejects ETH, rather than hiding it
+     *         behind a generic Fountain-level error.
      */
-    function test_WithdrawNativeBubblesRecipientRevert() public {
-        deal(address(fountain), 1 ether);
+    function test_WithdrawNativeBubblesOwnerRevert() public {
         RevertingRecipient sink = new RevertingRecipient();
+        bot.transferFountainOwnership(address(sink));
+        deal(address(fountain), 1 ether);
         vm.expectRevert(abi.encodeWithSelector(RevertingRecipient.Nope.selector, "nope"));
-        bot.withdrawTo(Currency.wrap(address(0)), 1 ether, address(sink));
+        sink.pull(fountain, Currency.wrap(address(0)), 1 ether);
     }
 
     // ----------------------------------------------------------------------

@@ -77,18 +77,20 @@ contract Funder {
     /**
      * @notice Withdraw `amount` of `currency` from Fountain to this Funder.
      *         Thin pass-through for tests that drive withdraw directly.
+     *         Fountain routes the transfer to its current {owner}, so this
+     *         only lands here while this Funder still owns the clone.
      */
     function withdraw(Currency currency, uint256 amount) external {
-        fountain.withdraw(currency, amount, address(this));
+        fountain.withdraw(currency, amount);
     }
 
     /**
-     * @notice Withdraw `amount` of `currency` from Fountain to a specified
-     *         recipient. Thin pass-through for tests that need to target a
-     *         non-Funder address (e.g. a rejecting recipient).
+     * @notice Hand off ownership of this Funder's Fountain clone. Thin
+     *         pass-through for tests that need a non-Funder owner (e.g.
+     *         a rejecting recipient).
      */
-    function withdrawTo(Currency currency, uint256 amount, address to) external {
-        fountain.withdraw(currency, amount, to);
+    function transferFountainOwnership(address newOwner) external {
+        fountain.transferOwnership(newOwner);
     }
 
     receive() external payable {}
@@ -96,6 +98,6 @@ contract Funder {
     function _sweep(Currency c) private {
         uint256 bal =
             c.isAddressZero() ? address(fountain).balance : IERC20(Currency.unwrap(c)).balanceOf(address(fountain));
-        if (bal > 0) fountain.withdraw(c, bal, address(this));
+        if (bal > 0) fountain.withdraw(c, bal);
     }
 }

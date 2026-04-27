@@ -23,11 +23,7 @@ interface IPlacer {
      * @param  positionCount    Number of positions in the batch.
      */
     event Offered(
-        address indexed offerer,
-        Currency indexed token,
-        Currency quote,
-        uint256 firstPositionId,
-        uint256 positionCount
+        address indexed offerer, Currency indexed token, Currency quote, uint256 firstPositionId, uint256 positionCount
     );
 
     /**

@@ -106,7 +106,7 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IUnlockCall
     /**
      * @notice Emitted when {owner} pulls accumulated balance out of Fountain.
      */
-    event Withdrawn(address indexed to, Currency indexed currency, uint256 amount);
+    event Withdrawn(Currency indexed currency, uint256 amount);
 
     /**
      * @notice Thrown when {unlockCallback} is invoked by anyone other than the PoolManager.
@@ -415,14 +415,15 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IUnlockCall
     }
 
     /**
-     * @notice Send `amount` of `currency` from Fountain's balance to `to`.
+     * @notice Send `amount` of `currency` from Fountain's balance to {owner}.
      *         Lets {owner} reclaim fees collected by {take} and any prefund
      *         the deployer dropped in to seed flipped-case bootstraps.
-     * @dev    Owner-only. Native-ETH transfer failure bubbles the recipient's
+     * @dev    Owner-only. Native-ETH transfer failure bubbles the owner's
      *         revert data; ERC-20 transfer failure surfaces the token's own
      *         revert.
      */
-    function withdraw(Currency currency, uint256 amount, address to) external onlyOwner {
+    function withdraw(Currency currency, uint256 amount) external onlyOwner {
+        address to = owner();
         if (currency.isAddressZero()) {
             (bool ok, bytes memory ret) = to.call{value: amount}("");
             if (!ok) {
@@ -435,7 +436,7 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IUnlockCall
             // forge-lint: disable-next-line(erc20-unchecked-transfer)
             IERC20(Currency.unwrap(currency)).transfer(to, amount);
         }
-        emit Withdrawn(to, currency, amount);
+        emit Withdrawn(currency, amount);
     }
 
     /**
