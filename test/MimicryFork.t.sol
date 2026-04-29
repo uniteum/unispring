@@ -2,7 +2,7 @@
 pragma solidity ^0.8.30;
 
 import {Fountain} from "../src/Fountain.sol";
-import {Mimicoinage} from "../src/Mimicoinage.sol";
+import {Mimicry} from "../src/Mimicry.sol";
 import {ForkBase} from "./ForkBase.t.sol";
 import {Funder} from "./Funder.sol";
 import {SwapRouter} from "./SwapRouter.sol";
@@ -37,23 +37,23 @@ interface IV4Quoter {
 
 /**
  * @notice Fork test against mainnet state. Deploys a fresh Fountain and a
- *         fresh Mimicoinage prototype against the real PoolManagerLookup
+ *         fresh Mimicry prototype against the real PoolManagerLookup
  *         and Coinage factory, then deploys per-(original, symbol) clones
  *         and reads the resulting pool state. Fee take runs through
- *         {Fountain.take} directly — Mimicoinage clones only mint the
+ *         {Fountain.take} directly — Mimicry clones only mint the
  *         mimic and seat its position; everything post-launch lives on
  *         the Fountain and PoolManager.
  *
  *         Run with:
- *           forge test --match-contract MimicoinageForkTest -f mainnet -vv
+ *           forge test --match-contract MimicryForkTest -f mainnet -vv
  *         or pin a block for reproducibility:
- *           FORK_BLOCK=24923365 forge test --match-contract MimicoinageForkTest -f mainnet -vv
+ *           FORK_BLOCK=24923365 forge test --match-contract MimicryForkTest -f mainnet -vv
  */
-contract MimicoinageForkTest is ForkBase {
+contract MimicryForkTest is ForkBase {
     using StateLibrary for IPoolManager;
 
     Fountain internal fountain;
-    Mimicoinage internal mimicoinage;
+    Mimicry internal mimicry;
     SwapRouter internal router;
     Funder internal bot;
 
@@ -64,7 +64,7 @@ contract MimicoinageForkTest is ForkBase {
         Fountain proto = new Fountain(IAddressLookup(PoolManagerLookup));
         bot.makeFountain(proto);
         fountain = bot.fountain();
-        mimicoinage = new Mimicoinage(fountain, Coinage(ICoinage));
+        mimicry = new Mimicry(fountain, Coinage(ICoinage));
         router = new SwapRouter(fountain.poolManager());
     }
 
@@ -72,21 +72,21 @@ contract MimicoinageForkTest is ForkBase {
         Currency original = Currency.wrap(USDC);
         string memory symbol = "USDCx1";
 
-        (bool existsBefore, address predictedClone,, address predictedMimic) = mimicoinage.made(original, symbol);
-        assertFalse(existsBefore, "fresh Mimicoinage cannot have pre-existing clones");
+        (bool existsBefore, address predictedClone,, address predictedMimic) = mimicry.made(original, symbol);
+        assertFalse(existsBefore, "fresh Mimicry cannot have pre-existing clones");
         assertTrue(predictedClone != address(0), "predicted clone is zero");
         assertTrue(predictedMimic != address(0), "predicted mimic is zero");
 
-        Mimicoinage clone = mimicoinage.make(original, symbol);
+        Mimicry clone = mimicry.make(original, symbol);
         assertEq(address(clone), predictedClone, "deployed clone differs from prediction");
         assertEq(address(clone.mimic()), predictedMimic, "minted mimic differs from prediction");
 
-        (bool existsAfter,,,) = mimicoinage.made(original, symbol);
+        (bool existsAfter,,,) = mimicry.made(original, symbol);
         assertTrue(existsAfter, "clone not registered as existing after make");
     }
 
     function test_MakeUSDC() public {
-        Mimicoinage clone = mimicoinage.make(Currency.wrap(USDC), "USDCx1");
+        Mimicry clone = mimicry.make(Currency.wrap(USDC), "USDCx1");
         IERC20Metadata mimic = clone.mimic();
 
         assertEq(mimic.decimals(), IERC20Metadata(USDC).decimals(), "decimals must match original");
@@ -101,17 +101,17 @@ contract MimicoinageForkTest is ForkBase {
 
         // Entire supply is seated in the position — neither the clone nor the prototype holds any.
         assertEq(mimic.balanceOf(address(clone)), 0, "supply should be in V4, not in clone");
-        assertEq(mimic.balanceOf(address(mimicoinage)), 0, "supply should be in V4, not in prototype");
+        assertEq(mimic.balanceOf(address(mimicry)), 0, "supply should be in V4, not in prototype");
     }
 
     /**
-     * @notice Native ETH as the original: Mimicoinage falls back to 18
+     * @notice Native ETH as the original: Mimicry falls back to 18
      *         decimals (no on-chain metadata to read), records the original
      *         on the clone, and seats the mimic in a Fountain position
      *         whose `currency0` is `address(0)`.
      */
     function test_MakeNativeETH() public {
-        Mimicoinage clone = mimicoinage.make(Currency.wrap(address(0)), "ETHx1");
+        Mimicry clone = mimicry.make(Currency.wrap(address(0)), "ETHx1");
         IERC20Metadata mimic = clone.mimic();
 
         assertEq(mimic.decimals(), uint8(18), "native mimic must have 18 decimals");
@@ -142,8 +142,8 @@ contract MimicoinageForkTest is ForkBase {
         require(ffffff.code.length > 0, "ffffff lepton missing at forked block");
         require(zeros.code.length > 0, "zeros lepton missing at forked block");
 
-        Mimicoinage hiClone = mimicoinage.make(Currency.wrap(ffffff), "FFx1");
-        Mimicoinage loClone = mimicoinage.make(Currency.wrap(zeros), "ZZx1");
+        Mimicry hiClone = mimicry.make(Currency.wrap(ffffff), "FFx1");
+        Mimicry loClone = mimicry.make(Currency.wrap(zeros), "ZZx1");
 
         assertLt(uint160(address(hiClone.mimic())), uint160(ffffff), "mimic of high lepton must sort below (token0)");
         assertGt(uint160(address(loClone.mimic())), uint160(zeros), "mimic of low lepton must sort above (token1)");
@@ -166,8 +166,8 @@ contract MimicoinageForkTest is ForkBase {
      *         should match to sub-bp precision.
      */
     function test_QuotedOutputsMatchAcrossOrdering() public {
-        Mimicoinage hiClone = mimicoinage.make(Currency.wrap(ffffff), "FFx1");
-        Mimicoinage loClone = mimicoinage.make(Currency.wrap(zeros), "ZZx1");
+        Mimicry hiClone = mimicry.make(Currency.wrap(ffffff), "FFx1");
+        Mimicry loClone = mimicry.make(Currency.wrap(zeros), "ZZx1");
 
         PoolKey memory hiKey = _poolKeyOf(hiClone);
         PoolKey memory loKey = _poolKeyOf(loClone);
@@ -199,8 +199,8 @@ contract MimicoinageForkTest is ForkBase {
      *         stateless, so this executes real swaps via persona traders.
      */
     function test_SequentialBuysMatchAcrossOrdering() public {
-        Mimicoinage hiClone = mimicoinage.make(Currency.wrap(ffffff), "FFx1");
-        Mimicoinage loClone = mimicoinage.make(Currency.wrap(zeros), "ZZx1");
+        Mimicry hiClone = mimicry.make(Currency.wrap(ffffff), "FFx1");
+        Mimicry loClone = mimicry.make(Currency.wrap(zeros), "ZZx1");
 
         PoolKey memory hiKey = _poolKeyOf(hiClone);
         PoolKey memory loKey = _poolKeyOf(loClone);
@@ -233,7 +233,7 @@ contract MimicoinageForkTest is ForkBase {
         // mimic sorts below ffffff → mimic is currency0, ffffff is currency1.
         // A zeroForOne=false swap spends currency1 (ffffff), so fees accrue on currency1.
         uint256 positionId = fountain.positionsCount();
-        Mimicoinage clone = mimicoinage.make(Currency.wrap(ffffff), "FFx1");
+        Mimicry clone = mimicry.make(Currency.wrap(ffffff), "FFx1");
         PoolKey memory key = _poolKeyOf(clone);
 
         uint128 amountIn = 1e18;
@@ -269,9 +269,9 @@ contract MimicoinageForkTest is ForkBase {
      */
     function test_TakeBatchRoutesFeesToTaker() public {
         uint256 hiId = fountain.positionsCount();
-        Mimicoinage hiClone = mimicoinage.make(Currency.wrap(ffffff), "FFx1");
+        Mimicry hiClone = mimicry.make(Currency.wrap(ffffff), "FFx1");
         uint256 loId = fountain.positionsCount();
-        Mimicoinage loClone = mimicoinage.make(Currency.wrap(zeros), "ZZx1");
+        Mimicry loClone = mimicry.make(Currency.wrap(zeros), "ZZx1");
 
         PoolKey memory hiKey = _poolKeyOf(hiClone);
         PoolKey memory loKey = _poolKeyOf(loClone);
@@ -319,19 +319,19 @@ contract MimicoinageForkTest is ForkBase {
     function test_MakeIdempotentAtGenesisPrice() public {
         Currency original = Currency.wrap(ffffff);
         string memory symbol = "FFx1";
-        (,,, address predictedMimic) = mimicoinage.made(original, symbol);
+        (,,, address predictedMimic) = mimicry.made(original, symbol);
         PoolKey memory key = _predictedPoolKey(original, symbol);
         fountain.poolManager().initialize(key, TickMath.getSqrtPriceAtTick(0));
 
-        Mimicoinage clone = mimicoinage.make(original, symbol);
+        Mimicry clone = mimicry.make(original, symbol);
         assertEq(address(clone.mimic()), predictedMimic, "minted address != predicted");
 
-        (bool exists,,,) = mimicoinage.made(original, symbol);
+        (bool exists,,,) = mimicry.made(original, symbol);
         assertTrue(exists, "clone not deployed after make at pre-init genesis");
     }
 
     /**
-     * @notice Mimicoinage seats at `ticks[0] = 0`. A pre-init below user
+     * @notice Mimicry seats at `ticks[0] = 0`. A pre-init below user
      *         tick 0 is silently absorbed by Fountain — {make} succeeds,
      *         spot stays at the pre-init price, and the curve activates
      *         when buyers push spot up to 0. (No-flip orientation: mimic
@@ -345,7 +345,7 @@ contract MimicoinageForkTest is ForkBase {
         uint160 preInitSqrt = TickMath.getSqrtPriceAtTick(-100);
         fountain.poolManager().initialize(key, preInitSqrt);
 
-        Mimicoinage clone = mimicoinage.make(original, symbol);
+        Mimicry clone = mimicry.make(original, symbol);
         assertTrue(address(clone.mimic()) != address(0), "mimic not minted after below-tick pre-init");
 
         (uint160 sqrt,,,) = fountain.poolManager().getSlot0(key.toId());
@@ -368,10 +368,10 @@ contract MimicoinageForkTest is ForkBase {
         fountain.poolManager().initialize(key, TickMath.getSqrtPriceAtTick(100));
 
         vm.expectRevert(IPoolManager.CurrencyNotSettled.selector);
-        mimicoinage.make(original, "FFx1");
+        mimicry.make(original, "FFx1");
 
         // Re-making under a different symbol yields a different PoolKey and succeeds.
-        Mimicoinage escapedClone = mimicoinage.make(original, "FF2x1");
+        Mimicry escapedClone = mimicry.make(original, "FF2x1");
         assertTrue(address(escapedClone.mimic()) != address(0), "rescue make under new symbol failed");
     }
 
@@ -380,7 +380,7 @@ contract MimicoinageForkTest is ForkBase {
      *      clone's own `mimic()` and `original()` accessors against this
      *      factory's fee/tickSpacing/hooks constants.
      */
-    function _poolKeyOf(Mimicoinage clone) internal view returns (PoolKey memory) {
+    function _poolKeyOf(Mimicry clone) internal view returns (PoolKey memory) {
         return _poolKey(address(clone.mimic()), clone.original());
     }
 
@@ -390,7 +390,7 @@ contract MimicoinageForkTest is ForkBase {
      *      test pre-init the target pool before the clone exists.
      */
     function _predictedPoolKey(Currency original, string memory symbol) internal view returns (PoolKey memory) {
-        (,,, address predictedMimic) = mimicoinage.made(original, symbol);
+        (,,, address predictedMimic) = mimicry.made(original, symbol);
         return _poolKey(predictedMimic, original);
     }
 

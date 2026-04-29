@@ -6,11 +6,11 @@ For any original — USDC, WBTC, USDe — you get a mirror: `USDCx1`, `WBTCx1`,
 `USDex1`, pegged within `[0.9999, 1.0001]` with no oracle and no power to
 unwind.
 
-The factory that creates them is **Mimicoinage** — a singleton with one
+The factory that creates them is **Mimicry** — a singleton with one
 `mimic` function. Each call mints a fresh Mimicoin and seats its entire
 supply into a single-tick V4 pool at price 1. The position is owned by
-a `Fountain` clone (the pool backend Mimicoinage delegates to), not by
-Mimicoinage itself. Neither contract can decrease, withdraw, or destroy
+a `Fountain` clone (the pool backend Mimicry delegates to), not by
+Mimicry itself. Neither contract can decrease, withdraw, or destroy
 the position — Fountain exposes no reduce-liquidity path. Only accrued
 swap fees (at 0.01%) can be collected, via `Fountain.take` —
 permissionless to trigger, always forwarded to the Fountain clone's

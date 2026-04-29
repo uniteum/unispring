@@ -2,22 +2,22 @@
 pragma solidity ^0.8.30;
 
 import {IPlacer} from "../src/IPlacer.sol";
-import {Mimicoinage} from "../src/Mimicoinage.sol";
+import {Mimicry} from "../src/Mimicry.sol";
 import {ICoinage} from "ierc20/ICoinage.sol";
 import {Script, console2} from "forge-std/Script.sol";
 
 /**
- * @notice Deploy the Mimicoinage singleton via Nick's CREATE2 deployer.
+ * @notice Deploy the Mimicry singleton via Nick's CREATE2 deployer.
  * @dev    Configuration comes from environment variables:
  *           ICoinage   — Coinage factory used to mint mimic tokens
  *           Fountain   — Fountain that will hold the mimic positions and
- *                        forward their swap fees. Mimicoinage mirrors
+ *                        forward their swap fees. Mimicry mirrors
  *                        this Fountain's `OWNER` as its own fee recipient.
  *
  * Usage:
- * forge script script/MimicoinageDeploy.s.sol -f $chain --private-key $tx_key --broadcast --verify --delay 10 --retries 10
+ * forge script script/MimicryDeploy.s.sol -f $chain --private-key $tx_key --broadcast --verify --delay 10 --retries 10
  */
-contract MimicoinageDeploy is Script {
+contract MimicryDeploy is Script {
     address constant NICK = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
 
     function run() external {
@@ -27,7 +27,7 @@ contract MimicoinageDeploy is Script {
         console2.log("minter :", address(minter));
         console2.log("fountain:", address(fountain));
 
-        bytes memory initCode = abi.encodePacked(type(Mimicoinage).creationCode, abi.encode(fountain, minter));
+        bytes memory initCode = abi.encodePacked(type(Mimicry).creationCode, abi.encode(fountain, minter));
         address predicted = vm.computeCreate2Address(bytes32(0), keccak256(initCode), NICK);
         console2.log("predicted        :", predicted);
 

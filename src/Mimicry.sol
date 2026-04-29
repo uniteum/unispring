@@ -8,7 +8,7 @@ import {IPlacer} from "./IPlacer.sol";
 import {Currency} from "v4-core/types/Currency.sol";
 
 /**
- * @title Mimicoinage
+ * @title Mimicry
  * @notice Bitsy factory: each clone mints a fresh ERC-20 pegged 1:1 against
  *         a given original currency (ERC-20 or native ETH) and seats its
  *         entire supply as a single-tick segment in {placer}. The clone
@@ -29,7 +29,7 @@ import {Currency} from "v4-core/types/Currency.sol";
  *         {Fountain.owner} — lives on Fountain.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
-contract Mimicoinage {
+contract Mimicry {
     string public constant version = "0.7.0";
 
     /**
@@ -46,7 +46,7 @@ contract Mimicoinage {
     /**
      * @notice The prototype instance that acts as the Bitsy factory.
      */
-    Mimicoinage public immutable proto;
+    Mimicry public immutable proto;
 
     /**
      * @notice The Fountain that holds each mimic's single-tick position
@@ -73,12 +73,12 @@ contract Mimicoinage {
 
     /**
      * @notice Emitted when a new clone is created via {make}.
-     * @param  clone     The newly deployed Mimicoinage clone.
+     * @param  clone     The newly deployed Mimicry clone.
      * @param  original  The original currency the clone's mimic is pegged
      *                   against (`Currency.wrap(address(0))` for native ETH).
      * @param  mimic     The mimic ERC-20 minted by the clone.
      */
-    event Make(Mimicoinage indexed clone, Currency indexed original, IERC20Metadata indexed mimic);
+    event Make(Mimicry indexed clone, Currency indexed original, IERC20Metadata indexed mimic);
 
     /**
      * @notice Thrown when {zzInit} is called by anyone other than {proto}.
@@ -88,7 +88,7 @@ contract Mimicoinage {
     /**
      * @notice Construct the prototype. Clones are created via {make}.
      * @param  fountain The Fountain that will seat every mimic position
-     *                  funded through this Mimicoinage.
+     *                  funded through this Mimicry.
      * @param  minter   The Coinage prototype used to mint mimics.
      */
     constructor(IPlacer fountain, ICoinage minter) {
@@ -123,7 +123,7 @@ contract Mimicoinage {
     }
 
     /**
-     * @notice Deploy a deterministic Mimicoinage clone for `(original_,
+     * @notice Deploy a deterministic Mimicry clone for `(original_,
      *         symbol)`. The clone mints its mimic and seats the entire
      *         supply at the 1:1 edge in {placer}. Idempotent — returns the
      *         existing clone if already deployed.
@@ -134,15 +134,15 @@ contract Mimicoinage {
      *                   name and symbol on the underlying ERC-20.
      * @return clone     The deployed (or existing) clone.
      */
-    function make(Currency original_, string calldata symbol) external returns (Mimicoinage clone) {
+    function make(Currency original_, string calldata symbol) external returns (Mimicry clone) {
         if (address(this) != address(proto)) {
             clone = proto.make(original_, symbol);
         } else {
             (bool exists, address home, bytes32 salt,) = made(original_, symbol);
-            clone = Mimicoinage(home);
+            clone = Mimicry(home);
             if (!exists) {
                 Clones.cloneDeterministic(address(proto), salt, 0);
-                Mimicoinage(home).zzInit(original_, symbol);
+                Mimicry(home).zzInit(original_, symbol);
                 emit Make(clone, original_, clone.mimic());
             }
         }
