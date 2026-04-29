@@ -8,19 +8,19 @@ import {SafeERC20} from "erc20/SafeERC20.sol";
 import {Currency} from "v4-core/types/Currency.sol";
 
 /**
- * @title Unispring
+ * @title Manifold
  * @notice Clone-per-hub factory that seats fair-launch pools on {placer}.
  *         Each clone owns a single hub token and pairs it against spokes
  *         supplied by callers. The hub's own ETH pool is seated single-sided
  *         by {zzInit}; spoke pools are seated single-sided by {offer}.
  * @dev    All V4 plumbing — unlock, modifyLiquidity, liquidity math, fee
- *         take — lives on {placer}. Unispring only mints/tracks
+ *         take — lives on {placer}. Manifold only mints/tracks
  *         the clone-per-hub key, pre-approves {placer} against pulled
  *         tokens, and delegates to {IPlacer.offer}. Pools inherit
  *         {Fountain.fee} (0.01%) and accrued fees flow to Fountain's owner.
  * @dev    Ticks: callers pass V4-native `(tickLower, tickUpper)` in the
  *         log_1.0001(currency1/currency0) convention. For the hub pool the
- *         hub sorts above ETH (currency1), so Unispring translates into
+ *         hub sorts above ETH (currency1), so Manifold translates into
  *         Fountain's log(quote/token) user-tick semantics by negating and
  *         swapping; spoke pools (spoke sorts below hub as currency0) pass
  *         through identity. Either way, the V4 position is seated at
@@ -35,7 +35,7 @@ import {Currency} from "v4-core/types/Currency.sol";
  *         routers reach the pool. See README §Trust boundaries.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
-contract Unispring {
+contract Manifold {
     using SafeERC20 for IERC20;
 
     string public constant version = "0.7.0";
@@ -43,11 +43,11 @@ contract Unispring {
     /**
      * @notice The prototype instance that acts as the Bitsy factory.
      */
-    Unispring public immutable proto;
+    Manifold public immutable proto;
 
     /**
      * @notice The Fountain that seats and owns every position funded through
-     *         this Unispring. Positions inherit {Fountain.poolManager} and
+     *         this Manifold. Positions inherit {Fountain.poolManager} and
      *         {Fountain.fee}; accrued fees flow to `placer.owner()`.
      */
     IPlacer public immutable placer;
@@ -64,7 +64,7 @@ contract Unispring {
     /**
      * @notice Emitted when a new clone is created via {make}.
      */
-    event Make(Unispring indexed clone, IERC20 indexed hub, int24 tickLower, int24 tickUpper);
+    event Make(Manifold indexed clone, IERC20 indexed hub, int24 tickLower, int24 tickUpper);
 
     /**
      * @notice Emitted when a pool is initialized, paired against the hub (or
@@ -99,7 +99,7 @@ contract Unispring {
     /**
      * @notice Construct the prototype. Clones are created via {make}.
      * @param  fountain The Fountain that will seat every position funded
-     *                  through this Unispring.
+     *                  through this Manifold.
      */
     constructor(IPlacer fountain) {
         proto = this;
@@ -129,15 +129,15 @@ contract Unispring {
      *         Idempotent — returns the existing clone if already deployed.
      * @return clone The deployed (or existing) clone.
      */
-    function make(IERC20 hub_, int24 tickLower, int24 tickUpper) external returns (Unispring clone) {
+    function make(IERC20 hub_, int24 tickLower, int24 tickUpper) external returns (Manifold clone) {
         if (address(this) != address(proto)) {
             clone = proto.make(hub_, tickLower, tickUpper);
         } else {
             (bool exists, address home, bytes32 salt) = made(hub_, tickLower, tickUpper);
-            clone = Unispring(home);
+            clone = Manifold(home);
             if (!exists) {
                 Clones.cloneDeterministic(address(proto), salt, 0);
-                Unispring(home).zzInit(hub_, tickLower, tickUpper);
+                Manifold(home).zzInit(hub_, tickLower, tickUpper);
                 emit Make(clone, hub_, tickLower, tickUpper);
             }
         }
@@ -193,7 +193,7 @@ contract Unispring {
         if (isHub) {
             // Hub sorts above ETH (currency1). Fountain takes ticks in
             // log(quote/token) semantics and negates for the flip case;
-            // negate-and-swap here to preserve Unispring's V4-native range.
+            // negate-and-swap here to preserve Manifold's V4-native range.
             ticks[0] = -tickUpper;
             ticks[1] = -tickLower;
             quote = Currency.wrap(address(0));

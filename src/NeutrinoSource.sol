@@ -7,12 +7,12 @@ import {IERC20Metadata} from "ierc20/IERC20Metadata.sol";
 import {Currency} from "v4-core/types/Currency.sol";
 
 import {NeutrinoChannel} from "./NeutrinoChannel.sol";
-import {Unispring} from "./Unispring.sol";
+import {Manifold} from "./Manifold.sol";
 
 /**
  * @title NeutrinoSource
  * @notice One-click fair-launch factory. A NeutrinoSource clone bundles a hub
- *         token minted via Coinage with a Unispring clone. Call {launch} on a
+ *         token minted via Coinage with a Manifold clone. Call {launch} on a
  *         clone to create a spoke token whose entire supply is deposited as
  *         permanent liquidity, paired against the hub. The minted tokens are
  *         neutrinos — fair-launched (neutral) leptons.
@@ -32,9 +32,9 @@ contract NeutrinoSource {
     NeutrinoSource public immutable proto;
 
     /**
-     * @notice The Unispring prototype used to create fair-launch pools.
+     * @notice The Manifold prototype used to create fair-launch pools.
      */
-    Unispring public immutable springProto;
+    Manifold public immutable springProto;
 
     /**
      * @notice The NeutrinoChannel prototype cloned per tick range so each range
@@ -50,9 +50,9 @@ contract NeutrinoSource {
     ICoinage public immutable coinage;
 
     /**
-     * @notice The Unispring clone for this clone's hub token, set by {zzInit}.
+     * @notice The Manifold clone for this clone's hub token, set by {zzInit}.
      */
-    Unispring public spring;
+    Manifold public spring;
 
     /**
      * @notice The hub token for this clone, derived from {spring}.
@@ -64,7 +64,7 @@ contract NeutrinoSource {
     /**
      * @notice Emitted when a new clone is created via {make}.
      */
-    event Make(NeutrinoSource indexed clone, IERC20Metadata indexed hub, Unispring indexed spring);
+    event Make(NeutrinoSource indexed clone, IERC20Metadata indexed hub, Manifold indexed spring);
 
     /**
      * @notice Emitted when a spoke token is launched via {launch}.
@@ -78,13 +78,13 @@ contract NeutrinoSource {
 
     /**
      * @notice Construct the prototype.
-     * @param unispring The Unispring prototype.
+     * @param manifold The Manifold prototype.
      * @param channel   The NeutrinoChannel prototype.
      * @param minter   The Coinage prototype.
      */
-    constructor(Unispring unispring, NeutrinoChannel channel, ICoinage minter) {
+    constructor(Manifold manifold, NeutrinoChannel channel, ICoinage minter) {
         proto = this;
-        springProto = unispring;
+        springProto = manifold;
         channelProto = channel;
         coinage = minter;
     }
@@ -122,7 +122,7 @@ contract NeutrinoSource {
     }
 
     /**
-     * @notice Create a hub token, a Unispring clone for it, and a
+     * @notice Create a hub token, a Manifold clone for it, and a
      *         NeutrinoSource clone that bundles them together. Idempotent.
      * @param name      Hub token name.
      * @param symbol    Hub token symbol.
@@ -155,20 +155,20 @@ contract NeutrinoSource {
                 (, address springHome,) = springProto.made(hubToken, tickLower, tickUpper);
                 // forge-lint: disable-next-line(erc20-unchecked-transfer)
                 IERC20Metadata(address(hubToken)).transfer(springHome, supply);
-                Unispring unispring = springProto.make(hubToken, tickLower, tickUpper);
+                Manifold manifold = springProto.make(hubToken, tickLower, tickUpper);
 
                 Clones.cloneDeterministic(address(proto), salt, 0);
-                NeutrinoSource(home).zzInit(unispring);
-                emit Make(clone, IERC20Metadata(address(hubToken)), unispring);
+                NeutrinoSource(home).zzInit(manifold);
+                emit Make(clone, IERC20Metadata(address(hubToken)), manifold);
             }
         }
     }
 
     /**
      * @notice Initializer called by {proto} on a freshly deployed clone.
-     * @param spring_ The Unispring clone for this NeutrinoSource's hub token.
+     * @param spring_ The Manifold clone for this NeutrinoSource's hub token.
      */
-    function zzInit(Unispring spring_) external {
+    function zzInit(Manifold spring_) external {
         if (msg.sender != address(proto)) revert Unauthorized();
         spring = spring_;
     }
@@ -177,7 +177,7 @@ contract NeutrinoSource {
 
     /**
      * @notice Create a spoke token via Coinage and deposit its entire supply as
-     *         permanent liquidity on this clone's Unispring, paired against the
+     *         permanent liquidity on this clone's Manifold, paired against the
      *         hub. Permissionless — anyone can launch a spoke.
      * @param name      Spoke token name.
      * @param symbol    Spoke token symbol.

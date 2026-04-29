@@ -2,20 +2,20 @@
 pragma solidity ^0.8.30;
 
 import {IPlacer} from "../src/IPlacer.sol";
-import {Unispring} from "../src/Unispring.sol";
+import {Manifold} from "../src/Manifold.sol";
 import {Script, console2} from "forge-std/Script.sol";
 
 /**
- * @notice Deploy the Unispring prototype via Nick's CREATE2 deployer.
+ * @notice Deploy the Manifold prototype via Nick's CREATE2 deployer.
  * @dev    Configuration comes from environment variables:
  *           Fountain — deployed Fountain that will seat every position
- *                      funded through this Unispring. Unispring mirrors
+ *                      funded through this Manifold. Manifold mirrors
  *                      this Fountain's `poolManager`, `fee`, and `OWNER`.
  *
  * Usage:
- * forge script script/UnispringProto.s.sol -f $chain --private-key $tx_key --broadcast --verify --delay 10 --retries 10
+ * forge script script/ManifoldProto.s.sol -f $chain --private-key $tx_key --broadcast --verify --delay 10 --retries 10
  */
-contract UnispringProto is Script {
+contract ManifoldProto is Script {
     address constant NICK = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
 
     function run() external {
@@ -24,7 +24,7 @@ contract UnispringProto is Script {
         console2.log("fountain:", address(fountain));
 
         // Compute the deterministic prototype CREATE2 address.
-        bytes memory initCode = abi.encodePacked(type(Unispring).creationCode, abi.encode(fountain));
+        bytes memory initCode = abi.encodePacked(type(Manifold).creationCode, abi.encode(fountain));
         address predictedProto = vm.computeCreate2Address(bytes32(0), keccak256(initCode), NICK);
         console2.log("predicted proto:", predictedProto);
 

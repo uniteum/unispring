@@ -5,14 +5,14 @@ import {ICoinage} from "ierc20/ICoinage.sol";
 import {NeutrinoChannel} from "../src/NeutrinoChannel.sol";
 import {NeutrinoSource} from "../src/NeutrinoSource.sol";
 import {Script, console2} from "forge-std/Script.sol";
-import {Unispring} from "../src/Unispring.sol";
+import {Manifold} from "../src/Manifold.sol";
 
 /**
  * @notice Deploy the NeutrinoSource prototype via Nick's CREATE2 deployer.
  * @dev    Configuration comes from environment variables:
  *           ICoinage        — the Coinage prototype
  *           NeutrinoChannelProto — the NeutrinoChannel prototype
- *           UnispringProto  — the Unispring prototype
+ *           ManifoldProto  — the Manifold prototype
  *
  * Usage:
  * forge script script/NeutrinoSourceProto.s.sol -f $chain --private-key $tx_key --broadcast --verify --delay 10 --retries 10
@@ -23,15 +23,15 @@ contract NeutrinoSourceProto is Script {
     function run() external {
         ICoinage minter = ICoinage(vm.envAddress("ICoinage"));
         NeutrinoChannel channel = NeutrinoChannel(vm.envAddress("NeutrinoChannelProto"));
-        Unispring unispring = Unispring(payable(vm.envAddress("UnispringProto")));
+        Manifold manifold = Manifold(payable(vm.envAddress("ManifoldProto")));
 
         console2.log("minter:", address(minter));
         console2.log("channel:", address(channel));
-        console2.log("unispring:", address(unispring));
+        console2.log("manifold:", address(manifold));
 
         // Compute the deterministic prototype CREATE2 address.
         bytes memory initCode =
-            abi.encodePacked(type(NeutrinoSource).creationCode, abi.encode(unispring, channel, minter));
+            abi.encodePacked(type(NeutrinoSource).creationCode, abi.encode(manifold, channel, minter));
         address predictedProto = vm.computeCreate2Address(bytes32(0), keccak256(initCode), NICK);
         console2.log("predicted proto:", predictedProto);
 

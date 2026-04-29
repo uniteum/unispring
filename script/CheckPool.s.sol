@@ -2,7 +2,7 @@
 pragma solidity ^0.8.30;
 
 import {IPoolConfig} from "../src/IPoolConfig.sol";
-import {Unispring} from "../src/Unispring.sol";
+import {Manifold} from "../src/Manifold.sol";
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
@@ -12,14 +12,14 @@ import {PoolKey} from "v4-core/types/PoolKey.sol";
 import {Script, console} from "forge-std/Script.sol";
 
 /**
- * @notice Read-only: print slot0 and liquidity for a Unispring pool.
+ * @notice Read-only: print slot0 and liquidity for a Manifold pool.
  * @dev    Usage: forge script script/CheckPool.s.sol -f $chain
  */
 contract CheckPool is Script {
     using StateLibrary for IPoolManager;
 
     function run() external view {
-        Unispring spring = Unispring(payable(vm.envAddress("Unispring")));
+        Manifold spring = Manifold(payable(vm.envAddress("Manifold")));
         IPoolConfig fountain = IPoolConfig(address(spring.placer()));
         address newToken = vm.envAddress("HelloWorld");
         address hub = spring.hub();

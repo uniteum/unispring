@@ -3,7 +3,7 @@ pragma solidity ^0.8.30;
 
 import {Fountain} from "../src/Fountain.sol";
 import {Position} from "../src/IFeeTaker.sol";
-import {Unispring} from "../src/Unispring.sol";
+import {Manifold} from "../src/Manifold.sol";
 import {ForkBase} from "./ForkBase.t.sol";
 import {Funder} from "./Funder.sol";
 import {TestToken} from "./TestToken.sol";
@@ -16,21 +16,21 @@ import {Currency} from "v4-core/types/Currency.sol";
 
 /**
  * @notice Fork test against mainnet state. Deploys a fresh Fountain and a
- *         fresh Unispring prototype against the real PoolManager, then
+ *         fresh Manifold prototype against the real PoolManager, then
  *         exercises the clone-per-hub factory: hub pool seated by {zzInit}
  *         (ETH/hub, hub above ETH → flip case in Fountain), spoke pools
  *         seated by {offer} (spoke/hub, spoke below hub → identity).
  *
  *         Run with:
- *           forge test --match-contract UnispringForkTest -f mainnet -vv
+ *           forge test --match-contract ManifoldForkTest -f mainnet -vv
  *         or pin a block:
- *           FORK_BLOCK=24923365 forge test --match-contract UnispringForkTest -f mainnet -vv
+ *           FORK_BLOCK=24923365 forge test --match-contract ManifoldForkTest -f mainnet -vv
  */
-contract UnispringForkTest is ForkBase {
+contract ManifoldForkTest is ForkBase {
     using StateLibrary for IPoolManager;
 
     Fountain internal fountain;
-    Unispring internal proto;
+    Manifold internal proto;
     Funder internal bot;
 
     uint256 internal constant HUB_SUPPLY = 10_000_000 ether;
@@ -44,7 +44,7 @@ contract UnispringForkTest is ForkBase {
         Fountain fountainProto = new Fountain(IAddressLookup(PoolManagerLookup));
         bot.makeFountain(fountainProto);
         fountain = bot.fountain();
-        proto = new Unispring(fountain);
+        proto = new Manifold(fountain);
 
         require(ffffff.code.length > 0, "ffffff lepton missing at forked block");
     }
@@ -64,7 +64,7 @@ contract UnispringForkTest is ForkBase {
     // ----------------------------------------------------------------------
 
     function test_MakeSeatsHubPoolAgainstETH() public {
-        Unispring clone = _makeHub();
+        Manifold clone = _makeHub();
 
         assertEq(clone.hub(), ffffff, "clone hub set");
         assertEq(fountain.positionsCount(), 1, "one position seated by zzInit");
@@ -88,15 +88,15 @@ contract UnispringForkTest is ForkBase {
     }
 
     function test_MakeIsIdempotent() public {
-        Unispring first = _makeHub();
-        Unispring second = proto.make(IERC20(ffffff), HUB_TICK_LOWER, HUB_TICK_UPPER);
+        Manifold first = _makeHub();
+        Manifold second = proto.make(IERC20(ffffff), HUB_TICK_LOWER, HUB_TICK_UPPER);
         assertEq(address(first), address(second), "make idempotent: same clone");
         assertEq(fountain.positionsCount(), 1, "second make does not re-seat hub");
     }
 
     function test_MakeFromCloneDelegatesToProto() public {
-        Unispring clone = _makeHub();
-        Unispring same = clone.make(IERC20(ffffff), HUB_TICK_LOWER, HUB_TICK_UPPER);
+        Manifold clone = _makeHub();
+        Manifold same = clone.make(IERC20(ffffff), HUB_TICK_LOWER, HUB_TICK_UPPER);
         assertEq(address(same), address(clone), "clone.make routes through proto");
     }
 
@@ -105,7 +105,7 @@ contract UnispringForkTest is ForkBase {
     // ----------------------------------------------------------------------
 
     function test_OfferSpokeSeatsPositionAgainstHub() public {
-        Unispring clone = _makeHub();
+        Manifold clone = _makeHub();
 
         TestToken spoke = _makeToken("Spoke", "SPK", 18);
         uint256 supply = 1_000_000 ether;
@@ -139,32 +139,32 @@ contract UnispringForkTest is ForkBase {
 
     function test_OfferRevertsOnSpokeAboveHub() public {
         // Use a low-address hub so almost any spoke sorts above it.
-        Unispring clone = _makeHubAt(zeros);
+        Manifold clone = _makeHubAt(zeros);
         Currency bogusSpoke = Currency.wrap(ffffff);
 
-        vm.expectRevert(abi.encodeWithSelector(Unispring.SpokeMustSortBelowHub.selector, Currency.unwrap(bogusSpoke)));
+        vm.expectRevert(abi.encodeWithSelector(Manifold.SpokeMustSortBelowHub.selector, Currency.unwrap(bogusSpoke)));
         clone.offer(bogusSpoke, 0, -100, 100);
     }
 
     function test_OfferRevertsOnInvertedTicks() public {
-        Unispring clone = _makeHub();
+        Manifold clone = _makeHub();
         TestToken spoke = _makeToken("Spoke", "SPK", 18);
 
-        vm.expectRevert(abi.encodeWithSelector(Unispring.TickLowerNotBelowUpper.selector, int24(100), int24(50)));
+        vm.expectRevert(abi.encodeWithSelector(Manifold.TickLowerNotBelowUpper.selector, int24(100), int24(50)));
         clone.offer(Currency.wrap(address(spoke)), 0, 100, 50);
     }
 
     function test_OfferRevertsOnEqualTicks() public {
-        Unispring clone = _makeHub();
+        Manifold clone = _makeHub();
         TestToken spoke = _makeToken("Spoke", "SPK", 18);
 
-        vm.expectRevert(abi.encodeWithSelector(Unispring.TickLowerNotBelowUpper.selector, int24(100), int24(100)));
+        vm.expectRevert(abi.encodeWithSelector(Manifold.TickLowerNotBelowUpper.selector, int24(100), int24(100)));
         clone.offer(Currency.wrap(address(spoke)), 0, 100, 100);
     }
 
     function test_ZzInitRevertsIfNotCalledByProto() public {
-        Unispring clone = _makeHub();
-        vm.expectRevert(Unispring.Unauthorized.selector);
+        Manifold clone = _makeHub();
+        vm.expectRevert(Manifold.Unauthorized.selector);
         clone.zzInit(IERC20(ffffff), HUB_TICK_LOWER, HUB_TICK_UPPER);
     }
 
@@ -172,11 +172,11 @@ contract UnispringForkTest is ForkBase {
     // Helpers
     // ----------------------------------------------------------------------
 
-    function _makeHub() internal returns (Unispring clone) {
+    function _makeHub() internal returns (Manifold clone) {
         clone = _makeHubAt(ffffff);
     }
 
-    function _makeHubAt(address hub) internal returns (Unispring clone) {
+    function _makeHubAt(address hub) internal returns (Manifold clone) {
         IERC20 hubToken = IERC20(hub);
         (, address home,) = proto.made(hubToken, HUB_TICK_LOWER, HUB_TICK_UPPER);
         deal(hub, home, HUB_SUPPLY);

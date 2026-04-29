@@ -2,7 +2,7 @@
 pragma solidity ^0.8.30;
 
 import {IPoolConfig} from "../src/IPoolConfig.sol";
-import {Unispring} from "../src/Unispring.sol";
+import {Manifold} from "../src/Manifold.sol";
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {Currency} from "v4-core/types/Currency.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
@@ -30,7 +30,7 @@ interface IV4Quoter {
  * @dev    Usage: forge script script/QuotePool.s.sol -f $chain
  *
  *         Env vars required:
- *           Unispring   — Unispring factory address
+ *           Manifold    — Manifold factory address
  *           HelloWorld  — new token address
  */
 contract QuotePool is Script {
@@ -38,10 +38,10 @@ contract QuotePool is Script {
     IV4Quoter constant QUOTER = IV4Quoter(0x61B3f2011A92d183C7dbaDBdA940a7555Ccf9227);
 
     function run() external {
-        Unispring unispring = Unispring(payable(vm.envAddress("Unispring")));
-        IPoolConfig fountain = IPoolConfig(address(unispring.placer()));
+        Manifold manifold = Manifold(payable(vm.envAddress("Manifold")));
+        IPoolConfig fountain = IPoolConfig(address(manifold.placer()));
         address newToken = vm.envAddress("HelloWorld");
-        address hub = unispring.hub();
+        address hub = manifold.hub();
         uint128 hubAmount = uint128(vm.envUint("HubAmount"));
 
         // Case-1 invariant: new token is currency0, HUB is currency1.
