@@ -76,7 +76,7 @@ contract MimicryForkTest is ForkBase {
         string memory symbol = "USDCx1";
 
         (bool cloneExistsBefore, address predictedClone,) = mimicry.made(original, symbol);
-        (bool mimicExistsBefore, address predictedMimic) = mimicry.mimicked(Currency.wrap(original), symbol, symbol);
+        (bool mimicExistsBefore, address predictedMimic) = mimicry.mimicked(original, symbol, symbol);
         assertFalse(cloneExistsBefore, "fresh Mimicry cannot have pre-existing clones");
         assertFalse(mimicExistsBefore, "fresh Mimicry cannot have pre-existing mimics");
         assertTrue(predictedClone != address(0), "predicted clone is zero");
@@ -87,7 +87,7 @@ contract MimicryForkTest is ForkBase {
         assertEq(address(mimic), predictedMimic, "minted mimic differs from prediction");
 
         (bool cloneExistsAfter,,) = mimicry.made(original, symbol);
-        (bool mimicExistsAfter,) = mimicry.mimicked(Currency.wrap(original), symbol, symbol);
+        (bool mimicExistsAfter,) = mimicry.mimicked(original, symbol, symbol);
         assertTrue(cloneExistsAfter, "clone not registered as existing after make");
         assertTrue(mimicExistsAfter, "mimic not registered as existing after mimic()");
     }
@@ -132,7 +132,7 @@ contract MimicryForkTest is ForkBase {
         Mimicry self = mimicry.make(native, "1xETH");
         assertEq(address(self), address(mimicry), "make on proto pair must return proto");
 
-        (bool mimicExistsBefore, address predictedMimic) = mimicry.mimicked(Currency.wrap(native), "1xETH", "alpha");
+        (bool mimicExistsBefore, address predictedMimic) = mimicry.mimicked(native, "1xETH", "alpha");
         assertFalse(mimicExistsBefore, "fresh proto cannot have pre-existing mimics");
 
         IERC20Metadata token = mimicry.mimic("alpha");
@@ -388,7 +388,7 @@ contract MimicryForkTest is ForkBase {
     function test_MimicIdempotentAtGenesisPrice() public {
         address original = ffffff;
         string memory symbol = "FFx1";
-        (, address predictedMimic) = mimicry.mimicked(Currency.wrap(original), symbol, symbol);
+        (, address predictedMimic) = mimicry.mimicked(original, symbol, symbol);
         PoolKey memory key = _predictedPoolKey(original, symbol, symbol);
         fountain.poolManager().initialize(key, TickMath.getSqrtPriceAtTick(0));
 
@@ -475,9 +475,8 @@ contract MimicryForkTest is ForkBase {
         view
         returns (PoolKey memory)
     {
-        Currency originalCurrency = Currency.wrap(original);
-        (, address predictedMimic) = mimicry.mimicked(originalCurrency, symbol, name);
-        return _poolKey(predictedMimic, originalCurrency);
+        (, address predictedMimic) = mimicry.mimicked(original, symbol, name);
+        return _poolKey(predictedMimic, Currency.wrap(original));
     }
 
     function _poolKey(address mimic, Currency original) private view returns (PoolKey memory) {

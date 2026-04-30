@@ -216,29 +216,40 @@ contract Mimicry {
      * @notice Predict the deterministic address of a mimic minted by the
      *         clone for `(original_, symbol_)` with `name_`. Works whether
      *         or not the clone is already deployed.
-     * @param  original_ The reference currency the clone would peg against.
+     * @param  original_ The reference token, accepted under the same rules
+     *                   as {make} / {made}: `address(0)` is native ETH;
+     *                   an {IAddressLookup} resolves through `value()`;
+     *                   any other address is the token itself.
      * @param  symbol_   Shared symbol every mimic of the clone carries.
      * @param  name_     Per-mimic name.
      * @return exists    True if the mimic token is already deployed.
      * @return home      The deterministic mimic address.
      */
-    function mimicked(Currency original_, string calldata symbol_, string calldata name_)
+    function mimicked(address original_, string calldata symbol_, string calldata name_)
         public
         view
         returns (bool exists, address home)
     {
-        return _mimicked(original_, symbol_, name_);
+        Currency resolved = _resolve(original_);
+        address maker;
+        if (_isProtoPair(resolved, symbol_)) {
+            maker = address(proto);
+        } else {
+            bytes32 salt = keccak256(abi.encode(original_, symbol_));
+            maker = Clones.predictDeterministicAddress(address(proto), salt, address(proto));
+        }
+        return _mimicked(maker, resolved, symbol_, name_);
     }
 
     /**
      * @notice Predict the deterministic mimic address for `name_` under
      *         this instance's stored `(original, symbol)`. Convenience
-     *         wrapper around the proto-level {mimicked}; on the
-     *         prototype this resolves to the `(native ETH, "1xETH")`
-     *         pair.
+     *         wrapper for callers that already hold the clone (or proto):
+     *         the maker for {coinage}'s CREATE2 is `address(this)`, so no
+     *         salt rederivation is needed.
      */
     function mimicked(string calldata name_) external view returns (bool exists, address home) {
-        return _mimicked(original, symbol, name_);
+        return _mimicked(address(this), original, symbol, name_);
     }
 
     /**
@@ -256,7 +267,7 @@ contract Mimicry {
      * @return token  The minted (or existing) mimic ERC-20.
      */
     function mimic(string calldata name_) external returns (IERC20Metadata token) {
-        (bool exists, address home) = _mimicked(original, symbol, name_);
+        (bool exists, address home) = _mimicked(address(this), original, symbol, name_);
         if (exists) return IERC20Metadata(home);
 
         (uint8 decimals, uint256 supply) = _mimicMetadata(original);
@@ -277,25 +288,18 @@ contract Mimicry {
     }
 
     /**
-     * @dev Shared body of both {mimicked} overloads. Derives the maker
-     *      address that {coinage} will see for this `(original_,
-     *      symbol_)` factory: `address(proto)` for the proto pair, the
-     *      predicted clone address otherwise (whether or not the clone
-     *      exists). Then asks {coinage} for the deterministic mimic
-     *      address that maker would produce for `name_`.
+     * @dev Ask {coinage} for the deterministic mimic address `maker` would
+     *      produce for `(name_, symbol_)` with metadata derived from
+     *      `original_`. Callers from this instance (action {mimic} and
+     *      convenience {mimicked}) pass `address(this)`; the public
+     *      {mimicked} overload computes `maker` from the salted clone
+     *      prediction since no clone instance is in scope yet.
      */
-    function _mimicked(Currency original_, string memory symbol_, string memory name_)
+    function _mimicked(address maker, Currency original_, string memory symbol_, string memory name_)
         private
         view
         returns (bool exists, address home)
     {
-        address maker;
-        if (_isProtoPair(original_, symbol_)) {
-            maker = address(proto);
-        } else {
-            bytes32 salt = keccak256(abi.encode(original_, symbol_));
-            maker = Clones.predictDeterministicAddress(address(proto), salt, address(proto));
-        }
         (uint8 decimals, uint256 supply) = _mimicMetadata(original_);
         (exists, home,) = coinage.made(maker, name_, symbol_, decimals, supply, bytes32(0));
     }
