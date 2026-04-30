@@ -311,11 +311,9 @@ contract Mimicry {
 
     /**
      * @dev Resolve `original_` into a {Currency}. `address(0)` is native
-     *      ETH; any contract address that responds to {IAddressLookup.value}
-     *      is treated as a chain-local lookup and resolves to its `value()`;
-     *      everything else (EOAs and non-lookup contracts) is treated as
-     *      the token address directly. A successful `value()` that returns
-     *      `address(0)` resolves to native ETH.
+     *      ETH; an {IAddressLookup} resolves to its `value()`; any other
+     *      address is treated as the token itself. A `value()` that
+     *      returns `address(0)` resolves to native ETH.
      */
     function _resolve(address original_) private view returns (Currency) {
         if (original_ == address(0)) return Currency.wrap(address(0));
