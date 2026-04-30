@@ -175,6 +175,32 @@ contract MimicryForkTest is ForkBase {
     }
 
     /**
+     * @notice An ETH-pegged clone for a non-`"1xETH"` symbol that does
+     *         not yet exist deploys via the normal clone path:
+     *         `made` flips from false to true, `make` produces a clone
+     *         at the predicted address with the requested symbol, and
+     *         the minted mimic carries the clone's symbol rather than
+     *         proto's `"1xETH"`.
+     */
+    function test_MakeNativeETHWithNonProtoSymbol() public {
+        Currency native = Currency.wrap(address(0));
+        string memory symbol = "ETHx1";
+
+        (bool existsBefore, address predictedClone,) = mimicry.made(native, symbol);
+        assertFalse(existsBefore, "fresh non-proto clone cannot pre-exist");
+        assertTrue(predictedClone != address(0), "predicted clone is zero");
+
+        (Mimicry clone, IERC20Metadata token) = _makeAndMimic(native, symbol);
+        assertEq(address(clone), predictedClone, "deployed clone differs from prediction");
+        assertEq(Currency.unwrap(clone.original()), address(0), "clone.original is native ETH");
+        assertEq(clone.symbol(), symbol, "clone.symbol must round-trip");
+        assertEq(token.symbol(), symbol, "minted mimic carries clone symbol");
+
+        (bool existsAfter,,) = mimicry.made(native, symbol);
+        assertTrue(existsAfter, "clone must register as existing after make");
+    }
+
+    /**
      * @notice Both orderings must initialize at the identical 1:1 spot price.
      *         `ffffff` is a high-address lepton (mimic sorts below → token0);
      *         `zeros` is a low-address lepton (mimic sorts above → token1).
