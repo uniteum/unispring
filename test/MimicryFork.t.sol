@@ -112,6 +112,43 @@ contract MimicryForkTest is ForkBase {
     }
 
     /**
+     * @notice The prototype is itself the canonical factory for the
+     *         `(native ETH, "1xETH")` pair: `proto.mimic(name)` mints a
+     *         1xETH-ETH mimic directly from the prototype, `make` for
+     *         that pair returns proto without deploying a separate
+     *         clone, and `made` reports the proto address with a zero
+     *         salt.
+     */
+    function test_ProtoIsETHFactory() public {
+        assertEq(mimicry.symbol(), "1xETH", "proto symbol");
+        assertEq(Currency.unwrap(mimicry.original()), address(0), "proto original is native ETH");
+
+        Currency native = Currency.wrap(address(0));
+        (bool cloneExists, address cloneHome, bytes32 salt) = mimicry.made(native, "1xETH");
+        assertTrue(cloneExists, "proto pair must report exists=true");
+        assertEq(cloneHome, address(mimicry), "proto pair must map to proto address");
+        assertEq(salt, bytes32(0), "proto pair must report zero salt");
+
+        Mimicry self = mimicry.make(native, "1xETH");
+        assertEq(address(self), address(mimicry), "make on proto pair must return proto");
+
+        (bool mimicExistsBefore, address predictedMimic) = mimicry.mimicked(native, "1xETH", "alpha");
+        assertFalse(mimicExistsBefore, "fresh proto cannot have pre-existing mimics");
+
+        IERC20Metadata token = mimicry.mimic("alpha");
+        assertEq(address(token), predictedMimic, "minted mimic differs from prediction");
+        assertEq(token.symbol(), "1xETH", "minted symbol must round-trip");
+        assertEq(token.decimals(), uint8(18), "native mimic must have 18 decimals");
+
+        // Pool initialized at tick 0 with the entire supply seated single-sided.
+        PoolKey memory key = _poolKeyOf(mimicry, token);
+        (uint160 sqrtPriceX96, int24 tick,,) = fountain.poolManager().getSlot0(key.toId());
+        assertEq(tick, int24(0), "pool must initialize at tick 0");
+        assertGt(sqrtPriceX96, 0, "pool not initialized");
+        assertEq(token.balanceOf(address(mimicry)), 0, "supply should be in V4, not in proto");
+    }
+
+    /**
      * @notice Native ETH as the original: Mimicry falls back to 18
      *         decimals (no on-chain metadata to read), records the original
      *         on the clone, and seats the mimic in a Fountain position

@@ -15,6 +15,11 @@ import {Currency} from "v4-core/types/Currency.sol";
  *         clone's `(original, symbol)`. Each minted mimic is pegged 1:1
  *         against the clone's original (ERC-20 or native ETH) and has
  *         its entire supply seated as a single-tick segment in {placer}.
+ * @notice The prototype is itself the canonical factory for the
+ *         `(native ETH, "1xETH")` pair: `proto.mimic(name)` mints a
+ *         1xETH ERC-20 directly from the prototype, and
+ *         `make(Currency.wrap(address(0)), "1xETH")` returns `proto`
+ *         (no separate clone is deployed for that pair).
  * @dev    The mimic token carries the original's decimals (18 for native
  *         ETH) so the raw price of 1 at tick 0 corresponds to a 1:1
  *         human-unit peg. Each position uses {Fountain.fee} (0.01%),
@@ -65,13 +70,16 @@ contract Mimicry {
     /**
      * @notice The original currency every mimic minted by this clone is
      *         pegged against (`Currency.wrap(address(0))` for native ETH).
-     *         Set once by {zzInit}.
+     *         Set on clones by {zzInit}; the prototype's value is the
+     *         storage default `Currency.wrap(address(0))` (native ETH).
      */
     Currency public original;
 
     /**
      * @notice The symbol shared by every mimic minted by this clone
-     *         (mimics vary only by `name`). Set once by {zzInit}.
+     *         (mimics vary only by `name`). Set on clones by {zzInit};
+     *         the prototype's value is set to `"1xETH"` in the
+     *         constructor.
      */
     string public symbol;
 
@@ -100,12 +108,10 @@ contract Mimicry {
     error Unauthorized();
 
     /**
-     * @notice Thrown when a clone-only function is called on the prototype.
-     */
-    error NoCloneContext();
-
-    /**
      * @notice Construct the prototype. Clones are created via {make}.
+     *         The prototype itself acts as the `(native ETH, "1xETH")`
+     *         factory: its `original` is the storage-default native ETH
+     *         and its `symbol` is set to `"1xETH"` here.
      * @param  fountain The Fountain that will seat every mimic position
      *                  funded through this Mimicry.
      * @param  minter   The Coinage prototype used to mint mimics.
@@ -114,26 +120,35 @@ contract Mimicry {
         proto = this;
         placer = fountain;
         coinage = minter;
+        symbol = "1xETH";
+        emit Make(this, Currency.wrap(address(0)), symbol);
     }
 
     // ---- Bitsy factory: clones ----
 
     /**
      * @notice Predict the deterministic address of a clone for `(original_,
-     *         symbol_)`.
+     *         symbol_)`. For the proto pair `(native ETH, "1xETH")` this
+     *         returns `(true, address(proto), bytes32(0))` — the proto
+     *         itself serves as the canonical factory and no separate
+     *         clone exists.
      * @param  original_ The reference currency that would be pegged against
      *                   (`Currency.wrap(address(0))` for native ETH).
      * @param  symbol_   The shared symbol every mimic minted by the clone
      *                   would carry.
-     * @return exists    True if the clone is already deployed.
-     * @return home      The deterministic clone address.
-     * @return salt      The CREATE2 salt (derived from the input parameters).
+     * @return exists    True if the clone is already deployed (always true
+     *                   for the proto pair).
+     * @return home      The deterministic clone address (or `address(proto)`
+     *                   for the proto pair).
+     * @return salt      The CREATE2 salt (`bytes32(0)` for the proto pair,
+     *                   which never uses CREATE2).
      */
     function made(Currency original_, string calldata symbol_)
         public
         view
         returns (bool exists, address home, bytes32 salt)
     {
+        if (_isProtoPair(original_, symbol_)) return (true, address(proto), bytes32(0));
         salt = keccak256(abi.encode(original_, symbol_));
         home = Clones.predictDeterministicAddress(address(proto), salt, address(proto));
         exists = home.code.length > 0;
@@ -142,17 +157,23 @@ contract Mimicry {
     /**
      * @notice Deploy a deterministic Mimicry clone for `(original_,
      *         symbol_)`. Idempotent — returns the existing clone if
-     *         already deployed. The clone mints mimic tokens via {mimic}.
+     *         already deployed. For the proto pair
+     *         `(native ETH, "1xETH")` this returns `proto` directly
+     *         (no clone is deployed; the proto IS the factory for that
+     *         pair). The clone mints mimic tokens via {mimic}.
      * @param  original_ The reference currency to peg against
      *                   (`Currency.wrap(address(0))` for native ETH;
      *                   mimics are minted with 18 decimals in that case).
      * @param  symbol_   Shared symbol every mimic minted by this clone
      *                   will carry.
-     * @return clone     The deployed (or existing) clone.
+     * @return clone     The deployed (or existing) clone, or `proto`
+     *                   itself for the proto pair.
      */
     function make(Currency original_, string calldata symbol_) external returns (Mimicry clone) {
         if (address(this) != address(proto)) {
             clone = proto.make(original_, symbol_);
+        } else if (_isProtoPair(original_, symbol_)) {
+            clone = this;
         } else {
             (bool exists, address home, bytes32 salt) = made(original_, symbol_);
             clone = Mimicry(home);
@@ -197,32 +218,30 @@ contract Mimicry {
 
     /**
      * @notice Predict the deterministic mimic address for `name_` under
-     *         this clone's stored `(original, symbol)`. Convenience
-     *         wrapper around the proto-level {mimicked}; callable only on
-     *         a clone (the prototype has no `(original, symbol)` of its
-     *         own).
+     *         this instance's stored `(original, symbol)`. Convenience
+     *         wrapper around the proto-level {mimicked}; on the
+     *         prototype this resolves to the `(native ETH, "1xETH")`
+     *         pair.
      */
     function mimicked(string calldata name_) external view returns (bool exists, address home) {
-        if (address(this) == address(proto)) revert NoCloneContext();
         return _mimicked(original, symbol, name_);
     }
 
     /**
-     * @notice Mint a fresh mimic ERC-20 with `name_`, the clone's stored
-     *         `symbol`, and decimals + supply derived from `original`,
-     *         and seat its entire supply as a single-tick segment in
-     *         {placer}. Idempotent — returns the existing token if a
-     *         mimic with `name_` was already minted by this clone.
-     * @dev    Callable only on a clone; reverts on the prototype since
-     *         it has no `(original, symbol)` context.
+     * @notice Mint a fresh mimic ERC-20 with `name_`, this instance's
+     *         stored `symbol`, and decimals + supply derived from
+     *         `original`, and seat its entire supply as a single-tick
+     *         segment in {placer}. Idempotent — returns the existing
+     *         token if a mimic with `name_` was already minted by this
+     *         instance. Callable on the prototype (mints under the
+     *         proto pair `(native ETH, "1xETH")`) or on any clone
+     *         (mints under that clone's pair).
      * @param  name_  Per-mimic name. Must vary across calls to mint
-     *                distinct mimics under this clone's `(original,
+     *                distinct mimics under this instance's `(original,
      *                symbol)`.
      * @return token  The minted (or existing) mimic ERC-20.
      */
     function mimic(string calldata name_) external returns (IERC20Metadata token) {
-        if (address(this) == address(proto)) revert NoCloneContext();
-
         (bool exists, address home) = _mimicked(original, symbol, name_);
         if (exists) return IERC20Metadata(home);
 
@@ -244,20 +263,36 @@ contract Mimicry {
     }
 
     /**
-     * @dev Shared body of both {mimicked} overloads. Derives the predicted
-     *      clone address from `(original_, symbol_)` (whether or not it
-     *      exists), then asks {coinage} for the deterministic mimic
-     *      address that clone would produce for `name_`.
+     * @dev Shared body of both {mimicked} overloads. Derives the maker
+     *      address that {coinage} will see for this `(original_,
+     *      symbol_)` factory: `address(proto)` for the proto pair, the
+     *      predicted clone address otherwise (whether or not the clone
+     *      exists). Then asks {coinage} for the deterministic mimic
+     *      address that maker would produce for `name_`.
      */
     function _mimicked(Currency original_, string memory symbol_, string memory name_)
         private
         view
         returns (bool exists, address home)
     {
-        bytes32 salt = keccak256(abi.encode(original_, symbol_));
-        address cloneHome = Clones.predictDeterministicAddress(address(proto), salt, address(proto));
+        address maker;
+        if (_isProtoPair(original_, symbol_)) {
+            maker = address(proto);
+        } else {
+            bytes32 salt = keccak256(abi.encode(original_, symbol_));
+            maker = Clones.predictDeterministicAddress(address(proto), salt, address(proto));
+        }
         (uint8 decimals, uint256 supply) = _mimicMetadata(original_);
-        (exists, home,) = coinage.made(cloneHome, name_, symbol_, decimals, supply, bytes32(0));
+        (exists, home,) = coinage.made(maker, name_, symbol_, decimals, supply, bytes32(0));
+    }
+
+    /**
+     * @dev True when `(original_, symbol_)` is the prototype's own pair
+     *      `(native ETH, proto.symbol())`, i.e. the pair for which the
+     *      prototype itself is the factory.
+     */
+    function _isProtoPair(Currency original_, string memory symbol_) private view returns (bool) {
+        return original_.isAddressZero() && keccak256(bytes(symbol_)) == keccak256(bytes(proto.symbol()));
     }
 
     /**
