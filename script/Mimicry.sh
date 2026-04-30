@@ -6,5 +6,5 @@ initcode=$(cast concat-hex $bytecode $constructorArgs)
 input=$(cast concat-hex $salt $initcode)
 printf '%s' "$input" > io/Mimicry.txt
 Mimicry=$(cast create2 --deployer $deployer --salt $salt --init-code $initcode)
-echo "Mimicry deployed at: $Mimicry"
+echo "Mimicry=$Mimicry"
 forge verify-contract $Mimicry Mimicry --verifier etherscan --show-standard-json-input | jq '.'> io/Mimicry.json
