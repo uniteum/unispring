@@ -9,11 +9,12 @@ import {Currency} from "v4-core/types/Currency.sol";
 
 /**
  * @title Mimicry
- * @notice Bitsy factory: each clone mints a fresh ERC-20 pegged 1:1 against
- *         a given original currency (ERC-20 or native ETH) and seats its
- *         entire supply as a single-tick segment in {placer}. The clone
- *         carries the per-instance (original, mimic) state; the prototype
- *         is just code.
+ * @notice Two-level Bitsy factory. The prototype mints clones keyed by
+ *         `(original, symbol)`; each clone is itself a token factory
+ *         that mints mimic ERC-20s — one per `name`, all sharing the
+ *         clone's `(original, symbol)`. Each minted mimic is pegged 1:1
+ *         against the clone's original (ERC-20 or native ETH) and has
+ *         its entire supply seated as a single-tick segment in {placer}.
  * @dev    The mimic token carries the original's decimals (18 for native
  *         ETH) so the raw price of 1 at tick 0 corresponds to a 1:1
  *         human-unit peg. Each position uses {Fountain.fee} (0.01%),
@@ -22,11 +23,13 @@ import {Currency} from "v4-core/types/Currency.sol";
  *         internally when the mimic sorts above the original, so both
  *         orderings seat only the mimic at genesis with tick 0 at the
  *         edge of the V4 range.
- * @dev    Each clone's deterministic address derives from `(original,
+ * @dev    A clone's deterministic address derives from `(original,
  *         symbol)`, so `(USDC, "USDCx1")` and `(DAI, "USDCx1")` are
- *         distinct clones and mint distinct mimic tokens. All fee
- *         machinery — {Fountain.take}, {Fountain.untaken},
- *         {Fountain.owner} — lives on Fountain.
+ *         distinct clones. Within a clone, each mimic's deterministic
+ *         address derives from `(clone, name, symbol, decimals, supply)`,
+ *         so `clone.mimic("alpha")` and `clone.mimic("beta")` are
+ *         distinct tokens. All fee machinery — {Fountain.take},
+ *         {Fountain.untaken}, {Fountain.owner} — lives on Fountain.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
 contract Mimicry {
@@ -44,7 +47,7 @@ contract Mimicry {
     uint128 public constant maxSupply = 10 ** 27;
 
     /**
-     * @notice The prototype instance that acts as the Bitsy factory.
+     * @notice The prototype instance that acts as the clone factory.
      */
     Mimicry public immutable proto;
 
@@ -55,35 +58,51 @@ contract Mimicry {
     IPlacer public immutable placer;
 
     /**
-     * @notice The Coinage factory used to mint each clone's mimic ERC-20.
+     * @notice The Coinage factory used to mint each clone's mimic ERC-20s.
      */
     ICoinage public immutable coinage;
 
     /**
-     * @notice The original currency this clone's mimic is pegged against
-     *         (`Currency.wrap(address(0))` for native ETH). Set once by
-     *         {zzInit}.
+     * @notice The original currency every mimic minted by this clone is
+     *         pegged against (`Currency.wrap(address(0))` for native ETH).
+     *         Set once by {zzInit}.
      */
     Currency public original;
 
     /**
-     * @notice The mimic ERC-20 minted by this clone. Set once by {zzInit}.
+     * @notice The symbol shared by every mimic minted by this clone
+     *         (mimics vary only by `name`). Set once by {zzInit}.
      */
-    IERC20Metadata public mimic;
+    string public symbol;
 
     /**
      * @notice Emitted when a new clone is created via {make}.
      * @param  clone     The newly deployed Mimicry clone.
-     * @param  original  The original currency the clone's mimic is pegged
-     *                   against (`Currency.wrap(address(0))` for native ETH).
-     * @param  mimic     The mimic ERC-20 minted by the clone.
+     * @param  original  The original currency the clone's mimics are
+     *                   pegged against (`Currency.wrap(address(0))` for
+     *                   native ETH).
+     * @param  symbol    The shared symbol every mimic minted by this
+     *                   clone carries.
      */
-    event Make(Mimicry indexed clone, Currency indexed original, IERC20Metadata indexed mimic);
+    event Make(Mimicry indexed clone, Currency indexed original, string symbol);
+
+    /**
+     * @notice Emitted when a clone mints a new mimic via {mimic}.
+     * @param  clone The clone that minted the token.
+     * @param  token The newly minted mimic ERC-20.
+     * @param  name  The name carried by the token.
+     */
+    event Mimic(Mimicry indexed clone, IERC20Metadata indexed token, string name);
 
     /**
      * @notice Thrown when {zzInit} is called by anyone other than {proto}.
      */
     error Unauthorized();
+
+    /**
+     * @notice Thrown when a clone-only function is called on the prototype.
+     */
+    error NoCloneContext();
 
     /**
      * @notice Construct the prototype. Clones are created via {make}.
@@ -97,72 +116,118 @@ contract Mimicry {
         coinage = minter;
     }
 
-    // ---- Bitsy factory ----
+    // ---- Bitsy factory: clones ----
 
     /**
      * @notice Predict the deterministic address of a clone for `(original_,
-     *         symbol)`, and the address of the mimic it would mint.
+     *         symbol_)`.
      * @param  original_ The reference currency that would be pegged against
      *                   (`Currency.wrap(address(0))` for native ETH).
-     * @param  symbol    Symbol that would be used for the mimic ERC-20.
+     * @param  symbol_   The shared symbol every mimic minted by the clone
+     *                   would carry.
      * @return exists    True if the clone is already deployed.
      * @return home      The deterministic clone address.
      * @return salt      The CREATE2 salt (derived from the input parameters).
-     * @return mimicHome The deterministic mimic-token address.
      */
-    function made(Currency original_, string calldata symbol)
+    function made(Currency original_, string calldata symbol_)
         public
         view
-        returns (bool exists, address home, bytes32 salt, address mimicHome)
+        returns (bool exists, address home, bytes32 salt)
     {
-        salt = keccak256(abi.encode(original_, symbol));
+        salt = keccak256(abi.encode(original_, symbol_));
         home = Clones.predictDeterministicAddress(address(proto), salt, address(proto));
         exists = home.code.length > 0;
-        (uint8 decimals, uint256 supply) = _mimicMetadata(original_);
-        (, mimicHome,) = coinage.made(home, symbol, symbol, decimals, supply, bytes32(0));
     }
 
     /**
      * @notice Deploy a deterministic Mimicry clone for `(original_,
-     *         symbol)`. The clone mints its mimic and seats the entire
-     *         supply at the 1:1 edge in {placer}. Idempotent — returns the
-     *         existing clone if already deployed.
+     *         symbol_)`. Idempotent — returns the existing clone if
+     *         already deployed. The clone mints mimic tokens via {mimic}.
      * @param  original_ The reference currency to peg against
-     *                   (`Currency.wrap(address(0))` for native ETH; the
-     *                   mimic is minted with 18 decimals in that case).
-     * @param  symbol    Symbol for the newly minted mimic. Used as both
-     *                   name and symbol on the underlying ERC-20.
+     *                   (`Currency.wrap(address(0))` for native ETH;
+     *                   mimics are minted with 18 decimals in that case).
+     * @param  symbol_   Shared symbol every mimic minted by this clone
+     *                   will carry.
      * @return clone     The deployed (or existing) clone.
      */
-    function make(Currency original_, string calldata symbol) external returns (Mimicry clone) {
+    function make(Currency original_, string calldata symbol_) external returns (Mimicry clone) {
         if (address(this) != address(proto)) {
-            clone = proto.make(original_, symbol);
+            clone = proto.make(original_, symbol_);
         } else {
-            (bool exists, address home, bytes32 salt,) = made(original_, symbol);
+            (bool exists, address home, bytes32 salt) = made(original_, symbol_);
             clone = Mimicry(home);
             if (!exists) {
                 Clones.cloneDeterministic(address(proto), salt, 0);
-                Mimicry(home).zzInit(original_, symbol);
-                emit Make(clone, original_, clone.mimic());
+                Mimicry(home).zzInit(original_, symbol_);
+                emit Make(clone, original_, symbol_);
             }
         }
     }
 
     /**
-     * @notice Initializer for a freshly deployed clone. Mints the mimic via
-     *         {coinage}, seats its entire supply as a single-tick segment
-     *         in {placer}, and records the (original, mimic) pair on this
-     *         clone. Callable only by {proto}.
-     * @dev    The clone is the Coinage maker, so the per-clone deployer
-     *         address gives every `(original, symbol)` pair a distinct
-     *         mimic address even when decimals and supply collide.
+     * @notice Initializer for a freshly deployed clone. Records the
+     *         shared `(original, symbol)` on this clone. Callable only
+     *         by {proto}.
      */
-    function zzInit(Currency original_, string calldata symbol) external {
+    function zzInit(Currency original_, string calldata symbol_) external {
         if (msg.sender != address(proto)) revert Unauthorized();
         original = original_;
-        (uint8 decimals, uint256 supply) = _mimicMetadata(original_);
-        IERC20Metadata token = coinage.make(symbol, symbol, decimals, supply, bytes32(0));
-        mimic = token;
+        symbol = symbol_;
+    }
+
+    // ---- Bitsy factory: mimics ----
+
+    /**
+     * @notice Predict the deterministic address of a mimic minted by the
+     *         clone for `(original_, symbol_)` with `name_`. Works whether
+     *         or not the clone is already deployed.
+     * @param  original_ The reference currency the clone would peg against.
+     * @param  symbol_   Shared symbol every mimic of the clone carries.
+     * @param  name_     Per-mimic name.
+     * @return exists    True if the mimic token is already deployed.
+     * @return home      The deterministic mimic address.
+     */
+    function mimicked(Currency original_, string calldata symbol_, string calldata name_)
+        public
+        view
+        returns (bool exists, address home)
+    {
+        return _mimicked(original_, symbol_, name_);
+    }
+
+    /**
+     * @notice Predict the deterministic mimic address for `name_` under
+     *         this clone's stored `(original, symbol)`. Convenience
+     *         wrapper around the proto-level {mimicked}; callable only on
+     *         a clone (the prototype has no `(original, symbol)` of its
+     *         own).
+     */
+    function mimicked(string calldata name_) external view returns (bool exists, address home) {
+        if (address(this) == address(proto)) revert NoCloneContext();
+        return _mimicked(original, symbol, name_);
+    }
+
+    /**
+     * @notice Mint a fresh mimic ERC-20 with `name_`, the clone's stored
+     *         `symbol`, and decimals + supply derived from `original`,
+     *         and seat its entire supply as a single-tick segment in
+     *         {placer}. Idempotent — returns the existing token if a
+     *         mimic with `name_` was already minted by this clone.
+     * @dev    Callable only on a clone; reverts on the prototype since
+     *         it has no `(original, symbol)` context.
+     * @param  name_  Per-mimic name. Must vary across calls to mint
+     *                distinct mimics under this clone's `(original,
+     *                symbol)`.
+     * @return token  The minted (or existing) mimic ERC-20.
+     */
+    function mimic(string calldata name_) external returns (IERC20Metadata token) {
+        if (address(this) == address(proto)) revert NoCloneContext();
+
+        (bool exists, address home) = _mimicked(original, symbol, name_);
+        if (exists) return IERC20Metadata(home);
+
+        (uint8 decimals, uint256 supply) = _mimicMetadata(original);
+        token = coinage.make(name_, symbol, decimals, supply, bytes32(0));
 
         // forge-lint: disable-next-line(erc20-unchecked-transfer)
         token.approve(address(placer), supply);
@@ -173,7 +238,26 @@ contract Mimicry {
         uint256[] memory amounts = new uint256[](1);
         amounts[0] = supply;
 
-        placer.offer(Currency.wrap(address(token)), original_, ticks, amounts);
+        placer.offer(Currency.wrap(address(token)), original, ticks, amounts);
+
+        emit Mimic(this, token, name_);
+    }
+
+    /**
+     * @dev Shared body of both {mimicked} overloads. Derives the predicted
+     *      clone address from `(original_, symbol_)` (whether or not it
+     *      exists), then asks {coinage} for the deterministic mimic
+     *      address that clone would produce for `name_`.
+     */
+    function _mimicked(Currency original_, string memory symbol_, string memory name_)
+        private
+        view
+        returns (bool exists, address home)
+    {
+        bytes32 salt = keccak256(abi.encode(original_, symbol_));
+        address cloneHome = Clones.predictDeterministicAddress(address(proto), salt, address(proto));
+        (uint8 decimals, uint256 supply) = _mimicMetadata(original_);
+        (exists, home,) = coinage.made(cloneHome, name_, symbol_, decimals, supply, bytes32(0));
     }
 
     /**

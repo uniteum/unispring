@@ -38,11 +38,14 @@ interface IV4Quoter {
 /**
  * @notice Fork test against mainnet state. Deploys a fresh Fountain and a
  *         fresh Mimicry prototype against the real PoolManagerLookup
- *         and Coinage factory, then deploys per-(original, symbol) clones
- *         and reads the resulting pool state. Fee take runs through
- *         {Fountain.take} directly — Mimicry clones only mint the
- *         mimic and seat its position; everything post-launch lives on
- *         the Fountain and PoolManager.
+ *         and Coinage factory, then exercises the two-level factory:
+ *         per-(original, symbol) clones and per-name mimics minted from
+ *         each clone. Fee take runs through {Fountain.take} directly —
+ *         Mimicry clones only mint the mimic and seat its position;
+ *         everything post-launch lives on the Fountain and PoolManager.
+ *
+ *         Tests use the convention `name == symbol` for the single
+ *         in-test mint per clone.
  *
  *         Run with:
  *           forge test --match-contract MimicryForkTest -f mainnet -vv
@@ -72,29 +75,33 @@ contract MimicryForkTest is ForkBase {
         Currency original = Currency.wrap(USDC);
         string memory symbol = "USDCx1";
 
-        (bool existsBefore, address predictedClone,, address predictedMimic) = mimicry.made(original, symbol);
-        assertFalse(existsBefore, "fresh Mimicry cannot have pre-existing clones");
+        (bool cloneExistsBefore, address predictedClone,) = mimicry.made(original, symbol);
+        (bool mimicExistsBefore, address predictedMimic) = mimicry.mimicked(original, symbol, symbol);
+        assertFalse(cloneExistsBefore, "fresh Mimicry cannot have pre-existing clones");
+        assertFalse(mimicExistsBefore, "fresh Mimicry cannot have pre-existing mimics");
         assertTrue(predictedClone != address(0), "predicted clone is zero");
         assertTrue(predictedMimic != address(0), "predicted mimic is zero");
 
-        Mimicry clone = mimicry.make(original, symbol);
+        (Mimicry clone, IERC20Metadata mimic) = _makeAndMimic(original, symbol);
         assertEq(address(clone), predictedClone, "deployed clone differs from prediction");
-        assertEq(address(clone.mimic()), predictedMimic, "minted mimic differs from prediction");
+        assertEq(address(mimic), predictedMimic, "minted mimic differs from prediction");
 
-        (bool existsAfter,,,) = mimicry.made(original, symbol);
-        assertTrue(existsAfter, "clone not registered as existing after make");
+        (bool cloneExistsAfter,,) = mimicry.made(original, symbol);
+        (bool mimicExistsAfter,) = mimicry.mimicked(original, symbol, symbol);
+        assertTrue(cloneExistsAfter, "clone not registered as existing after make");
+        assertTrue(mimicExistsAfter, "mimic not registered as existing after mimic()");
     }
 
     function test_MakeUSDC() public {
-        Mimicry clone = mimicry.make(Currency.wrap(USDC), "USDCx1");
-        IERC20Metadata mimic = clone.mimic();
+        (Mimicry clone, IERC20Metadata mimic) = _makeAndMimic(Currency.wrap(USDC), "USDCx1");
 
         assertEq(mimic.decimals(), IERC20Metadata(USDC).decimals(), "decimals must match original");
         assertEq(mimic.symbol(), "USDCx1", "symbol must round-trip through mimic");
         assertEq(Currency.unwrap(clone.original()), USDC, "clone.original must point at USDC");
+        assertEq(clone.symbol(), "USDCx1", "clone.symbol must round-trip");
 
         // Pool is initialized at tick 0 (sqrtPriceX96 for tick 0 = 2**96).
-        PoolId id = _poolKeyOf(clone).toId();
+        PoolId id = _poolKeyOf(clone, mimic).toId();
         (uint160 sqrtPriceX96, int24 tick,,) = fountain.poolManager().getSlot0(id);
         assertEq(tick, int24(0), "pool must initialize at tick 0");
         assertGt(sqrtPriceX96, 0, "pool not initialized");
@@ -111,15 +118,14 @@ contract MimicryForkTest is ForkBase {
      *         whose `currency0` is `address(0)`.
      */
     function test_MakeNativeETH() public {
-        Mimicry clone = mimicry.make(Currency.wrap(address(0)), "ETHx1");
-        IERC20Metadata mimic = clone.mimic();
+        (Mimicry clone, IERC20Metadata mimic) = _makeAndMimic(Currency.wrap(address(0)), "ETHx1");
 
         assertEq(mimic.decimals(), uint8(18), "native mimic must have 18 decimals");
         assertEq(mimic.symbol(), "ETHx1", "native mimic symbol must round-trip");
         assertEq(Currency.unwrap(clone.original()), address(0), "clone.original must point to native ETH");
 
         // Mimic is a contract address (> 0), ETH sorts below: ETH = currency0, mimic = currency1.
-        PoolKey memory key = _poolKeyOf(clone);
+        PoolKey memory key = _poolKeyOf(clone, mimic);
         assertEq(Currency.unwrap(key.currency0), address(0), "ETH is currency0");
         assertEq(Currency.unwrap(key.currency1), address(mimic), "mimic is currency1");
 
@@ -142,14 +148,14 @@ contract MimicryForkTest is ForkBase {
         require(ffffff.code.length > 0, "ffffff lepton missing at forked block");
         require(zeros.code.length > 0, "zeros lepton missing at forked block");
 
-        Mimicry hiClone = mimicry.make(Currency.wrap(ffffff), "FFx1");
-        Mimicry loClone = mimicry.make(Currency.wrap(zeros), "ZZx1");
+        (Mimicry hiClone, IERC20Metadata hiMimic) = _makeAndMimic(Currency.wrap(ffffff), "FFx1");
+        (Mimicry loClone, IERC20Metadata loMimic) = _makeAndMimic(Currency.wrap(zeros), "ZZx1");
 
-        assertLt(uint160(address(hiClone.mimic())), uint160(ffffff), "mimic of high lepton must sort below (token0)");
-        assertGt(uint160(address(loClone.mimic())), uint160(zeros), "mimic of low lepton must sort above (token1)");
+        assertLt(uint160(address(hiMimic)), uint160(ffffff), "mimic of high lepton must sort below (token0)");
+        assertGt(uint160(address(loMimic)), uint160(zeros), "mimic of low lepton must sort above (token1)");
 
-        (uint160 hiSqrt, int24 hiTick,,) = fountain.poolManager().getSlot0(_poolKeyOf(hiClone).toId());
-        (uint160 loSqrt, int24 loTick,,) = fountain.poolManager().getSlot0(_poolKeyOf(loClone).toId());
+        (uint160 hiSqrt, int24 hiTick,,) = fountain.poolManager().getSlot0(_poolKeyOf(hiClone, hiMimic).toId());
+        (uint160 loSqrt, int24 loTick,,) = fountain.poolManager().getSlot0(_poolKeyOf(loClone, loMimic).toId());
 
         assertEq(hiTick, int24(0), "high-lepton pool must initialize at tick 0");
         assertEq(loTick, int24(0), "low-lepton pool must initialize at tick 0");
@@ -166,11 +172,11 @@ contract MimicryForkTest is ForkBase {
      *         should match to sub-bp precision.
      */
     function test_QuotedOutputsMatchAcrossOrdering() public {
-        Mimicry hiClone = mimicry.make(Currency.wrap(ffffff), "FFx1");
-        Mimicry loClone = mimicry.make(Currency.wrap(zeros), "ZZx1");
+        (Mimicry hiClone, IERC20Metadata hiMimic) = _makeAndMimic(Currency.wrap(ffffff), "FFx1");
+        (Mimicry loClone, IERC20Metadata loMimic) = _makeAndMimic(Currency.wrap(zeros), "ZZx1");
 
-        PoolKey memory hiKey = _poolKeyOf(hiClone);
-        PoolKey memory loKey = _poolKeyOf(loClone);
+        PoolKey memory hiKey = _poolKeyOf(hiClone, hiMimic);
+        PoolKey memory loKey = _poolKeyOf(loClone, loMimic);
 
         // Buy mimic with original:
         //   hi pool — mimic is token0, original is token1 → oneForZero (zeroForOne=false)
@@ -199,11 +205,11 @@ contract MimicryForkTest is ForkBase {
      *         stateless, so this executes real swaps via persona traders.
      */
     function test_SequentialBuysMatchAcrossOrdering() public {
-        Mimicry hiClone = mimicry.make(Currency.wrap(ffffff), "FFx1");
-        Mimicry loClone = mimicry.make(Currency.wrap(zeros), "ZZx1");
+        (Mimicry hiClone, IERC20Metadata hiMimic) = _makeAndMimic(Currency.wrap(ffffff), "FFx1");
+        (Mimicry loClone, IERC20Metadata loMimic) = _makeAndMimic(Currency.wrap(zeros), "ZZx1");
 
-        PoolKey memory hiKey = _poolKeyOf(hiClone);
-        PoolKey memory loKey = _poolKeyOf(loClone);
+        PoolKey memory hiKey = _poolKeyOf(hiClone, hiMimic);
+        PoolKey memory loKey = _poolKeyOf(loClone, loMimic);
 
         uint128 amountIn = 1e18;
         Trader alice = new Trader("alice", router);
@@ -233,8 +239,8 @@ contract MimicryForkTest is ForkBase {
         // mimic sorts below ffffff → mimic is currency0, ffffff is currency1.
         // A zeroForOne=false swap spends currency1 (ffffff), so fees accrue on currency1.
         uint256 positionId = fountain.positionsCount();
-        Mimicry clone = mimicry.make(Currency.wrap(ffffff), "FFx1");
-        PoolKey memory key = _poolKeyOf(clone);
+        (Mimicry clone, IERC20Metadata mimic) = _makeAndMimic(Currency.wrap(ffffff), "FFx1");
+        PoolKey memory key = _poolKeyOf(clone, mimic);
 
         uint128 amountIn = 1e18;
         Trader alice = new Trader("alice", router);
@@ -269,12 +275,12 @@ contract MimicryForkTest is ForkBase {
      */
     function test_TakeBatchRoutesFeesToTaker() public {
         uint256 hiId = fountain.positionsCount();
-        Mimicry hiClone = mimicry.make(Currency.wrap(ffffff), "FFx1");
+        (Mimicry hiClone, IERC20Metadata hiMimic) = _makeAndMimic(Currency.wrap(ffffff), "FFx1");
         uint256 loId = fountain.positionsCount();
-        Mimicry loClone = mimicry.make(Currency.wrap(zeros), "ZZx1");
+        (Mimicry loClone, IERC20Metadata loMimic) = _makeAndMimic(Currency.wrap(zeros), "ZZx1");
 
-        PoolKey memory hiKey = _poolKeyOf(hiClone);
-        PoolKey memory loKey = _poolKeyOf(loClone);
+        PoolKey memory hiKey = _poolKeyOf(hiClone, hiMimic);
+        PoolKey memory loKey = _poolKeyOf(loClone, loMimic);
 
         uint128 amountIn = 1e18;
         Trader alice = new Trader("alice", router);
@@ -313,40 +319,40 @@ contract MimicryForkTest is ForkBase {
 
     /**
      * @notice If the PoolKey was already initialized at the 1:1 genesis price
-     *         (by someone else beating us to it benignly), {make} skips the
+     *         (by someone else beating us to it benignly), {mimic} skips the
      *         re-init and completes normally.
      */
-    function test_MakeIdempotentAtGenesisPrice() public {
+    function test_MimicIdempotentAtGenesisPrice() public {
         Currency original = Currency.wrap(ffffff);
         string memory symbol = "FFx1";
-        (,,, address predictedMimic) = mimicry.made(original, symbol);
-        PoolKey memory key = _predictedPoolKey(original, symbol);
+        (, address predictedMimic) = mimicry.mimicked(original, symbol, symbol);
+        PoolKey memory key = _predictedPoolKey(original, symbol, symbol);
         fountain.poolManager().initialize(key, TickMath.getSqrtPriceAtTick(0));
 
-        Mimicry clone = mimicry.make(original, symbol);
-        assertEq(address(clone.mimic()), predictedMimic, "minted address != predicted");
+        (, IERC20Metadata mimic) = _makeAndMimic(original, symbol);
+        assertEq(address(mimic), predictedMimic, "minted address != predicted");
 
-        (bool exists,,,) = mimicry.made(original, symbol);
+        (bool exists,,) = mimicry.made(original, symbol);
         assertTrue(exists, "clone not deployed after make at pre-init genesis");
     }
 
     /**
      * @notice Mimicry seats at `ticks[0] = 0`. A pre-init below user
-     *         tick 0 is silently absorbed by Fountain — {make} succeeds,
+     *         tick 0 is silently absorbed by Fountain — {mimic} succeeds,
      *         spot stays at the pre-init price, and the curve activates
      *         when buyers push spot up to 0. (No-flip orientation: mimic
      *         sorts below ffffff, so mimic = currency0 and "below user
      *         tick 0" matches "V4 tick < 0".)
      */
-    function test_MakeAbsorbsPreInitBelowTicksZero() public {
+    function test_MimicAbsorbsPreInitBelowTicksZero() public {
         Currency original = Currency.wrap(ffffff);
         string memory symbol = "FFx1";
-        PoolKey memory key = _predictedPoolKey(original, symbol);
+        PoolKey memory key = _predictedPoolKey(original, symbol, symbol);
         uint160 preInitSqrt = TickMath.getSqrtPriceAtTick(-100);
         fountain.poolManager().initialize(key, preInitSqrt);
 
-        Mimicry clone = mimicry.make(original, symbol);
-        assertTrue(address(clone.mimic()) != address(0), "mimic not minted after below-tick pre-init");
+        (, IERC20Metadata mimic) = _makeAndMimic(original, symbol);
+        assertTrue(address(mimic) != address(0), "mimic not minted after below-tick pre-init");
 
         (uint160 sqrt,,,) = fountain.poolManager().getSlot0(key.toId());
         assertEq(sqrt, preInitSqrt, "spot stays at pre-init price, not at ticks[0]=0");
@@ -355,42 +361,58 @@ contract MimicryForkTest is ForkBase {
     /**
      * @notice A pre-init above user tick 0 leaves the first position
      *         spanning or below spot, so V4 demands the quote currency
-     *         that Fountain doesn't settle. {make} reverts with V4's
-     *         {IPoolManager.CurrencyNotSettled}. The clone is not
-     *         deployed. The workaround is to re-make under a different
-     *         `symbol` (different clone, different mimic, different
-     *         PoolKey) or walk the existing pool's spot back down to/below
-     *         tick 0 first (free since the pool has no liquidity).
+     *         that Fountain doesn't settle. {mimic} reverts with V4's
+     *         {IPoolManager.CurrencyNotSettled}; the clone itself is
+     *         already deployed (cheap) and can mint another mimic under
+     *         a different `name` to dodge the locked PoolKey.
      */
-    function test_MakeRevertsOnPreInitAboveTicksZero() public {
+    function test_MimicRevertsOnPreInitAboveTicksZero() public {
         Currency original = Currency.wrap(ffffff);
-        PoolKey memory key = _predictedPoolKey(original, "FFx1");
+        string memory symbol = "FFx1";
+        PoolKey memory key = _predictedPoolKey(original, symbol, symbol);
         fountain.poolManager().initialize(key, TickMath.getSqrtPriceAtTick(100));
 
+        Mimicry clone = mimicry.make(original, symbol);
         vm.expectRevert(IPoolManager.CurrencyNotSettled.selector);
-        mimicry.make(original, "FFx1");
+        clone.mimic(symbol);
 
-        // Re-making under a different symbol yields a different PoolKey and succeeds.
-        Mimicry escapedClone = mimicry.make(original, "FF2x1");
-        assertTrue(address(escapedClone.mimic()) != address(0), "rescue make under new symbol failed");
+        // Re-mint under a different name yields a different mimic and PoolKey, succeeds.
+        IERC20Metadata escapedMimic = clone.mimic("FFx1-escape");
+        assertTrue(address(escapedMimic) != address(0), "rescue mimic under new name failed");
     }
 
     /**
-     * @dev Rebuild the {PoolKey} for a deployed clone — sorted using the
-     *      clone's own `mimic()` and `original()` accessors against this
+     * @dev Make a clone for `(original, symbol)` and mint a single mimic
+     *      under the convention `name == symbol`. Returns the (clone,
+     *      token) pair tests need to recover the PoolKey.
+     */
+    function _makeAndMimic(Currency original, string memory symbol)
+        internal
+        returns (Mimicry clone, IERC20Metadata token)
+    {
+        clone = mimicry.make(original, symbol);
+        token = clone.mimic(symbol);
+    }
+
+    /**
+     * @dev Rebuild the {PoolKey} for a (clone, token) pair using this
      *      factory's fee/tickSpacing/hooks constants.
      */
-    function _poolKeyOf(Mimicry clone) internal view returns (PoolKey memory) {
-        return _poolKey(address(clone.mimic()), clone.original());
+    function _poolKeyOf(Mimicry clone, IERC20Metadata token) internal view returns (PoolKey memory) {
+        return _poolKey(address(token), clone.original());
     }
 
     /**
-     * @dev Rebuild the {PoolKey} {make} will compute for `(original,
-     *      symbol)` using the predicted mimic CREATE2 address — lets a
-     *      test pre-init the target pool before the clone exists.
+     * @dev Rebuild the {PoolKey} that {mimic} will compute for `(original,
+     *      symbol, name)` using the predicted mimic CREATE2 address — lets
+     *      a test pre-init the target pool before the mimic is minted.
      */
-    function _predictedPoolKey(Currency original, string memory symbol) internal view returns (PoolKey memory) {
-        (,,, address predictedMimic) = mimicry.made(original, symbol);
+    function _predictedPoolKey(Currency original, string memory symbol, string memory name)
+        internal
+        view
+        returns (PoolKey memory)
+    {
+        (, address predictedMimic) = mimicry.mimicked(original, symbol, name);
         return _poolKey(predictedMimic, original);
     }
 
