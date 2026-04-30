@@ -72,11 +72,11 @@ contract MimicryForkTest is ForkBase {
     }
 
     function test_MadeMatchesMake() public {
-        Currency original = Currency.wrap(USDC);
+        address original = USDC;
         string memory symbol = "USDCx1";
 
         (bool cloneExistsBefore, address predictedClone,) = mimicry.made(original, symbol);
-        (bool mimicExistsBefore, address predictedMimic) = mimicry.mimicked(original, symbol, symbol);
+        (bool mimicExistsBefore, address predictedMimic) = mimicry.mimicked(Currency.wrap(original), symbol, symbol);
         assertFalse(cloneExistsBefore, "fresh Mimicry cannot have pre-existing clones");
         assertFalse(mimicExistsBefore, "fresh Mimicry cannot have pre-existing mimics");
         assertTrue(predictedClone != address(0), "predicted clone is zero");
@@ -87,13 +87,13 @@ contract MimicryForkTest is ForkBase {
         assertEq(address(mimic), predictedMimic, "minted mimic differs from prediction");
 
         (bool cloneExistsAfter,,) = mimicry.made(original, symbol);
-        (bool mimicExistsAfter,) = mimicry.mimicked(original, symbol, symbol);
+        (bool mimicExistsAfter,) = mimicry.mimicked(Currency.wrap(original), symbol, symbol);
         assertTrue(cloneExistsAfter, "clone not registered as existing after make");
         assertTrue(mimicExistsAfter, "mimic not registered as existing after mimic()");
     }
 
     function test_MakeUSDC() public {
-        (Mimicry clone, IERC20Metadata mimic) = _makeAndMimic(Currency.wrap(USDC), "USDCx1");
+        (Mimicry clone, IERC20Metadata mimic) = _makeAndMimic(USDC, "USDCx1");
 
         assertEq(mimic.decimals(), IERC20Metadata(USDC).decimals(), "decimals must match original");
         assertEq(mimic.symbol(), "USDCx1", "symbol must round-trip through mimic");
@@ -123,7 +123,7 @@ contract MimicryForkTest is ForkBase {
         assertEq(mimicry.symbol(), "1xETH", "proto symbol");
         assertEq(Currency.unwrap(mimicry.original()), address(0), "proto original is native ETH");
 
-        Currency native = Currency.wrap(address(0));
+        address native = address(0);
         (bool cloneExists, address cloneHome, bytes32 salt) = mimicry.made(native, "1xETH");
         assertTrue(cloneExists, "proto pair must report exists=true");
         assertEq(cloneHome, address(mimicry), "proto pair must map to proto address");
@@ -132,7 +132,7 @@ contract MimicryForkTest is ForkBase {
         Mimicry self = mimicry.make(native, "1xETH");
         assertEq(address(self), address(mimicry), "make on proto pair must return proto");
 
-        (bool mimicExistsBefore, address predictedMimic) = mimicry.mimicked(native, "1xETH", "alpha");
+        (bool mimicExistsBefore, address predictedMimic) = mimicry.mimicked(Currency.wrap(native), "1xETH", "alpha");
         assertFalse(mimicExistsBefore, "fresh proto cannot have pre-existing mimics");
 
         IERC20Metadata token = mimicry.mimic("alpha");
@@ -155,7 +155,7 @@ contract MimicryForkTest is ForkBase {
      *         whose `currency0` is `address(0)`.
      */
     function test_MakeNativeETH() public {
-        (Mimicry clone, IERC20Metadata mimic) = _makeAndMimic(Currency.wrap(address(0)), "ETHx1");
+        (Mimicry clone, IERC20Metadata mimic) = _makeAndMimic(address(0), "ETHx1");
 
         assertEq(mimic.decimals(), uint8(18), "native mimic must have 18 decimals");
         assertEq(mimic.symbol(), "ETHx1", "native mimic symbol must round-trip");
@@ -183,7 +183,7 @@ contract MimicryForkTest is ForkBase {
      *         proto's `"1xETH"`.
      */
     function test_MakeNativeETHWithNonProtoSymbol() public {
-        Currency native = Currency.wrap(address(0));
+        address native = address(0);
         string memory symbol = "ETHx1";
 
         (bool existsBefore, address predictedClone,) = mimicry.made(native, symbol);
@@ -211,8 +211,8 @@ contract MimicryForkTest is ForkBase {
         require(ffffff.code.length > 0, "ffffff lepton missing at forked block");
         require(zeros.code.length > 0, "zeros lepton missing at forked block");
 
-        (Mimicry hiClone, IERC20Metadata hiMimic) = _makeAndMimic(Currency.wrap(ffffff), "FFx1");
-        (Mimicry loClone, IERC20Metadata loMimic) = _makeAndMimic(Currency.wrap(zeros), "ZZx1");
+        (Mimicry hiClone, IERC20Metadata hiMimic) = _makeAndMimic(ffffff, "FFx1");
+        (Mimicry loClone, IERC20Metadata loMimic) = _makeAndMimic(zeros, "ZZx1");
 
         assertLt(uint160(address(hiMimic)), uint160(ffffff), "mimic of high lepton must sort below (token0)");
         assertGt(uint160(address(loMimic)), uint160(zeros), "mimic of low lepton must sort above (token1)");
@@ -235,8 +235,8 @@ contract MimicryForkTest is ForkBase {
      *         should match to sub-bp precision.
      */
     function test_QuotedOutputsMatchAcrossOrdering() public {
-        (Mimicry hiClone, IERC20Metadata hiMimic) = _makeAndMimic(Currency.wrap(ffffff), "FFx1");
-        (Mimicry loClone, IERC20Metadata loMimic) = _makeAndMimic(Currency.wrap(zeros), "ZZx1");
+        (Mimicry hiClone, IERC20Metadata hiMimic) = _makeAndMimic(ffffff, "FFx1");
+        (Mimicry loClone, IERC20Metadata loMimic) = _makeAndMimic(zeros, "ZZx1");
 
         PoolKey memory hiKey = _poolKeyOf(hiClone, hiMimic);
         PoolKey memory loKey = _poolKeyOf(loClone, loMimic);
@@ -268,8 +268,8 @@ contract MimicryForkTest is ForkBase {
      *         stateless, so this executes real swaps via persona traders.
      */
     function test_SequentialBuysMatchAcrossOrdering() public {
-        (Mimicry hiClone, IERC20Metadata hiMimic) = _makeAndMimic(Currency.wrap(ffffff), "FFx1");
-        (Mimicry loClone, IERC20Metadata loMimic) = _makeAndMimic(Currency.wrap(zeros), "ZZx1");
+        (Mimicry hiClone, IERC20Metadata hiMimic) = _makeAndMimic(ffffff, "FFx1");
+        (Mimicry loClone, IERC20Metadata loMimic) = _makeAndMimic(zeros, "ZZx1");
 
         PoolKey memory hiKey = _poolKeyOf(hiClone, hiMimic);
         PoolKey memory loKey = _poolKeyOf(loClone, loMimic);
@@ -302,7 +302,7 @@ contract MimicryForkTest is ForkBase {
         // mimic sorts below ffffff → mimic is currency0, ffffff is currency1.
         // A zeroForOne=false swap spends currency1 (ffffff), so fees accrue on currency1.
         uint256 positionId = fountain.positionsCount();
-        (Mimicry clone, IERC20Metadata mimic) = _makeAndMimic(Currency.wrap(ffffff), "FFx1");
+        (Mimicry clone, IERC20Metadata mimic) = _makeAndMimic(ffffff, "FFx1");
         PoolKey memory key = _poolKeyOf(clone, mimic);
 
         uint128 amountIn = 1e18;
@@ -338,9 +338,9 @@ contract MimicryForkTest is ForkBase {
      */
     function test_TakeBatchRoutesFeesToTaker() public {
         uint256 hiId = fountain.positionsCount();
-        (Mimicry hiClone, IERC20Metadata hiMimic) = _makeAndMimic(Currency.wrap(ffffff), "FFx1");
+        (Mimicry hiClone, IERC20Metadata hiMimic) = _makeAndMimic(ffffff, "FFx1");
         uint256 loId = fountain.positionsCount();
-        (Mimicry loClone, IERC20Metadata loMimic) = _makeAndMimic(Currency.wrap(zeros), "ZZx1");
+        (Mimicry loClone, IERC20Metadata loMimic) = _makeAndMimic(zeros, "ZZx1");
 
         PoolKey memory hiKey = _poolKeyOf(hiClone, hiMimic);
         PoolKey memory loKey = _poolKeyOf(loClone, loMimic);
@@ -386,9 +386,9 @@ contract MimicryForkTest is ForkBase {
      *         re-init and completes normally.
      */
     function test_MimicIdempotentAtGenesisPrice() public {
-        Currency original = Currency.wrap(ffffff);
+        address original = ffffff;
         string memory symbol = "FFx1";
-        (, address predictedMimic) = mimicry.mimicked(original, symbol, symbol);
+        (, address predictedMimic) = mimicry.mimicked(Currency.wrap(original), symbol, symbol);
         PoolKey memory key = _predictedPoolKey(original, symbol, symbol);
         fountain.poolManager().initialize(key, TickMath.getSqrtPriceAtTick(0));
 
@@ -408,7 +408,7 @@ contract MimicryForkTest is ForkBase {
      *         tick 0" matches "V4 tick < 0".)
      */
     function test_MimicAbsorbsPreInitBelowTicksZero() public {
-        Currency original = Currency.wrap(ffffff);
+        address original = ffffff;
         string memory symbol = "FFx1";
         PoolKey memory key = _predictedPoolKey(original, symbol, symbol);
         uint160 preInitSqrt = TickMath.getSqrtPriceAtTick(-100);
@@ -430,7 +430,7 @@ contract MimicryForkTest is ForkBase {
      *         a different `name` to dodge the locked PoolKey.
      */
     function test_MimicRevertsOnPreInitAboveTicksZero() public {
-        Currency original = Currency.wrap(ffffff);
+        address original = ffffff;
         string memory symbol = "FFx1";
         PoolKey memory key = _predictedPoolKey(original, symbol, symbol);
         fountain.poolManager().initialize(key, TickMath.getSqrtPriceAtTick(100));
@@ -449,7 +449,7 @@ contract MimicryForkTest is ForkBase {
      *      under the convention `name == symbol`. Returns the (clone,
      *      token) pair tests need to recover the PoolKey.
      */
-    function _makeAndMimic(Currency original, string memory symbol)
+    function _makeAndMimic(address original, string memory symbol)
         internal
         returns (Mimicry clone, IERC20Metadata token)
     {
@@ -470,13 +470,14 @@ contract MimicryForkTest is ForkBase {
      *      symbol, name)` using the predicted mimic CREATE2 address — lets
      *      a test pre-init the target pool before the mimic is minted.
      */
-    function _predictedPoolKey(Currency original, string memory symbol, string memory name)
+    function _predictedPoolKey(address original, string memory symbol, string memory name)
         internal
         view
         returns (PoolKey memory)
     {
-        (, address predictedMimic) = mimicry.mimicked(original, symbol, name);
-        return _poolKey(predictedMimic, original);
+        Currency originalCurrency = Currency.wrap(original);
+        (, address predictedMimic) = mimicry.mimicked(originalCurrency, symbol, name);
+        return _poolKey(predictedMimic, originalCurrency);
     }
 
     function _poolKey(address mimic, Currency original) private view returns (PoolKey memory) {

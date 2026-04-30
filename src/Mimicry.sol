@@ -2,6 +2,7 @@
 pragma solidity ^0.8.30;
 
 import {Clones} from "clones/Clones.sol";
+import {IAddressLookup} from "ilookup/IAddressLookup.sol";
 import {ICoinage} from "ierc20/ICoinage.sol";
 import {IERC20Metadata} from "ierc20/IERC20Metadata.sol";
 import {IPlacer} from "./IPlacer.sol";
@@ -18,8 +19,8 @@ import {Currency} from "v4-core/types/Currency.sol";
  * @notice The prototype is itself the canonical factory for the
  *         `(native ETH, "1xETH")` pair: `proto.mimic(name)` mints a
  *         1xETH ERC-20 directly from the prototype, and
- *         `make(Currency.wrap(address(0)), "1xETH")` returns `proto`
- *         (no separate clone is deployed for that pair).
+ *         `make(address(0), "1xETH")` returns `proto` (no separate
+ *         clone is deployed for that pair).
  * @dev    The mimic token carries the original's decimals (18 for native
  *         ETH) so the raw price of 1 at tick 0 corresponds to a 1:1
  *         human-unit peg. Each position uses {Fountain.fee} (0.01%),
@@ -132,8 +133,14 @@ contract Mimicry {
      *         returns `(true, address(proto), bytes32(0))` — the proto
      *         itself serves as the canonical factory and no separate
      *         clone exists.
-     * @param  original_ The reference currency that would be pegged against
-     *                   (`Currency.wrap(address(0))` for native ETH).
+     * @param  original_ The reference token. `address(0)` selects native
+     *                   ETH; an {IAddressLookup} resolves to its `value()`
+     *                   address (the chain-local token); any other address
+     *                   is treated as the token directly. The salt is
+     *                   computed from this raw input, so passing the same
+     *                   {IAddressLookup} on different chains yields the
+     *                   same deterministic clone address even when the
+     *                   resolved token differs.
      * @param  symbol_   The shared symbol every mimic minted by the clone
      *                   would carry.
      * @return exists    True if the clone is already deployed (always true
@@ -143,12 +150,12 @@ contract Mimicry {
      * @return salt      The CREATE2 salt (`bytes32(0)` for the proto pair,
      *                   which never uses CREATE2).
      */
-    function made(Currency original_, string calldata symbol_)
+    function made(address original_, string calldata symbol_)
         public
         view
         returns (bool exists, address home, bytes32 salt)
     {
-        if (_isProtoPair(original_, symbol_)) return (true, address(proto), bytes32(0));
+        if (_isProtoPair(_resolve(original_), symbol_)) return (true, address(proto), bytes32(0));
         salt = keccak256(abi.encode(original_, symbol_));
         home = Clones.predictDeterministicAddress(address(proto), salt, address(proto));
         exists = home.code.length > 0;
@@ -161,26 +168,33 @@ contract Mimicry {
      *         `(native ETH, "1xETH")` this returns `proto` directly
      *         (no clone is deployed; the proto IS the factory for that
      *         pair). The clone mints mimic tokens via {mimic}.
-     * @param  original_ The reference currency to peg against
-     *                   (`Currency.wrap(address(0))` for native ETH;
-     *                   mimics are minted with 18 decimals in that case).
+     * @param  original_ The reference token to peg against. `address(0)`
+     *                   selects native ETH (mimics minted with 18 decimals);
+     *                   an {IAddressLookup} resolves to its `value()` address
+     *                   (the chain-local token); any other address is treated
+     *                   as the token directly. The salt is computed from
+     *                   this raw input, so the same {IAddressLookup} yields
+     *                   the same clone address across chains.
      * @param  symbol_   Shared symbol every mimic minted by this clone
      *                   will carry.
      * @return clone     The deployed (or existing) clone, or `proto`
      *                   itself for the proto pair.
      */
-    function make(Currency original_, string calldata symbol_) external returns (Mimicry clone) {
+    function make(address original_, string calldata symbol_) external returns (Mimicry clone) {
         if (address(this) != address(proto)) {
             clone = proto.make(original_, symbol_);
-        } else if (_isProtoPair(original_, symbol_)) {
-            clone = this;
         } else {
-            (bool exists, address home, bytes32 salt) = made(original_, symbol_);
-            clone = Mimicry(home);
-            if (!exists) {
-                Clones.cloneDeterministic(address(proto), salt, 0);
-                Mimicry(home).zzInit(original_, symbol_);
-                emit Make(clone, original_, symbol_);
+            Currency resolved = _resolve(original_);
+            if (_isProtoPair(resolved, symbol_)) {
+                clone = this;
+            } else {
+                (bool exists, address home, bytes32 salt) = made(original_, symbol_);
+                clone = Mimicry(home);
+                if (!exists) {
+                    Clones.cloneDeterministic(address(proto), salt, 0);
+                    Mimicry(home).zzInit(resolved, symbol_);
+                    emit Make(clone, resolved, symbol_);
+                }
             }
         }
     }
@@ -293,6 +307,24 @@ contract Mimicry {
      */
     function _isProtoPair(Currency original_, string memory symbol_) private view returns (bool) {
         return original_.isAddressZero() && keccak256(bytes(symbol_)) == keccak256(bytes(proto.symbol()));
+    }
+
+    /**
+     * @dev Resolve `original_` into a {Currency}. `address(0)` is native
+     *      ETH; any contract address that responds to {IAddressLookup.value}
+     *      is treated as a chain-local lookup and resolves to its `value()`;
+     *      everything else (EOAs and non-lookup contracts) is treated as
+     *      the token address directly. A successful `value()` that returns
+     *      `address(0)` resolves to native ETH.
+     */
+    function _resolve(address original_) private view returns (Currency) {
+        if (original_ == address(0)) return Currency.wrap(address(0));
+        if (original_.code.length == 0) return Currency.wrap(original_);
+        try IAddressLookup(original_).value() returns (address resolved) {
+            return Currency.wrap(resolved);
+        } catch {
+            return Currency.wrap(original_);
+        }
     }
 
     /**
