@@ -4,7 +4,7 @@ bytecode=$(forge inspect Fountain bytecode)
 constructorArgs=$(cast abi-encode "constructor(address)" $PoolManagerLookup)
 initcode=$(cast concat-hex $bytecode $constructorArgs)
 FountainInput=$(cast concat-hex $salt $initcode)
-printf '%s' "$FountainInput" > io/Fountain.txt
+printf '%s' "$FountainInput" > script/Fountain.txt
 Fountain=$(cast create2 --deployer $deployer --salt $salt --init-code $initcode)
 echo "Fountain deployed at: $Fountain"
-forge verify-contract $Fountain Fountain --verifier etherscan --show-standard-json-input | jq '.'> io/Fountain.json
+forge verify-contract $Fountain Fountain --verifier etherscan --show-standard-json-input | jq '.'> script/Fountain.json
