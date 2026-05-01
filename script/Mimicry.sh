@@ -1,5 +1,5 @@
 source .env
-salt=0x000000000000000000000000000000000000000000000000000000001eab845b
+salt=0xE396da99091B535B65384914B178b9264c7426da00000000000000000012019f
 bytecode=$(forge inspect Mimicry bytecode)
 constructorArgs=$(cast abi-encode "constructor(address,address)" $Fountain $ICoinage)
 initcode=$(cast concat-hex $bytecode $constructorArgs)
