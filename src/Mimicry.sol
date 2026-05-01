@@ -42,13 +42,15 @@ contract Mimicry {
     string public constant version = "0.7.0";
 
     /**
-     * @notice Cap on the raw supply minted for any mimic. Sized to stay
-     *         well below the `maxLiquidityPerTick` cap at `tickSpacing = 1`
+     * @notice Raw supply minted for a mimic with 18 or more decimals.
+     *         Mimics with fewer decimals reduce this by a factor of 10
+     *         per decimal below 18, keeping the human-unit supply
+     *         roughly constant across originals. Sized to stay well
+     *         below the `maxLiquidityPerTick` cap at `tickSpacing = 1`
      *         for any reasonable decimals, so a single-tick position
-     *         seating the full mimic supply cannot overflow V4's per-tick
-     *         liquidity limit. ERC-20 mimics use the lesser of this cap
-     *         and the original's total supply; native ETH mimics (no
-     *         on-chain `totalSupply` to mirror) always use this value.
+     *         seating the full mimic supply cannot overflow V4's
+     *         per-tick liquidity limit. Native ETH mimics use 18
+     *         decimals and this value directly.
      */
     uint128 public constant maxSupply = 10 ** 27;
 
@@ -332,17 +334,18 @@ contract Mimicry {
     /**
      * @dev Resolve the decimals and supply used to mint a mimic of
      *      `original_`. ERC-20 originals contribute their decimals 1:1
-     *      and the lesser of `original_.totalSupply()` and {maxSupply} —
-     *      capping at {maxSupply} so an oversized original cannot overflow
-     *      `maxLiquidityPerTick` when its mimic is seated single-sided
-     *      in a one-tick range. Native ETH (`address(0)`) has no on-chain
-     *      metadata, so the mimic uses 18 decimals (the conventional
-     *      human-unit semantics) and {maxSupply}.
+     *      and a decimals-adjusted supply: {maxSupply} when decimals are
+     *      18 or more, reduced by a factor of 10 per decimal below 18 —
+     *      sized to stay below `maxLiquidityPerTick` when the mimic is
+     *      seated single-sided in a one-tick range. Native ETH
+     *      (`address(0)`) has no on-chain metadata, so the mimic uses 18
+     *      decimals (the conventional human-unit semantics) and
+     *      {maxSupply}.
      */
     function _mimicMetadata(Currency original_) private view returns (uint8 decimals, uint256 supply) {
         if (original_.isAddressZero()) return (18, maxSupply);
-        IERC20Metadata erc = IERC20Metadata(Currency.unwrap(original_));
-        uint256 originalSupply = erc.totalSupply();
-        return (erc.decimals(), originalSupply < maxSupply ? originalSupply : maxSupply);
+        decimals = IERC20Metadata(Currency.unwrap(original_)).decimals();
+        supply = uint256(maxSupply);
+        if (decimals < 18) supply /= 10 ** uint256(18 - decimals);
     }
 }
