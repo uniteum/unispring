@@ -39,7 +39,7 @@ import {Currency} from "v4-core/types/Currency.sol";
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
 contract Mimicry {
-    string public constant version = "0.7.0";
+    string public constant version = "0.7.1";
 
     /**
      * @notice Raw supply minted for a mimic with 18 or more decimals.
