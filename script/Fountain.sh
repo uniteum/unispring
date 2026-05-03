@@ -1,6 +1,6 @@
 source .env
 mkdir -p io/Fountain
-salt=0x0000000000000000000000000000000000000000000000000000000160644836
+salt=0x00000000000000000000000000000000000000000000000000000001c8688910
 bytecode=$(forge inspect Fountain bytecode)
 constructorArgs=$(cast abi-encode "constructor(address)" $PoolManagerLookup)
 initcode=$(cast concat-hex $bytecode $constructorArgs)

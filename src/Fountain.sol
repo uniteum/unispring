@@ -67,7 +67,7 @@ import {ModifyLiquidityParams} from "v4-core/types/PoolOperation.sol";
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
 contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer, IUnlockCallback, Ownable {
-    string public constant version = "0.7.0";
+    string public constant version = "0.7.1";
 
     /**
      * @inheritdoc IPoolConfig
@@ -464,7 +464,7 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
      * @inheritdoc IOwnableMaker
      */
     function made(address owner_, uint256 variant) public view returns (bool exists, address home, bytes32 salt) {
-        salt = keccak256(abi.encode(owner_, variant));
+        salt = keccak256(abi.encode(owner_)) ^ bytes32(variant);
         home = Clones.predictDeterministicAddress(address(proto), salt, address(proto));
         exists = home.code.length > 0;
     }
