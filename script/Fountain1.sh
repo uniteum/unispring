@@ -4,10 +4,10 @@ initcodehash=$(cast keccak "$initcode")
 echo "initcodehash=$initcodehash"
 
 maker=0xff966FE50802B74B538D2c6311Fc0201014AA294
-argshash=$(cast keccak "$(cast abi-encode "f(address)" "$maker")")
+argshash=$(cast keccak "$maker")
 echo "argshash=$argshash"
 
-variant=0x00000000000000000000000000000000000000000000000000000001e833d4bb 
+variant=0x0000000000000000000000000000000000000000000000000000000196628b9c 
 input=$(cast calldata "make(uint256)" "$variant")
 # XOR argshash ^ variant (256-bit, too wide for bash arithmetic)
 salt=$(python3 -c "print(f'0x{int(\"$argshash\",16) ^ int(\"$variant\",16):064x}')")
