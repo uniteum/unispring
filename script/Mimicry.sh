@@ -1,12 +1,17 @@
 source .env
-salt=0xE396da99091B535B65384914B178b9264c7426da00000000000000000012019f
-bytecode=$(forge inspect Mimicry bytecode)
-constructorArgs=$(cast abi-encode "constructor(address,address)" $Fountain $ICoinage)
-initcode=$(cast concat-hex $bytecode $constructorArgs)
-input=$(cast concat-hex $salt $initcode)
-printf '%s' "$input" > script/Mimicry.txt
-initcodehash=$(cast keccak $initcode)
+args=$(cast abi-encode "constructor(address,address)" $Fountain $ICoinage)
+contract=Mimicry
+dir=io/$contract
+mkdir -p io/$contract
+bytecode=$(forge inspect $contract bytecode)
+initcode=$(cast concat-hex $bytecode $args)
+initcodehash=$(cast keccak "$initcode")
 echo "initcodehash=$initcodehash"
-Mimicry=$(cast create2 --deployer $deployer --salt $salt --init-code $initcode)
-echo "Mimicry=$Mimicry"
-forge verify-contract $Mimicry Mimicry --verifier etherscan --show-standard-json-input | jq '.'> script/Mimicry.json
+
+input=$(cast concat-hex $salt $initcode)
+salt=0x00000000000000000000000000000000000000000000000000000000e31131fa
+home=$(cast create2 --deployer $deployer --salt $salt --init-code $initcode)
+echo "$contract=$home"
+
+printf '%s' "$input" > $dir/$home.txt
+forge verify-contract $home $contract --verifier etherscan --show-standard-json-input | jq '.'> $dir/$home.json
