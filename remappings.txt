@@ -1,6 +1,7 @@
 forge-std/=lib/forge-std/src/
 crucible/=lib/crucible/
 erc20/=lib/erc20/
+icoinage/=lib/icoinage/
 ierc20/=lib/ierc20/
 ilookup/=lib/ilookup/
 v4-core/=lib/v4-core/src/

@@ -38,7 +38,7 @@ invariant = { runs = 1024, depth = 2000 }
 
 [rpc_endpoints]
 bitsy        = "https://rpc.bitsy.network"
-mainnet      = "https://mainnet.infura.io/v3/${INFURA_API_KEY}"       # Override for fork tests (optional)
+forknet      = "https://arbitrum-mainnet.infura.io/v3/${INFURA_API_KEY}" # Target network for fork tests
 1            = "https://ethereum-rpc.publicnode.com"                  # Ethereum Mainnet
 11155111     = "https://ethereum-sepolia-rpc.publicnode.com"          # Ethereum Sepolia
 42161        = "https://arbitrum-one-rpc.publicnode.com"              # Arbitrum One

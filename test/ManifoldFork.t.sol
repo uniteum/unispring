@@ -15,16 +15,16 @@ import {TickMath} from "v4-core/libraries/TickMath.sol";
 import {Currency} from "v4-core/types/Currency.sol";
 
 /**
- * @notice Fork test against mainnet state. Deploys a fresh Fountain and a
+ * @notice Fork test against `forknet` state. Deploys a fresh Fountain and a
  *         fresh Manifold prototype against the real PoolManager, then
  *         exercises the clone-per-hub factory: hub pool seated by {zzInit}
  *         (ETH/hub, hub above ETH → flip case in Fountain), spoke pools
  *         seated by {offer} (spoke/hub, spoke below hub → identity).
  *
  *         Run with:
- *           forge test --match-contract ManifoldForkTest -f mainnet -vv
+ *           forge test --match-contract ManifoldForkTest -f forknet -vv
  *         or pin a block:
- *           FORK_BLOCK=24923365 forge test --match-contract ManifoldForkTest -f mainnet -vv
+ *           FORK_BLOCK=458766451 forge test --match-contract ManifoldForkTest -f forknet -vv
  */
 contract ManifoldForkTest is ForkBase {
     using StateLibrary for IPoolManager;

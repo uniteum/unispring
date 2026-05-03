@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {ICoinage} from "ierc20/ICoinage.sol";
+import {ICoinage} from "icoinage/ICoinage.sol";
 import {IERC20Metadata} from "ierc20/IERC20Metadata.sol";
 import {NeutrinoChannel} from "../src/NeutrinoChannel.sol";
 import {TestToken} from "./TestToken.sol";
@@ -14,7 +14,7 @@ import {Test} from "forge-std/Test.sol";
 contract MockCoinage is ICoinage {
     TestToken public lastToken;
 
-    function made(address, string calldata, string calldata, uint8, uint256, bytes32)
+    function made(address, string calldata, string calldata, uint8, uint256, uint256)
         external
         pure
         returns (bool, address, bytes32)
@@ -22,7 +22,7 @@ contract MockCoinage is ICoinage {
         revert();
     }
 
-    function make(string calldata name, string calldata symbol, uint8 decimals, uint256 supply, bytes32)
+    function make(string calldata name, string calldata symbol, uint8 decimals, uint256 supply, uint256)
         external
         returns (IERC20Metadata token)
     {
@@ -103,7 +103,7 @@ contract NeutrinoChannelTest is Test {
         NeutrinoChannel clone = proto.make(int24(-100), int24(100));
         uint256 supply = 1_000_000 ether;
 
-        IERC20Metadata token = clone.mint(minter, "TestToken", "TT", 18, supply, bytes32(0));
+        IERC20Metadata token = clone.mint(minter, "TestToken", "TT", 18, supply, 0);
 
         // Token was created via minter.
         assertEq(address(token), address(minter.lastToken()), "token should come from minter");
@@ -116,6 +116,6 @@ contract NeutrinoChannelTest is Test {
         NeutrinoChannel clone = proto.make(int24(-100), int24(100));
         vm.prank(address(0xBEEF));
         vm.expectRevert(NeutrinoChannel.Unauthorized.selector);
-        clone.mint(minter, "TestToken", "TT", 18, 1 ether, bytes32(0));
+        clone.mint(minter, "TestToken", "TT", 18, 1 ether, 0);
     }
 }

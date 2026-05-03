@@ -8,7 +8,7 @@ import {Funder} from "./Funder.sol";
 import {SwapRouter} from "./SwapRouter.sol";
 import {Trader} from "./Trader.sol";
 import {IAddressLookup} from "ilookup/IAddressLookup.sol";
-import {ICoinage as Coinage} from "ierc20/ICoinage.sol";
+import {ICoinage as Coinage} from "icoinage/ICoinage.sol";
 import {IERC20Metadata} from "ierc20/IERC20Metadata.sol";
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
@@ -36,7 +36,7 @@ interface IV4Quoter {
 }
 
 /**
- * @notice Fork test against mainnet state. Deploys a fresh Fountain and a
+ * @notice Fork test against `forknet` state. Deploys a fresh Fountain and a
  *         fresh Mimicry prototype against the real PoolManagerLookup
  *         and Coinage factory, then exercises the two-level factory:
  *         per-(original, symbol) clones and per-name mimics minted from
@@ -48,9 +48,9 @@ interface IV4Quoter {
  *         in-test mint per clone.
  *
  *         Run with:
- *           forge test --match-contract MimicryForkTest -f mainnet -vv
+ *           forge test --match-contract MimicryForkTest -f forknet -vv
  *         or pin a block for reproducibility:
- *           FORK_BLOCK=24923365 forge test --match-contract MimicryForkTest -f mainnet -vv
+ *           FORK_BLOCK=458766451 forge test --match-contract MimicryForkTest -f forknet -vv
  */
 contract MimicryForkTest is ForkBase {
     using StateLibrary for IPoolManager;

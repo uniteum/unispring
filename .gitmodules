@@ -28,3 +28,6 @@
 [submodule "lib/erc20"]
 	path = lib/erc20
 	url = git@github.com:uniteum/erc20.git
+[submodule "lib/icoinage"]
+	path = lib/icoinage
+	url = git@github.com:uniteum/icoinage.git

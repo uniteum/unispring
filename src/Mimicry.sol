@@ -3,7 +3,7 @@ pragma solidity ^0.8.30;
 
 import {Clones} from "clones/Clones.sol";
 import {IAddressLookup} from "ilookup/IAddressLookup.sol";
-import {ICoinage} from "ierc20/ICoinage.sol";
+import {ICoinage} from "icoinage/ICoinage.sol";
 import {IERC20Metadata} from "ierc20/IERC20Metadata.sol";
 import {IPlacer} from "./IPlacer.sol";
 import {Currency} from "v4-core/types/Currency.sol";
@@ -273,7 +273,7 @@ contract Mimicry {
         if (exists) return IERC20Metadata(home);
 
         (uint8 decimals, uint256 supply) = _mimicMetadata(original);
-        token = coinage.make(name_, symbol, decimals, supply, bytes32(0));
+        token = coinage.make(name_, symbol, decimals, supply, 0);
 
         // forge-lint: disable-next-line(erc20-unchecked-transfer)
         token.approve(address(placer), supply);
@@ -303,7 +303,7 @@ contract Mimicry {
         returns (bool exists, address home)
     {
         (uint8 decimals, uint256 supply) = _mimicMetadata(original_);
-        (exists, home,) = coinage.made(maker, name_, symbol_, decimals, supply, bytes32(0));
+        (exists, home,) = coinage.made(maker, name_, symbol_, decimals, supply, 0);
     }
 
     /**

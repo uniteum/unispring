@@ -28,7 +28,7 @@ contract MakeNeutrinoSource is Script {
         uint256 supply = vm.envUint("HubSupply");
         int24 tickLower = int24(vm.envInt("HubTickLower"));
         int24 tickUpper = int24(vm.envInt("HubTickUpper"));
-        bytes32 salt = vm.envBytes32("HubSalt");
+        uint256 salt = vm.envUint("HubSalt");
 
         console2.log("NeutrinoSourceProto :", address(proto));
         console2.log("name                :", name);
@@ -37,7 +37,7 @@ contract MakeNeutrinoSource is Script {
         console2.log("supply              :", supply);
         console2.log("tickLower           :", int256(tickLower));
         console2.log("tickUpper           :", int256(tickUpper));
-        console2.log("salt                :", uint256(salt));
+        console2.log("salt                :", salt);
 
         vm.startBroadcast();
         NeutrinoSource clone = proto.make(name, symbol, decimals, supply, tickLower, tickUpper, salt);

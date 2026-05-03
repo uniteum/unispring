@@ -27,7 +27,7 @@ contract LaunchSpoke is Script {
         string memory symbol = vm.envString("SpokeSymbol");
         uint8 decimals = uint8(vm.envUint("SpokeDecimals"));
         uint256 supply = vm.envUint("SpokeSupply");
-        bytes32 salt = vm.envBytes32("SpokeSalt");
+        uint256 salt = vm.envUint("SpokeSalt");
         int24 tickLower = int24(vm.envInt("SpokeTickLower"));
         int24 tickUpper = int24(vm.envInt("SpokeTickUpper"));
 
@@ -36,7 +36,7 @@ contract LaunchSpoke is Script {
         console2.log("symbol            :", symbol);
         console2.log("decimals          :", decimals);
         console2.log("supply            :", supply);
-        console2.log("salt              :", uint256(salt));
+        console2.log("salt              :", salt);
         console2.log("tickLower         :", int256(tickLower));
         console2.log("tickUpper         :", int256(tickUpper));
 

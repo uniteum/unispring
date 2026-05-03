@@ -2,7 +2,7 @@
 pragma solidity ^0.8.30;
 
 import {Clones} from "clones/Clones.sol";
-import {ICoinage} from "ierc20/ICoinage.sol";
+import {ICoinage} from "icoinage/ICoinage.sol";
 import {IERC20Metadata} from "ierc20/IERC20Metadata.sol";
 import {Currency} from "v4-core/types/Currency.sol";
 
@@ -112,7 +112,7 @@ contract NeutrinoSource {
         uint256 supply,
         int24 tickLower,
         int24 tickUpper,
-        bytes32 tokenSalt
+        uint256 tokenSalt
     ) public view returns (bool exists, address home, bytes32 salt, address hubHome) {
         salt = keccak256(abi.encode(name, symbol, decimals, supply, tickLower, tickUpper, tokenSalt));
         home = Clones.predictDeterministicAddress(address(proto), salt, address(proto));
@@ -140,7 +140,7 @@ contract NeutrinoSource {
         uint256 supply,
         int24 tickLower,
         int24 tickUpper,
-        bytes32 tokenSalt
+        uint256 tokenSalt
     ) external returns (NeutrinoSource clone) {
         if (this != proto) {
             clone = proto.make(name, symbol, decimals, supply, tickLower, tickUpper, tokenSalt);
@@ -193,7 +193,7 @@ contract NeutrinoSource {
         string calldata symbol,
         uint8 decimals,
         uint256 supply,
-        bytes32 salt,
+        uint256 salt,
         int24 tickLower,
         int24 tickUpper
     ) external returns (IERC20Metadata token) {

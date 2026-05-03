@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {ICoinage} from "ierc20/ICoinage.sol";
+import {ICoinage} from "icoinage/ICoinage.sol";
 import {NeutrinoChannel} from "../src/NeutrinoChannel.sol";
 import {NeutrinoSource} from "../src/NeutrinoSource.sol";
 import {Script, console2} from "forge-std/Script.sol";

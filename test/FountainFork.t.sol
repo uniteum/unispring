@@ -21,7 +21,7 @@ import {PoolKey} from "v4-core/types/PoolKey.sol";
 import {console} from "forge-std/console.sol";
 
 /**
- * @notice Fork test against mainnet state. Deploys a fresh Fountain against
+ * @notice Fork test against `forknet` state. Deploys a fresh Fountain against
  *         the real PoolManager resolved through the Uniteum
  *         `PoolManagerLookup`, then exercises offering, pre-initialization
  *         guards, validation, the position registry, fee accrual, and
@@ -35,9 +35,9 @@ import {console} from "forge-std/console.sol";
  *         exercises the no-flip case (token sorts as `currency1`).
  *
  *         Run with:
- *           forge test --match-contract FountainForkTest -f mainnet -vv
+ *           forge test --match-contract FountainForkTest -f forknet -vv
  *         or pin a block:
- *           FORK_BLOCK=24923365 forge test --match-contract FountainForkTest -f mainnet -vv
+ *           FORK_BLOCK=458766451 forge test --match-contract FountainForkTest -f forknet -vv
  */
 contract FountainForkTest is ForkBase {
     using StateLibrary for IPoolManager;

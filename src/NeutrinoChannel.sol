@@ -2,7 +2,7 @@
 pragma solidity ^0.8.30;
 
 import {Clones} from "clones/Clones.sol";
-import {ICoinage} from "ierc20/ICoinage.sol";
+import {ICoinage} from "icoinage/ICoinage.sol";
 import {IERC20Metadata} from "ierc20/IERC20Metadata.sol";
 
 /**
@@ -102,7 +102,7 @@ contract NeutrinoChannel {
      * @param symbol   Token symbol.
      * @param decimals Token decimals.
      * @param supply   Token supply, denominated in the smallest unit.
-     * @param salt     Coinage salt (free for vanity grinding).
+     * @param salt     Coinage variant (free for vanity grinding).
      * @return token The minted token.
      */
     function mint(
@@ -111,7 +111,7 @@ contract NeutrinoChannel {
         string calldata symbol,
         uint8 decimals,
         uint256 supply,
-        bytes32 salt
+        uint256 salt
     ) external returns (IERC20Metadata token) {
         if (msg.sender != source) revert Unauthorized();
         token = minter.make(name, symbol, decimals, supply, salt);
