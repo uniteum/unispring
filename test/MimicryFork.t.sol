@@ -8,6 +8,7 @@ import {Funder} from "./Funder.sol";
 import {SwapRouter} from "./SwapRouter.sol";
 import {Trader} from "./Trader.sol";
 import {IAddressLookup} from "ilookup/IAddressLookup.sol";
+import {IStringLookup} from "ilookup/IStringLookup.sol";
 import {ICoinage as Coinage} from "icoinage/ICoinage.sol";
 import {IERC20Metadata} from "ierc20/IERC20Metadata.sol";
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
@@ -18,6 +19,17 @@ import {TickMath} from "v4-core/libraries/TickMath.sol";
 import {Currency} from "v4-core/types/Currency.sol";
 import {PoolId} from "v4-core/types/PoolId.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
+
+/**
+ * @notice Fixed-string IStringLookup for fork tests — returns "ETH" so
+ *         the prototype's symbol resolves to "1xETH" regardless of the
+ *         forked chain.
+ */
+contract NativeSymbolStub is IStringLookup {
+    function value() external pure returns (string memory) {
+        return "ETH";
+    }
+}
 
 /**
  * @notice Minimal V4Quoter interface — single-hop exact-input entrypoint.
@@ -67,7 +79,7 @@ contract MimicryForkTest is ForkBase {
         Fountain proto = new Fountain(IAddressLookup(PoolManagerLookup));
         bot.makeFountain(proto);
         fountain = bot.fountain();
-        mimicry = new Mimicry(fountain, Coinage(ICoinage));
+        mimicry = new Mimicry(fountain, Coinage(ICoinage), new NativeSymbolStub());
         router = new SwapRouter(fountain.poolManager());
     }
 

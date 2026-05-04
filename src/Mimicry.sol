@@ -3,6 +3,7 @@ pragma solidity ^0.8.30;
 
 import {Clones} from "clones/Clones.sol";
 import {IAddressLookup} from "ilookup/IAddressLookup.sol";
+import {IStringLookup} from "ilookup/IStringLookup.sol";
 import {ICoinage} from "icoinage/ICoinage.sol";
 import {IERC20Metadata} from "ierc20/IERC20Metadata.sol";
 import {IPlacer} from "./IPlacer.sol";
@@ -17,10 +18,13 @@ import {Currency} from "v4-core/types/Currency.sol";
  *         against the clone's original (ERC-20 or native ETH) and has
  *         its entire supply seated as a single-tick segment in {placer}.
  * @notice The prototype is itself the canonical factory for the
- *         `(native ETH, "1xETH")` pair: `proto.mimic(name)` mints a
- *         1xETH ERC-20 directly from the prototype, and
- *         `make(address(0), "1xETH")` returns `proto` (no separate
- *         clone is deployed for that pair).
+ *         pair `(native ETH, "1x<native>")`, where `<native>` is the
+ *         native currency symbol resolved from a chain-local
+ *         {IStringLookup} at construction (e.g. "1xETH" on mainnet,
+ *         "1xMATIC" on Polygon). `proto.mimic(name)` mints the pegged
+ *         ERC-20 directly from the prototype, and
+ *         `make(address(0), proto.symbol())` returns `proto` (no
+ *         separate clone is deployed for that pair).
  * @dev    The mimic token carries the original's decimals (18 for native
  *         ETH) so the raw price of 1 at tick 0 corresponds to a 1:1
  *         human-unit peg. Each position uses {Fountain.fee} (0.01%),
@@ -39,7 +43,7 @@ import {Currency} from "v4-core/types/Currency.sol";
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
 contract Mimicry {
-    string public constant version = "0.7.1";
+    string public constant version = "0.7.2";
 
     /**
      * @notice Raw supply minted for a mimic with 18 or more decimals.
@@ -81,8 +85,8 @@ contract Mimicry {
     /**
      * @notice The symbol shared by every mimic minted by this clone
      *         (mimics vary only by `name`). Set on clones by {zzInit};
-     *         the prototype's value is set to `"1xETH"` in the
-     *         constructor.
+     *         the prototype's value is `"1x<native>"`, derived from the
+     *         chain-local {IStringLookup} passed at construction.
      */
     string public symbol;
 
@@ -112,18 +116,25 @@ contract Mimicry {
 
     /**
      * @notice Construct the prototype. Clones are created via {make}.
-     *         The prototype itself acts as the `(native ETH, "1xETH")`
-     *         factory: its `original` is the storage-default native ETH
-     *         and its `symbol` is set to `"1xETH"` here.
-     * @param  fountain The Fountain that will seat every mimic position
-     *                  funded through this Mimicry.
-     * @param  minter   The Coinage prototype used to mint mimics.
+     *         The prototype itself acts as the
+     *         `(native ETH, "1x<native>")` factory: its `original` is
+     *         the storage-default native ETH and its `symbol` is
+     *         `string.concat("1x", nativeSymbolLookup.value())`
+     *         resolved from the chain-local lookup at construction.
+     * @param  fountain           The Fountain that will seat every mimic
+     *                            position funded through this Mimicry.
+     * @param  minter             The Coinage prototype used to mint mimics.
+     * @param  nativeSymbolLookup Chain-local {IStringLookup} whose `value()`
+     *                            returns the native currency symbol (e.g.
+     *                            "ETH" on mainnet, "MATIC" on Polygon); used
+     *                            as the suffix for the prototype's mimic
+     *                            symbol `"1x<native>"`.
      */
-    constructor(IPlacer fountain, ICoinage minter) {
+    constructor(IPlacer fountain, ICoinage minter, IStringLookup nativeSymbolLookup) {
         proto = this;
         placer = fountain;
         coinage = minter;
-        symbol = "1xETH";
+        symbol = string.concat("1x", nativeSymbolLookup.value());
         emit Make(this, Currency.wrap(address(0)), symbol);
     }
 
@@ -237,6 +248,7 @@ contract Mimicry {
         if (_isProtoPair(resolved, symbol_)) {
             maker = address(proto);
         } else {
+            // forge-lint: disable-next-line(asm-keccak256)
             bytes32 salt = keccak256(abi.encode(original_, symbol_));
             maker = Clones.predictDeterministicAddress(address(proto), salt, address(proto));
         }

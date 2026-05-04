@@ -1,7 +1,8 @@
 deployer=0x4e59b44847b379578588920cA78FbF26c0B4956C
 Fountain=0xF0F1d225A78c1EdcD0f5a9E31398Ed0BA3Dee071
 ICoinage=0x1EB8901612767C04b3819E8A743ADCe88F9Fe110
-args=$(cast abi-encode "constructor(address,address)" $Fountain $ICoinage)
+NativeSymbolLookup=0x6a50503D35804A057fB1754172ABc96242a1C300
+args=$(cast abi-encode "constructor(address,address,address)" $Fountain $ICoinage $NativeSymbolLookup)
 contract=Mimicry
 dir=io/$contract
 mkdir -p io/$contract
@@ -10,7 +11,7 @@ initcode=$(cast concat-hex $bytecode $args)
 initcodehash=$(cast keccak "$initcode")
 echo "initcodehash=$initcodehash"
 
-salt=0x00000000000000000000000000000000000000000000000000000000e31131fa
+salt=0x00000000000000000000000000000000000000000000000000000000bdc7f617
 input=$(cast concat-hex $salt $initcode)
 home=$(cast create2 --deployer $deployer --salt $salt --init-code $initcode)
 echo "$contract=$home"

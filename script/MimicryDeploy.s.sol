@@ -4,15 +4,19 @@ pragma solidity ^0.8.30;
 import {IPlacer} from "../src/IPlacer.sol";
 import {Mimicry} from "../src/Mimicry.sol";
 import {ICoinage} from "icoinage/ICoinage.sol";
+import {IStringLookup} from "ilookup/IStringLookup.sol";
 import {Script, console2} from "forge-std/Script.sol";
 
 /**
  * @notice Deploy the Mimicry singleton via Nick's CREATE2 deployer.
  * @dev    Configuration comes from environment variables:
- *           ICoinage   — Coinage factory used to mint mimic tokens
- *           Fountain   — Fountain that will hold the mimic positions and
- *                        forward their swap fees. Mimicry mirrors
- *                        this Fountain's `OWNER` as its own fee recipient.
+ *           ICoinage           — Coinage factory used to mint mimic tokens
+ *           Fountain           — Fountain that will hold the mimic positions and
+ *                                forward their swap fees. Mimicry mirrors
+ *                                this Fountain's `OWNER` as its own fee recipient.
+ *           NativeSymbolLookup — Chain-local IStringLookup whose `value()` returns
+ *                                the native currency symbol (e.g. "ETH"); used as
+ *                                the suffix for the prototype's mimic symbol.
  *
  * Usage:
  * forge script script/MimicryDeploy.s.sol -f $chain --private-key $tx_key --broadcast --verify --delay 10 --retries 10
@@ -23,11 +27,14 @@ contract MimicryDeploy is Script {
     function run() external {
         ICoinage minter = ICoinage(vm.envAddress("ICoinage"));
         IPlacer fountain = IPlacer(vm.envAddress("Fountain"));
+        IStringLookup nativeSymbolLookup = IStringLookup(vm.envAddress("NativeSymbolLookup"));
 
-        console2.log("minter :", address(minter));
-        console2.log("fountain:", address(fountain));
+        console2.log("minter             :", address(minter));
+        console2.log("fountain           :", address(fountain));
+        console2.log("nativeSymbolLookup :", address(nativeSymbolLookup));
 
-        bytes memory initCode = abi.encodePacked(type(Mimicry).creationCode, abi.encode(fountain, minter));
+        bytes memory initCode =
+            abi.encodePacked(type(Mimicry).creationCode, abi.encode(fountain, minter, nativeSymbolLookup));
         address predicted = vm.computeCreate2Address(bytes32(0), keccak256(initCode), NICK);
         console2.log("predicted        :", predicted);
 
