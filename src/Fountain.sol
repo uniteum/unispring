@@ -473,8 +473,8 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
     /**
      * @inheritdoc IOwnableMaker
      */
-    function made(address owner_, uint256 variant) public view returns (bool exists, address home, bytes32 salt) {
-        salt = keccak256(abi.encode(owner_)) ^ bytes32(variant);
+    function made(address owner, uint256 variant) public view returns (bool exists, address home, bytes32 salt) {
+        salt = keccak256(abi.encode(owner)) ^ bytes32(variant);
         home = Clones.predictDeterministicAddress(address(proto), salt, address(proto));
         exists = home.code.length > 0;
     }
@@ -482,18 +482,18 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
     /**
      * @inheritdoc IOwnableMaker
      * @dev Must be called on the prototype. Calling on a clone reverts
-     *      with {Unauthorized}. The clone's owner is `owner_`, not
+     *      with {Unauthorized}. The clone's owner is `owner`, not
      *      `msg.sender` — anyone may seed a Fountain on behalf of a
      *      third party.
      */
-    function make(address owner_, uint256 variant) external returns (address instance) {
+    function make(address owner, uint256 variant) external returns (address instance) {
         if (address(this) != address(proto)) revert Unauthorized();
-        (bool exists, address home, bytes32 salt) = made(owner_, variant);
+        (bool exists, address home, bytes32 salt) = made(owner, variant);
         instance = home;
         if (!exists) {
             Clones.cloneDeterministic(address(proto), salt, 0);
-            Fountain(payable(home)).zzInit(owner_);
-            emit Made(owner_, variant, home);
+            Fountain(payable(home)).zzInit(owner);
+            emit Made(owner, variant, home);
         }
     }
 
@@ -502,8 +502,8 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
      *         clone. Sets the clone's owner. Reverts with {Unauthorized}
      *         if called by anyone other than the prototype.
      */
-    function zzInit(address owner_) public {
+    function zzInit(address owner) public {
         if (msg.sender != address(proto)) revert Unauthorized();
-        _transferOwnership(owner_);
+        _transferOwnership(owner);
     }
 }
