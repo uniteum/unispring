@@ -66,8 +66,16 @@ import {ModifyLiquidityParams} from "v4-core/types/PoolOperation.sol";
  *         is preserved.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
-contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer, IUnlockCallback, Ownable {
-    string public constant version = "0.7.1";
+contract Fountain is
+    IPlacer,
+    IPoolConfig,
+    IFeeTaker,
+    IOwnableMaker,
+    IWithdrawer,
+    IUnlockCallback,
+    Ownable
+{
+    string public constant version = "0.7.2";
 
     /**
      * @inheritdoc IPoolConfig
@@ -124,17 +132,24 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
     /**
      * @inheritdoc IPlacer
      */
-    function offer(Currency token, Currency quote, int24[] calldata ticks, uint256[] calldata amounts) external {
+    function offer(
+        Currency token,
+        Currency quote,
+        int24[] calldata ticks,
+        uint256[] calldata amounts
+    ) external {
         if (token.isAddressZero()) revert TokenIsNative();
 
         uint256 n = amounts.length;
         if (n == 0) revert NoPositions();
-        if (ticks.length != n + 1) revert TickAmountLengthMismatch(ticks.length, n);
+        if (ticks.length != n + 1)
+            revert TickAmountLengthMismatch(ticks.length, n);
 
         if (ticks[0] < TickMath.MIN_TICK) revert TickOutOfRange(ticks[0]);
         if (ticks[n] > TickMath.MAX_TICK) revert TickOutOfRange(ticks[n]);
         for (uint256 i = 1; i < ticks.length; i++) {
-            if (ticks[i] <= ticks[i - 1]) revert TicksNotAscending(i, ticks[i - 1], ticks[i]);
+            if (ticks[i] <= ticks[i - 1])
+                revert TicksNotAscending(i, ticks[i - 1], ticks[i]);
         }
 
         uint256 total;
@@ -143,7 +158,11 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
             total += amounts[i];
         }
 
-        IERC20(Currency.unwrap(token)).safeTransferFrom(msg.sender, address(this), total);
+        IERC20(Currency.unwrap(token)).safeTransferFrom(
+            msg.sender,
+            address(this),
+            total
+        );
 
         uint256 firstPositionId = positions.length;
         poolManager.unlock(msg.data);
@@ -165,7 +184,12 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
      *      Precondition: ticks/amounts validated by {offer}; PoolManager
      *      unlocked to this contract.
      */
-    function _offerUnlocked(Currency token, Currency quote, int24[] memory ticks, uint256[] memory amounts) private {
+    function _offerUnlocked(
+        Currency token,
+        Currency quote,
+        int24[] memory ticks,
+        uint256[] memory amounts
+    ) private {
         uint256 n = amounts.length;
 
         bool tokenIsCurrency0 = token < quote;
@@ -179,12 +203,19 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
         PoolId poolId = key.toId();
 
         int24 startingV4Tick = tokenIsCurrency0 ? ticks[0] : -ticks[0];
-        uint160 startingSqrtPriceX96 = TickMath.getSqrtPriceAtTick(startingV4Tick);
+        uint160 startingSqrtPriceX96 = TickMath.getSqrtPriceAtTick(
+            startingV4Tick
+        );
 
-        (uint160 existingSqrtPriceX96,,,) = poolManager.getSlot0(poolId);
+        (uint160 existingSqrtPriceX96, , , ) = poolManager.getSlot0(poolId);
         if (existingSqrtPriceX96 == 0) {
             if (!tokenIsCurrency0) {
-                startingSqrtPriceX96 = _maybeInteriorSqrt(key.currency0, ticks, amounts[0], startingSqrtPriceX96);
+                startingSqrtPriceX96 = _maybeInteriorSqrt(
+                    key.currency0,
+                    ticks,
+                    amounts[0],
+                    startingSqrtPriceX96
+                );
             }
             poolManager.initialize(key, startingSqrtPriceX96);
         }
@@ -208,7 +239,7 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
                 ? _liquidity0(sqrtLower, sqrtUpper, amounts[i])
                 : _liquidity1(sqrtLower, sqrtUpper, amounts[i]);
 
-            (BalanceDelta delta,) = poolManager.modifyLiquidity(
+            (BalanceDelta delta, ) = poolManager.modifyLiquidity(
                 key,
                 ModifyLiquidityParams({
                     tickLower: tickLower,
@@ -222,7 +253,9 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
             totalOwed0 += int256(delta.amount0());
             totalOwed1 += int256(delta.amount1());
 
-            positions.push(Position({key: key, tickLower: tickLower, tickUpper: tickUpper}));
+            positions.push(
+                Position({key: key, tickLower: tickLower, tickUpper: tickUpper})
+            );
         }
 
         _settleOwedUnlocked(key.currency0, totalOwed0);
@@ -262,19 +295,26 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
      *      wei of `quote` (currency0) to settle position 0's mixed deposit;
      *      use it iff Fountain holds enough, else fall back to the boundary.
      */
-    function _maybeInteriorSqrt(Currency quote, int24[] memory ticks, uint256 firstAmount, uint160 boundarySqrt)
-        private
-        view
-        returns (uint160)
-    {
+    function _maybeInteriorSqrt(
+        Currency quote,
+        int24[] memory ticks,
+        uint256 firstAmount,
+        uint160 boundarySqrt
+    ) private view returns (uint160) {
         if (boundarySqrt == 0) return boundarySqrt;
         uint160 sqrtLower = TickMath.getSqrtPriceAtTick(-ticks[1]);
         uint128 firstL = _liquidity1(sqrtLower, boundarySqrt, firstAmount);
         if (firstL == 0) return boundarySqrt;
         uint160 interiorSqrt = boundarySqrt - 1;
-        uint256 dustRequired = SqrtPriceMath.getAmount0Delta(interiorSqrt, boundarySqrt, firstL, true);
-        uint256 available =
-            quote.isAddressZero() ? address(this).balance : IERC20(Currency.unwrap(quote)).balanceOf(address(this));
+        uint256 dustRequired = SqrtPriceMath.getAmount0Delta(
+            interiorSqrt,
+            boundarySqrt,
+            firstL,
+            true
+        );
+        uint256 available = quote.isAddressZero()
+            ? address(this).balance
+            : IERC20(Currency.unwrap(quote)).balanceOf(address(this));
         return available >= dustRequired ? interiorSqrt : boundarySqrt;
     }
 
@@ -288,7 +328,10 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
     /**
      * @inheritdoc IFeeTaker
      */
-    function positionsSlice(uint256 offset, uint256 count) external view returns (Position[] memory slice) {
+    function positionsSlice(
+        uint256 offset,
+        uint256 count
+    ) external view returns (Position[] memory slice) {
         uint256 length = positions.length;
         if (offset >= length) return new Position[](0);
         uint256 end = offset + count;
@@ -302,7 +345,9 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
     /**
      * @inheritdoc IFeeTaker
      */
-    function untaken(uint256[] calldata ids)
+    function untaken(
+        uint256[] calldata ids
+    )
         external
         view
         returns (uint256[] memory amounts0, uint256[] memory amounts1)
@@ -313,7 +358,11 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
         for (uint256 i = 0; i < ids.length; i++) {
             if (ids[i] >= length) revert UnknownPosition(ids[i]);
             Position storage p = positions[ids[i]];
-            (amounts0[i], amounts1[i]) = _untaken(p.key, p.tickLower, p.tickUpper);
+            (amounts0[i], amounts1[i]) = _untaken(
+                p.key,
+                p.tickLower,
+                p.tickUpper
+            );
         }
     }
 
@@ -322,18 +371,36 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
      *      Uniswap's feeGrowthInside delta formula and uses unchecked
      *      subtraction to handle X128 wraparound.
      */
-    function _untaken(PoolKey memory key, int24 tickLower, int24 tickUpper)
-        private
-        view
-        returns (uint256 amount0, uint256 amount1)
-    {
+    function _untaken(
+        PoolKey memory key,
+        int24 tickLower,
+        int24 tickUpper
+    ) private view returns (uint256 amount0, uint256 amount1) {
         PoolId poolId = key.toId();
-        (uint128 liquidity, uint256 growth0Last, uint256 growth1Last) =
-            poolManager.getPositionInfo(poolId, address(this), tickLower, tickUpper, bytes32(0));
-        (uint256 growth0Now, uint256 growth1Now) = poolManager.getFeeGrowthInside(poolId, tickLower, tickUpper);
+        (
+            uint128 liquidity,
+            uint256 growth0Last,
+            uint256 growth1Last
+        ) = poolManager.getPositionInfo(
+                poolId,
+                address(this),
+                tickLower,
+                tickUpper,
+                bytes32(0)
+            );
+        (uint256 growth0Now, uint256 growth1Now) = poolManager
+            .getFeeGrowthInside(poolId, tickLower, tickUpper);
         unchecked {
-            amount0 = FullMath.mulDiv(growth0Now - growth0Last, liquidity, FixedPoint128.Q128);
-            amount1 = FullMath.mulDiv(growth1Now - growth1Last, liquidity, FixedPoint128.Q128);
+            amount0 = FullMath.mulDiv(
+                growth0Now - growth0Last,
+                liquidity,
+                FixedPoint128.Q128
+            );
+            amount1 = FullMath.mulDiv(
+                growth1Now - growth1Last,
+                liquidity,
+                FixedPoint128.Q128
+            );
         }
     }
 
@@ -365,7 +432,10 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
             (, BalanceDelta feesAccrued) = poolManager.modifyLiquidity(
                 key,
                 ModifyLiquidityParams({
-                    tickLower: tickLower, tickUpper: tickUpper, liquidityDelta: 0, salt: bytes32(0)
+                    tickLower: tickLower,
+                    tickUpper: tickUpper,
+                    liquidityDelta: 0,
+                    salt: bytes32(0)
                 }),
                 ""
             );
@@ -375,8 +445,10 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
             uint256 amount0 = fee0 > 0 ? uint256(uint128(fee0)) : 0;
             // forge-lint: disable-next-line(unsafe-typecast)
             uint256 amount1 = fee1 > 0 ? uint256(uint128(fee1)) : 0;
-            if (amount0 > 0) poolManager.take(key.currency0, address(this), amount0);
-            if (amount1 > 0) poolManager.take(key.currency1, address(this), amount1);
+            if (amount0 > 0)
+                poolManager.take(key.currency0, address(this), amount0);
+            if (amount1 > 0)
+                poolManager.take(key.currency1, address(this), amount1);
             emit Taken(id, amount0, amount1);
         }
     }
@@ -387,12 +459,18 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
      *      {IPlacer.offer} seats a batch of positions; {IFeeTaker.take}
      *      iterates a batch of ids for fee take.
      */
-    function unlockCallback(bytes calldata data) external returns (bytes memory) {
+    function unlockCallback(
+        bytes calldata data
+    ) external returns (bytes memory) {
         if (msg.sender != address(poolManager)) revert InvalidUnlockCaller();
         bytes4 selector = bytes4(data[:4]);
         if (selector == IPlacer.offer.selector) {
-            (Currency token, Currency quote, int24[] memory ticks, uint256[] memory amounts) =
-                abi.decode(data[4:], (Currency, Currency, int24[], uint256[]));
+            (
+                Currency token,
+                Currency quote,
+                int24[] memory ticks,
+                uint256[] memory amounts
+            ) = abi.decode(data[4:], (Currency, Currency, int24[], uint256[]));
             _offerUnlocked(token, quote, ticks, amounts);
         } else if (selector == IFeeTaker.take.selector) {
             uint256[] memory ids = abi.decode(data[4:], (uint256[]));
@@ -440,17 +518,43 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
      * @dev Liquidity for a single-sided position in currency0.
      *      L = amount0 * (sqrtLower * sqrtUpper / Q96) / (sqrtUpper - sqrtLower)
      */
-    function _liquidity0(uint160 sqrtLower, uint160 sqrtUpper, uint256 amount0) private pure returns (uint128) {
-        uint256 intermediate = FullMath.mulDiv(uint256(sqrtLower), uint256(sqrtUpper), FixedPoint96.Q96);
-        return _toUint128(FullMath.mulDiv(amount0, intermediate, uint256(sqrtUpper - sqrtLower)));
+    function _liquidity0(
+        uint160 sqrtLower,
+        uint160 sqrtUpper,
+        uint256 amount0
+    ) private pure returns (uint128) {
+        uint256 intermediate = FullMath.mulDiv(
+            uint256(sqrtLower),
+            uint256(sqrtUpper),
+            FixedPoint96.Q96
+        );
+        return
+            _toUint128(
+                FullMath.mulDiv(
+                    amount0,
+                    intermediate,
+                    uint256(sqrtUpper - sqrtLower)
+                )
+            );
     }
 
     /**
      * @dev Liquidity for a single-sided position in currency1.
      *      L = amount1 * Q96 / (sqrtUpper - sqrtLower)
      */
-    function _liquidity1(uint160 sqrtLower, uint160 sqrtUpper, uint256 amount1) private pure returns (uint128) {
-        return _toUint128(FullMath.mulDiv(amount1, FixedPoint96.Q96, uint256(sqrtUpper - sqrtLower)));
+    function _liquidity1(
+        uint160 sqrtLower,
+        uint160 sqrtUpper,
+        uint256 amount1
+    ) private pure returns (uint128) {
+        return
+            _toUint128(
+                FullMath.mulDiv(
+                    amount1,
+                    FixedPoint96.Q96,
+                    uint256(sqrtUpper - sqrtLower)
+                )
+            );
     }
 
     function _toUint128(uint256 x) private pure returns (uint128) {
@@ -463,9 +567,16 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
     /**
      * @inheritdoc IOwnableMaker
      */
-    function made(address owner_, uint256 variant) public view returns (bool exists, address home, bytes32 salt) {
+    function made(
+        address owner_,
+        uint256 variant
+    ) public view returns (bool exists, address home, bytes32 salt) {
         salt = keccak256(abi.encode(owner_)) ^ bytes32(variant);
-        home = Clones.predictDeterministicAddress(address(proto), salt, address(proto));
+        home = Clones.predictDeterministicAddress(
+            address(proto),
+            salt,
+            address(proto)
+        );
         exists = home.code.length > 0;
     }
 
