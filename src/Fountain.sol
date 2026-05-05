@@ -69,7 +69,7 @@ import {ModifyLiquidityParams} from "v4-core/types/PoolOperation.sol";
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
 contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer, IUnlockCallback, Ownable {
-    string public constant version = "0.7.2";
+    string public constant version = "0.8.0";
 
     /**
      * @inheritdoc IPoolConfig
