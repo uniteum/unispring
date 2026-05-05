@@ -4,12 +4,14 @@ pragma solidity ^0.8.30;
 /**
  * @title IOwnableMaker
  * @notice Shape of an "ownable clone" factory: one clone per
- *         `(msg.sender, variant)` pair, the produced clone is `Ownable`
- *         and its owner is the caller of {make}. {made} predicts the
- *         deterministic CREATE2 address without deploying. The pattern
- *         names the role rather than any specific contract; callers
- *         that want to interact with any ownable-maker through a
- *         common shape cast the address to this interface.
+ *         `(owner, variant)` pair, the produced clone is `Ownable`
+ *         and its owner is the `owner` argument passed to {make}.
+ *         {make} is permissionless — anyone can deploy a clone for
+ *         any third-party owner. {made} predicts the deterministic
+ *         CREATE2 address without deploying. The pattern names the
+ *         role rather than any specific contract; callers that want
+ *         to interact with any ownable-maker through a common shape
+ *         cast the address to this interface.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
 interface IOwnableMaker {
@@ -41,12 +43,15 @@ interface IOwnableMaker {
     function made(address owner, uint256 variant) external view returns (bool exists, address home, bytes32 salt);
 
     /**
-     * @notice Deploy (or return) the clone owned by `msg.sender` under
-     *         `variant`. One clone exists per `(msg.sender, variant)`
-     *         pair; repeated calls return the same address.
+     * @notice Deploy (or return) the clone owned by `owner` under
+     *         `variant`. One clone exists per `(owner, variant)` pair;
+     *         repeated calls return the same address. Permissionless:
+     *         the caller need not be `owner`, so anyone can spin up a
+     *         clone on behalf of a third party.
+     * @param  owner    The address that will own the clone.
      * @param  variant  Discriminator letting one owner hold multiple clones.
      * @return instance The clone address. Callers cast to the concrete
      *                  contract type when they need its full surface.
      */
-    function make(uint256 variant) external returns (address instance);
+    function make(address owner, uint256 variant) external returns (address instance);
 }

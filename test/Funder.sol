@@ -30,7 +30,7 @@ contract Funder {
      *         once from test `setUp`.
      */
     function makeFountain(Fountain proto) external {
-        fountain = Fountain(payable(proto.make(0)));
+        fountain = Fountain(payable(proto.make(address(this), 0)));
     }
 
     /**
