@@ -10,10 +10,10 @@ source "$(git rev-parse --show-toplevel)/lib/crucible/script/clone.sh"
 
 # Same-repo dep — Fountain prototype. Re-run io/Fountain/Fountain.sh
 # first, then update this address.
-Fountain=0xf00fd448443a7d1982cdE29909627217F132E080
+Fountain=0xf00cA753ba198ffF307FDC1ECCCD41D30bA0e080
 
 # Owner of this clone (passed to make(); seats positions on its behalf).
-owner=0xff966FE50802B74B538D2c6311Fc0201014AA294
+owner=0x9891e323517761F525e55817F1b3fa2C52620b78
 
 # Vanity-mining inputs (re-mine after Fountain proto changes — the
 # EIP-1167 initcode-hash depends on the proto address, so previously
@@ -23,4 +23,4 @@ target=0xf11000000000000000000000000000000000e080
 
 clone_predict Fountain1 "$Fountain" \
     "address" "$owner" \
-    0x00000000000000000000000000000000000000000000000000000000bed03a06
+    0x00000000000000000000000000000000000000000000000000000000cafab371
