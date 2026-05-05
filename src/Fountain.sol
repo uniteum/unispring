@@ -11,6 +11,7 @@ import {IFeeTaker, Position} from "./IFeeTaker.sol";
 import {IOwnableMaker} from "./IOwnableMaker.sol";
 import {IWithdrawer} from "./IWithdrawer.sol";
 import {Ownable} from "ownable/Ownable.sol";
+import {IExtsload} from "v4-core/interfaces/IExtsload.sol";
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 import {IUnlockCallback} from "v4-core/interfaces/callback/IUnlockCallback.sol";
@@ -118,6 +119,8 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
      */
     constructor(IAddressLookup poolManagerLookup) Ownable(msg.sender) {
         poolManager = IPoolManager(poolManagerLookup.value());
+        // Sanity-check the lookup: reverts if the resolved address isn't a PoolManager.
+        IExtsload(address(poolManager)).extsload(bytes32(0));
     }
 
     using StateLibrary for IPoolManager;
