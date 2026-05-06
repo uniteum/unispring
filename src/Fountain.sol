@@ -446,9 +446,9 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
      *      token's own revert, or {SafeERC20.SafeERC20FailedOperation} for
      *      tokens that signal failure by returning false).
      */
-    function withdraw(Currency currency, uint256 amount) external onlyOwner {
+    function withdraw(address currency, uint256 amount) external onlyOwner {
         address to = owner();
-        if (currency.isAddressZero()) {
+        if (currency == address(0)) {
             (bool ok, bytes memory ret) = to.call{value: amount}("");
             if (!ok) {
                 // Solidity has no `revert(bytes)`; bubble the recipient's revert data verbatim.
@@ -457,7 +457,7 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
                 }
             }
         } else {
-            IERC20(Currency.unwrap(currency)).safeTransfer(to, amount);
+            IERC20(currency).safeTransfer(to, amount);
         }
         emit Withdrawn(currency, amount);
     }

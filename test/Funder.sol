@@ -3,7 +3,6 @@ pragma solidity ^0.8.30;
 
 import {Fountain, Position} from "../src/Fountain.sol";
 import {IERC20} from "ierc20/IERC20.sol";
-import {Currency} from "v4-core/types/Currency.sol";
 import {console} from "forge-std/console.sol";
 
 /**
@@ -57,8 +56,8 @@ contract Funder {
         ids[0] = id;
         fountain.take(ids);
         Position memory p = fountain.positionsSlice(id, 1)[0];
-        _sweep(Currency.wrap(p.currency0));
-        _sweep(Currency.wrap(p.currency1));
+        _sweep(p.currency0);
+        _sweep(p.currency1);
     }
 
     /**
@@ -69,8 +68,8 @@ contract Funder {
         fountain.take(ids);
         for (uint256 i = 0; i < ids.length; i++) {
             Position memory p = fountain.positionsSlice(ids[i], 1)[0];
-            _sweep(Currency.wrap(p.currency0));
-            _sweep(Currency.wrap(p.currency1));
+            _sweep(p.currency0);
+            _sweep(p.currency1);
         }
     }
 
@@ -80,7 +79,7 @@ contract Funder {
      *         Fountain routes the transfer to its current {owner}, so this
      *         only lands here while this Funder still owns the clone.
      */
-    function withdraw(Currency currency, uint256 amount) external {
+    function withdraw(address currency, uint256 amount) external {
         fountain.withdraw(currency, amount);
     }
 
@@ -95,9 +94,8 @@ contract Funder {
 
     receive() external payable {}
 
-    function _sweep(Currency c) private {
-        uint256 bal =
-            c.isAddressZero() ? address(fountain).balance : IERC20(Currency.unwrap(c)).balanceOf(address(fountain));
+    function _sweep(address c) private {
+        uint256 bal = c == address(0) ? address(fountain).balance : IERC20(c).balanceOf(address(fountain));
         if (bal > 0) fountain.withdraw(c, bal);
     }
 }

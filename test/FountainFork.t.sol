@@ -631,7 +631,7 @@ contract FountainForkTest is ForkBase {
         bot.transferFountainOwnership(address(sink));
         deal(address(fountain), 1 ether);
         vm.expectRevert(abi.encodeWithSelector(RevertingRecipient.Nope.selector, "nope"));
-        sink.pull(fountain, Currency.wrap(address(0)), 1 ether);
+        sink.pull(fountain, address(0), 1 ether);
     }
 
     // ----------------------------------------------------------------------
