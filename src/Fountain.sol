@@ -92,7 +92,7 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
     /**
      * @inheritdoc IPoolConfig
      */
-    IPoolManager public immutable poolManager;
+    address public immutable poolManager;
 
     /**
      * @notice All positions seated by this contract, in creation order.
@@ -118,9 +118,9 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
      * @param  poolManagerLookup Lookup for the chain-local Uniswap V4 PoolManager.
      */
     constructor(IAddressLookup poolManagerLookup) Ownable(msg.sender) {
-        poolManager = IPoolManager(poolManagerLookup.value());
+        poolManager = poolManagerLookup.value();
         // Sanity-check the lookup: reverts if the resolved address isn't a PoolManager.
-        IExtsload(address(poolManager)).extsload(bytes32(0));
+        IExtsload(poolManager).extsload(bytes32(0));
     }
 
     using StateLibrary for IPoolManager;
@@ -155,7 +155,7 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
         IERC20(Currency.unwrap(token)).safeTransferFrom(msg.sender, address(this), total);
 
         uint256 firstPositionId = positions.length;
-        poolManager.unlock(msg.data);
+        IPoolManager(poolManager).unlock(msg.data);
 
         emit Offered(msg.sender, token, quote, firstPositionId, n);
     }
@@ -190,12 +190,14 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
         int24 startingV4Tick = tokenIsCurrency0 ? ticks[0] : -ticks[0];
         uint160 startingSqrtPriceX96 = TickMath.getSqrtPriceAtTick(startingV4Tick);
 
-        (uint160 existingSqrtPriceX96,,,) = poolManager.getSlot0(poolId);
+        IPoolManager pm = IPoolManager(poolManager);
+
+        (uint160 existingSqrtPriceX96,,,) = pm.getSlot0(poolId);
         if (existingSqrtPriceX96 == 0) {
             if (!tokenIsCurrency0) {
                 startingSqrtPriceX96 = _maybeInteriorSqrt(key.currency0, ticks, amounts[0], startingSqrtPriceX96);
             }
-            poolManager.initialize(key, startingSqrtPriceX96);
+            pm.initialize(key, startingSqrtPriceX96);
         }
 
         int256 totalOwed0;
@@ -217,7 +219,7 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
                 ? _liquidity0(sqrtLower, sqrtUpper, amounts[i])
                 : _liquidity1(sqrtLower, sqrtUpper, amounts[i]);
 
-            (BalanceDelta delta,) = poolManager.modifyLiquidity(
+            (BalanceDelta delta,) = pm.modifyLiquidity(
                 key,
                 ModifyLiquidityParams({
                     tickLower: tickLower,
@@ -249,16 +251,17 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
         if (owedSigned >= 0) return;
         // forge-lint: disable-next-line(unsafe-typecast)
         uint256 owed = uint256(-owedSigned);
+        IPoolManager pm = IPoolManager(poolManager);
         if (currency.isAddressZero()) {
             if (address(this).balance < owed) return;
-            poolManager.sync(currency);
-            poolManager.settle{value: owed}();
+            pm.sync(currency);
+            pm.settle{value: owed}();
         } else {
             IERC20 erc = IERC20(Currency.unwrap(currency));
             if (erc.balanceOf(address(this)) < owed) return;
-            poolManager.sync(currency);
+            pm.sync(currency);
             erc.safeTransfer(address(poolManager), owed);
-            poolManager.settle();
+            pm.settle();
         }
     }
 
@@ -337,9 +340,10 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
         returns (uint256 amount0, uint256 amount1)
     {
         PoolId poolId = key.toId();
+        IPoolManager pm = IPoolManager(poolManager);
         (uint128 liquidity, uint256 growth0Last, uint256 growth1Last) =
-            poolManager.getPositionInfo(poolId, address(this), tickLower, tickUpper, bytes32(0));
-        (uint256 growth0Now, uint256 growth1Now) = poolManager.getFeeGrowthInside(poolId, tickLower, tickUpper);
+            pm.getPositionInfo(poolId, address(this), tickLower, tickUpper, bytes32(0));
+        (uint256 growth0Now, uint256 growth1Now) = pm.getFeeGrowthInside(poolId, tickLower, tickUpper);
         unchecked {
             amount0 = FullMath.mulDiv(growth0Now - growth0Last, liquidity, FixedPoint128.Q128);
             amount1 = FullMath.mulDiv(growth1Now - growth1Last, liquidity, FixedPoint128.Q128);
@@ -355,7 +359,7 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
         for (uint256 i = 0; i < ids.length; i++) {
             if (ids[i] >= length) revert UnknownPosition(ids[i]);
         }
-        poolManager.unlock(msg.data);
+        IPoolManager(poolManager).unlock(msg.data);
     }
 
     /**
@@ -365,13 +369,14 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
      *      Precondition: PoolManager unlocked to this contract.
      */
     function _takeUnlocked(uint256[] memory ids) private {
+        IPoolManager pm = IPoolManager(poolManager);
         for (uint256 i = 0; i < ids.length; i++) {
             uint256 id = ids[i];
             Position storage p = positions[id];
             PoolKey memory key = p.key;
             int24 tickLower = p.tickLower;
             int24 tickUpper = p.tickUpper;
-            (, BalanceDelta feesAccrued) = poolManager.modifyLiquidity(
+            (, BalanceDelta feesAccrued) = pm.modifyLiquidity(
                 key,
                 ModifyLiquidityParams({
                     tickLower: tickLower, tickUpper: tickUpper, liquidityDelta: 0, salt: bytes32(0)
@@ -385,10 +390,10 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
             // forge-lint: disable-next-line(unsafe-typecast)
             uint256 amount1 = fee1 > 0 ? uint256(uint128(fee1)) : 0;
             if (amount0 > 0) {
-                poolManager.take(key.currency0, address(this), amount0);
+                pm.take(key.currency0, address(this), amount0);
             }
             if (amount1 > 0) {
-                poolManager.take(key.currency1, address(this), amount1);
+                pm.take(key.currency1, address(this), amount1);
             }
             emit Taken(id, amount0, amount1);
         }

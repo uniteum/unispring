@@ -107,11 +107,7 @@ contract Mimicry {
      * @param  token The newly minted mimic ERC-20.
      * @param  name  The name carried by the token.
      */
-    event Mimic(
-        Mimicry indexed clone,
-        IERC20Metadata indexed token,
-        string name
-    );
+    event Mimic(Mimicry indexed clone, IERC20Metadata indexed token, string name);
 
     /**
      * @notice Thrown when {zzInit} is called by anyone other than {proto}.
@@ -134,11 +130,7 @@ contract Mimicry {
      *                            as the suffix for the prototype's mimic
      *                            symbol `"1x<native>"`.
      */
-    constructor(
-        IPlacer fountain,
-        ICoinage minter,
-        IStringLookup nativeSymbolLookup
-    ) {
+    constructor(IPlacer fountain, ICoinage minter, IStringLookup nativeSymbolLookup) {
         proto = this;
         placer = fountain;
         coinage = minter;
@@ -171,18 +163,16 @@ contract Mimicry {
      * @return salt      The CREATE2 salt (`bytes32(0)` for the proto pair,
      *                   which never uses CREATE2).
      */
-    function made(
-        address original_,
-        string calldata symbol_
-    ) public view returns (bool exists, address home, bytes32 salt) {
-        if (_isProtoPair(_resolve(original_), symbol_))
+    function made(address original_, string calldata symbol_)
+        public
+        view
+        returns (bool exists, address home, bytes32 salt)
+    {
+        if (_isProtoPair(_resolve(original_), symbol_)) {
             return (true, address(proto), bytes32(0));
+        }
         salt = keccak256(abi.encode(original_, symbol_));
-        home = Clones.predictDeterministicAddress(
-            address(proto),
-            salt,
-            address(proto)
-        );
+        home = Clones.predictDeterministicAddress(address(proto), salt, address(proto));
         exists = home.code.length > 0;
     }
 
@@ -205,10 +195,7 @@ contract Mimicry {
      * @return clone     The deployed (or existing) clone, or `proto`
      *                   itself for the proto pair.
      */
-    function make(
-        address original_,
-        string calldata symbol_
-    ) external returns (Mimicry clone) {
+    function make(address original_, string calldata symbol_) external returns (Mimicry clone) {
         if (address(this) != address(proto)) {
             clone = proto.make(original_, symbol_);
         } else {
@@ -216,10 +203,7 @@ contract Mimicry {
             if (_isProtoPair(resolved, symbol_)) {
                 clone = this;
             } else {
-                (bool exists, address home, bytes32 salt) = made(
-                    original_,
-                    symbol_
-                );
+                (bool exists, address home, bytes32 salt) = made(original_, symbol_);
                 clone = Mimicry(home);
                 if (!exists) {
                     Clones.cloneDeterministic(address(proto), salt, 0);
@@ -256,11 +240,11 @@ contract Mimicry {
      * @return exists    True if the mimic token is already deployed.
      * @return home      The deterministic mimic address.
      */
-    function mimicked(
-        address original_,
-        string calldata symbol_,
-        string calldata name_
-    ) public view returns (bool exists, address home) {
+    function mimicked(address original_, string calldata symbol_, string calldata name_)
+        public
+        view
+        returns (bool exists, address home)
+    {
         Currency resolved = _resolve(original_);
         address maker;
         if (_isProtoPair(resolved, symbol_)) {
@@ -268,11 +252,7 @@ contract Mimicry {
         } else {
             // forge-lint: disable-next-line(asm-keccak256)
             bytes32 salt = keccak256(abi.encode(original_, symbol_));
-            maker = Clones.predictDeterministicAddress(
-                address(proto),
-                salt,
-                address(proto)
-            );
+            maker = Clones.predictDeterministicAddress(address(proto), salt, address(proto));
         }
         return _mimicked(maker, resolved, symbol_, name_);
     }
@@ -284,9 +264,7 @@ contract Mimicry {
      *         the maker for {coinage}'s CREATE2 is `address(this)`, so no
      *         salt rederivation is needed.
      */
-    function mimicked(
-        string calldata name_
-    ) external view returns (bool exists, address home) {
+    function mimicked(string calldata name_) external view returns (bool exists, address home) {
         return _mimicked(address(this), original, symbol, name_);
     }
 
@@ -304,15 +282,8 @@ contract Mimicry {
      *                symbol)`.
      * @return token  The minted (or existing) mimic ERC-20.
      */
-    function mimic(
-        string calldata name_
-    ) external returns (IERC20Metadata token) {
-        (bool exists, address home) = _mimicked(
-            address(this),
-            original,
-            symbol,
-            name_
-        );
+    function mimic(string calldata name_) external returns (IERC20Metadata token) {
+        (bool exists, address home) = _mimicked(address(this), original, symbol, name_);
         if (exists) return IERC20Metadata(home);
 
         (uint8 decimals, uint256 supply) = _mimicMetadata(original);
@@ -340,21 +311,13 @@ contract Mimicry {
      *      {mimicked} overload computes `maker` from the salted clone
      *      prediction since no clone instance is in scope yet.
      */
-    function _mimicked(
-        address maker,
-        Currency original_,
-        string memory symbol_,
-        string memory name_
-    ) private view returns (bool exists, address home) {
+    function _mimicked(address maker, Currency original_, string memory symbol_, string memory name_)
+        private
+        view
+        returns (bool exists, address home)
+    {
         (uint8 decimals, uint256 supply) = _mimicMetadata(original_);
-        (exists, home, ) = coinage.made(
-            maker,
-            name_,
-            symbol_,
-            decimals,
-            supply,
-            0
-        );
+        (exists, home,) = coinage.made(maker, name_, symbol_, decimals, supply, 0);
     }
 
     /**
@@ -362,13 +325,8 @@ contract Mimicry {
      *      `(native ETH, proto.symbol())`, i.e. the pair for which the
      *      prototype itself is the factory.
      */
-    function _isProtoPair(
-        Currency original_,
-        string memory symbol_
-    ) private view returns (bool) {
-        return
-            original_.isAddressZero() &&
-            keccak256(bytes(symbol_)) == keccak256(bytes(proto.symbol()));
+    function _isProtoPair(Currency original_, string memory symbol_) private view returns (bool) {
+        return original_.isAddressZero() && keccak256(bytes(symbol_)) == keccak256(bytes(proto.symbol()));
     }
 
     /**
@@ -398,9 +356,7 @@ contract Mimicry {
      *      decimals (the conventional human-unit semantics) and
      *      {maxSupply}.
      */
-    function _mimicMetadata(
-        Currency original_
-    ) private view returns (uint8 decimals, uint256 supply) {
+    function _mimicMetadata(Currency original_) private view returns (uint8 decimals, uint256 supply) {
         if (original_.isAddressZero()) return (18, maxSupply);
         decimals = IERC20Metadata(Currency.unwrap(original_)).decimals();
         supply = uint256(maxSupply);

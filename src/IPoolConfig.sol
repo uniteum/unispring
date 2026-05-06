@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
-
 /**
  * @title IPoolConfig
  * @notice Read-only view of a pool's parameters — the values needed to
@@ -24,5 +22,5 @@ interface IPoolConfig {
     /**
      * @notice The Uniswap V4 PoolManager.
      */
-    function poolManager() external view returns (IPoolManager);
+    function poolManager() external view returns (address);
 }

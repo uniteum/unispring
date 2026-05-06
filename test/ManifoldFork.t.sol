@@ -76,11 +76,11 @@ contract ManifoldForkTest is ForkBase {
         assertEq(p.tickUpper, HUB_TICK_UPPER, "V4 tickUpper preserved through flip");
 
         // Pool sits at the upper edge — single-sided in hub, inactive at spot.
-        (uint160 sqrtPriceX96,,,) = fountain.poolManager().getSlot0(p.key.toId());
+        (uint160 sqrtPriceX96,,,) = IPoolManager(fountain.poolManager()).getSlot0(p.key.toId());
         assertEq(sqrtPriceX96, TickMath.getSqrtPriceAtTick(HUB_TICK_UPPER), "pool starts at V4 upper tick");
 
         // Hub supply landed in the PoolManager (modulo dust in Fountain).
-        uint256 inPoolManager = IERC20(ffffff).balanceOf(address(fountain.poolManager()));
+        uint256 inPoolManager = IERC20(ffffff).balanceOf(fountain.poolManager());
         uint256 inFountain = IERC20(ffffff).balanceOf(address(fountain));
         uint256 inClone = IERC20(ffffff).balanceOf(address(clone));
         assertEq(inPoolManager + inFountain + inClone, HUB_SUPPLY, "hub supply conserved");
@@ -125,11 +125,11 @@ contract ManifoldForkTest is ForkBase {
         assertEq(p.tickUpper, tickUpper, "V4 tickUpper = user tickUpper (no flip)");
 
         // Pool sits at the lower edge — single-sided in spoke, inactive at spot.
-        (uint160 sqrtPriceX96,,,) = fountain.poolManager().getSlot0(p.key.toId());
+        (uint160 sqrtPriceX96,,,) = IPoolManager(fountain.poolManager()).getSlot0(p.key.toId());
         assertEq(sqrtPriceX96, TickMath.getSqrtPriceAtTick(tickLower), "pool starts at V4 lower tick");
 
         // Caller's spoke supply ended up in PoolManager.
-        assertGt(IERC20(address(spoke)).balanceOf(address(fountain.poolManager())), 0, "spoke in PoolManager");
+        assertGt(IERC20(address(spoke)).balanceOf(fountain.poolManager()), 0, "spoke in PoolManager");
         assertEq(IERC20(address(spoke)).balanceOf(address(this)), 0, "caller debited fully");
     }
 

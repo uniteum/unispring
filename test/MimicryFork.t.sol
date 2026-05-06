@@ -80,7 +80,7 @@ contract MimicryForkTest is ForkBase {
         bot.makeFountain(proto);
         fountain = bot.fountain();
         mimicry = new Mimicry(fountain, Coinage(ICoinage), new NativeSymbolStub());
-        router = new SwapRouter(fountain.poolManager());
+        router = new SwapRouter(IPoolManager(fountain.poolManager()));
     }
 
     function test_MadeMatchesMake() public {
@@ -114,7 +114,7 @@ contract MimicryForkTest is ForkBase {
 
         // Pool is initialized at tick 0 (sqrtPriceX96 for tick 0 = 2**96).
         PoolId id = _poolKeyOf(clone, mimic).toId();
-        (uint160 sqrtPriceX96, int24 tick,,) = fountain.poolManager().getSlot0(id);
+        (uint160 sqrtPriceX96, int24 tick,,) = IPoolManager(fountain.poolManager()).getSlot0(id);
         assertEq(tick, int24(0), "pool must initialize at tick 0");
         assertGt(sqrtPriceX96, 0, "pool not initialized");
 
@@ -154,7 +154,7 @@ contract MimicryForkTest is ForkBase {
 
         // Pool initialized at tick 0 with the entire supply seated single-sided.
         PoolKey memory key = _poolKeyOf(mimicry, token);
-        (uint160 sqrtPriceX96, int24 tick,,) = fountain.poolManager().getSlot0(key.toId());
+        (uint160 sqrtPriceX96, int24 tick,,) = IPoolManager(fountain.poolManager()).getSlot0(key.toId());
         assertEq(tick, int24(0), "pool must initialize at tick 0");
         assertGt(sqrtPriceX96, 0, "pool not initialized");
         assertEq(token.balanceOf(address(mimicry)), 0, "supply should be in V4, not in proto");
@@ -179,7 +179,7 @@ contract MimicryForkTest is ForkBase {
         assertEq(Currency.unwrap(key.currency1), address(mimic), "mimic is currency1");
 
         // Pool initialized at tick 0; entire mimic supply seated in Fountain position.
-        (uint160 sqrtPriceX96, int24 tick,,) = fountain.poolManager().getSlot0(key.toId());
+        (uint160 sqrtPriceX96, int24 tick,,) = IPoolManager(fountain.poolManager()).getSlot0(key.toId());
         assertEq(tick, int24(0), "pool must initialize at tick 0");
         assertGt(sqrtPriceX96, 0, "pool not initialized");
         assertEq(mimic.balanceOf(address(clone)), 0, "supply should be in V4, not in clone");
@@ -229,8 +229,10 @@ contract MimicryForkTest is ForkBase {
         assertLt(uint160(address(hiMimic)), uint160(ffffff), "mimic of high lepton must sort below (token0)");
         assertGt(uint160(address(loMimic)), uint160(zeros), "mimic of low lepton must sort above (token1)");
 
-        (uint160 hiSqrt, int24 hiTick,,) = fountain.poolManager().getSlot0(_poolKeyOf(hiClone, hiMimic).toId());
-        (uint160 loSqrt, int24 loTick,,) = fountain.poolManager().getSlot0(_poolKeyOf(loClone, loMimic).toId());
+        (uint160 hiSqrt, int24 hiTick,,) =
+            IPoolManager(fountain.poolManager()).getSlot0(_poolKeyOf(hiClone, hiMimic).toId());
+        (uint160 loSqrt, int24 loTick,,) =
+            IPoolManager(fountain.poolManager()).getSlot0(_poolKeyOf(loClone, loMimic).toId());
 
         assertEq(hiTick, int24(0), "high-lepton pool must initialize at tick 0");
         assertEq(loTick, int24(0), "low-lepton pool must initialize at tick 0");
@@ -402,7 +404,7 @@ contract MimicryForkTest is ForkBase {
         string memory symbol = "FFx1";
         (, address predictedMimic) = mimicry.mimicked(original, symbol, symbol);
         PoolKey memory key = _predictedPoolKey(original, symbol, symbol);
-        fountain.poolManager().initialize(key, TickMath.getSqrtPriceAtTick(0));
+        IPoolManager(fountain.poolManager()).initialize(key, TickMath.getSqrtPriceAtTick(0));
 
         (, IERC20Metadata mimic) = _makeAndMimic(original, symbol);
         assertEq(address(mimic), predictedMimic, "minted address != predicted");
@@ -424,12 +426,12 @@ contract MimicryForkTest is ForkBase {
         string memory symbol = "FFx1";
         PoolKey memory key = _predictedPoolKey(original, symbol, symbol);
         uint160 preInitSqrt = TickMath.getSqrtPriceAtTick(-100);
-        fountain.poolManager().initialize(key, preInitSqrt);
+        IPoolManager(fountain.poolManager()).initialize(key, preInitSqrt);
 
         (, IERC20Metadata mimic) = _makeAndMimic(original, symbol);
         assertTrue(address(mimic) != address(0), "mimic not minted after below-tick pre-init");
 
-        (uint160 sqrt,,,) = fountain.poolManager().getSlot0(key.toId());
+        (uint160 sqrt,,,) = IPoolManager(fountain.poolManager()).getSlot0(key.toId());
         assertEq(sqrt, preInitSqrt, "spot stays at pre-init price, not at ticks[0]=0");
     }
 
@@ -445,7 +447,7 @@ contract MimicryForkTest is ForkBase {
         address original = ffffff;
         string memory symbol = "FFx1";
         PoolKey memory key = _predictedPoolKey(original, symbol, symbol);
-        fountain.poolManager().initialize(key, TickMath.getSqrtPriceAtTick(100));
+        IPoolManager(fountain.poolManager()).initialize(key, TickMath.getSqrtPriceAtTick(100));
 
         Mimicry clone = mimicry.make(original, symbol);
         vm.expectRevert(IPoolManager.CurrencyNotSettled.selector);
