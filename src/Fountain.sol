@@ -233,7 +233,16 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
             totalOwed0 += int256(delta.amount0());
             totalOwed1 += int256(delta.amount1());
 
-            positions.push(Position({key: key, tickLower: tickLower, tickUpper: tickUpper}));
+            positions.push(
+                Position({
+                    currency0: Currency.unwrap(key.currency0),
+                    currency1: Currency.unwrap(key.currency1),
+                    fee: key.fee,
+                    tickSpacing: key.tickSpacing,
+                    tickLower: tickLower,
+                    tickUpper: tickUpper
+                })
+            );
         }
 
         _settleOwedUnlocked(key.currency0, totalOwed0);
@@ -324,8 +333,7 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
         uint256 length = positions.length;
         for (uint256 i = 0; i < ids.length; i++) {
             if (ids[i] >= length) revert UnknownPosition(ids[i]);
-            Position storage p = positions[ids[i]];
-            (amounts0[i], amounts1[i]) = _untaken(p.key, p.tickLower, p.tickUpper);
+            (amounts0[i], amounts1[i]) = _untaken(positions[ids[i]]);
         }
     }
 
@@ -334,20 +342,30 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
      *      Uniswap's feeGrowthInside delta formula and uses unchecked
      *      subtraction to handle X128 wraparound.
      */
-    function _untaken(PoolKey memory key, int24 tickLower, int24 tickUpper)
-        private
-        view
-        returns (uint256 amount0, uint256 amount1)
-    {
-        PoolId poolId = key.toId();
+    function _untaken(Position memory p) private view returns (uint256 amount0, uint256 amount1) {
+        PoolId poolId = _keyOf(p).toId();
         IPoolManager pm = IPoolManager(poolManager);
         (uint128 liquidity, uint256 growth0Last, uint256 growth1Last) =
-            pm.getPositionInfo(poolId, address(this), tickLower, tickUpper, bytes32(0));
-        (uint256 growth0Now, uint256 growth1Now) = pm.getFeeGrowthInside(poolId, tickLower, tickUpper);
+            pm.getPositionInfo(poolId, address(this), p.tickLower, p.tickUpper, bytes32(0));
+        (uint256 growth0Now, uint256 growth1Now) = pm.getFeeGrowthInside(poolId, p.tickLower, p.tickUpper);
         unchecked {
             amount0 = FullMath.mulDiv(growth0Now - growth0Last, liquidity, FixedPoint128.Q128);
             amount1 = FullMath.mulDiv(growth1Now - growth1Last, liquidity, FixedPoint128.Q128);
         }
+    }
+
+    /**
+     * @dev Rebuild the {PoolKey} for a {Position}. Hooks are always zero
+     *      since Fountain only seats hookless pools.
+     */
+    function _keyOf(Position memory p) private pure returns (PoolKey memory) {
+        return PoolKey({
+            currency0: Currency.wrap(p.currency0),
+            currency1: Currency.wrap(p.currency1),
+            fee: p.fee,
+            tickSpacing: p.tickSpacing,
+            hooks: IHooks(address(0))
+        });
     }
 
     /**
@@ -372,14 +390,12 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
         IPoolManager pm = IPoolManager(poolManager);
         for (uint256 i = 0; i < ids.length; i++) {
             uint256 id = ids[i];
-            Position storage p = positions[id];
-            PoolKey memory key = p.key;
-            int24 tickLower = p.tickLower;
-            int24 tickUpper = p.tickUpper;
+            Position memory p = positions[id];
+            PoolKey memory key = _keyOf(p);
             (, BalanceDelta feesAccrued) = pm.modifyLiquidity(
                 key,
                 ModifyLiquidityParams({
-                    tickLower: tickLower, tickUpper: tickUpper, liquidityDelta: 0, salt: bytes32(0)
+                    tickLower: p.tickLower, tickUpper: p.tickUpper, liquidityDelta: 0, salt: bytes32(0)
                 }),
                 ""
             );

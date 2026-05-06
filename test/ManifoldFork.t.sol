@@ -13,6 +13,8 @@ import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
 import {TickMath} from "v4-core/libraries/TickMath.sol";
 import {Currency} from "v4-core/types/Currency.sol";
+import {IHooks} from "v4-core/interfaces/IHooks.sol";
+import {PoolKey} from "v4-core/types/PoolKey.sol";
 
 /**
  * @notice Fork test against `forknet` state. Deploys a fresh Fountain and a
@@ -70,13 +72,13 @@ contract ManifoldForkTest is ForkBase {
         assertEq(fountain.positionsCount(), 1, "one position seated by zzInit");
 
         Position memory p = _positionAt(0);
-        assertEq(Currency.unwrap(p.key.currency0), address(0), "currency0 = ETH");
-        assertEq(Currency.unwrap(p.key.currency1), ffffff, "currency1 = hub");
+        assertEq(p.currency0, address(0), "currency0 = ETH");
+        assertEq(p.currency1, ffffff, "currency1 = hub");
         assertEq(p.tickLower, HUB_TICK_LOWER, "V4 tickLower preserved through flip");
         assertEq(p.tickUpper, HUB_TICK_UPPER, "V4 tickUpper preserved through flip");
 
         // Pool sits at the upper edge — single-sided in hub, inactive at spot.
-        (uint160 sqrtPriceX96,,,) = IPoolManager(fountain.poolManager()).getSlot0(p.key.toId());
+        (uint160 sqrtPriceX96,,,) = IPoolManager(fountain.poolManager()).getSlot0(_keyOf(p).toId());
         assertEq(sqrtPriceX96, TickMath.getSqrtPriceAtTick(HUB_TICK_UPPER), "pool starts at V4 upper tick");
 
         // Hub supply landed in the PoolManager (modulo dust in Fountain).
@@ -119,13 +121,13 @@ contract ManifoldForkTest is ForkBase {
         assertEq(fountain.positionsCount(), 2, "hub + spoke");
 
         Position memory p = _positionAt(1);
-        assertEq(Currency.unwrap(p.key.currency0), address(spoke), "spoke is currency0");
-        assertEq(Currency.unwrap(p.key.currency1), ffffff, "hub is currency1");
+        assertEq(p.currency0, address(spoke), "spoke is currency0");
+        assertEq(p.currency1, ffffff, "hub is currency1");
         assertEq(p.tickLower, tickLower, "V4 tickLower = user tickLower (no flip)");
         assertEq(p.tickUpper, tickUpper, "V4 tickUpper = user tickUpper (no flip)");
 
         // Pool sits at the lower edge — single-sided in spoke, inactive at spot.
-        (uint160 sqrtPriceX96,,,) = IPoolManager(fountain.poolManager()).getSlot0(p.key.toId());
+        (uint160 sqrtPriceX96,,,) = IPoolManager(fountain.poolManager()).getSlot0(_keyOf(p).toId());
         assertEq(sqrtPriceX96, TickMath.getSqrtPriceAtTick(tickLower), "pool starts at V4 lower tick");
 
         // Caller's spoke supply ended up in PoolManager.
@@ -186,5 +188,15 @@ contract ManifoldForkTest is ForkBase {
     function _positionAt(uint256 i) internal view returns (Position memory) {
         Position[] memory slice = fountain.positionsSlice(i, 1);
         return slice[0];
+    }
+
+    function _keyOf(Position memory p) internal pure returns (PoolKey memory) {
+        return PoolKey({
+            currency0: Currency.wrap(p.currency0),
+            currency1: Currency.wrap(p.currency1),
+            fee: p.fee,
+            tickSpacing: p.tickSpacing,
+            hooks: IHooks(address(0))
+        });
     }
 }

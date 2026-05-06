@@ -88,12 +88,12 @@ contract FountainForkTest is ForkBase {
         assertEq(fountain.positionsCount(), 1, "one position created");
 
         Position memory p = _positionAt(0);
-        assertEq(Currency.unwrap(p.key.currency0), address(token), "token is currency0");
-        assertEq(Currency.unwrap(p.key.currency1), ffffff, "ffffff is currency1");
+        assertEq(p.currency0, address(token), "token is currency0");
+        assertEq(p.currency1, ffffff, "ffffff is currency1");
         assertEq(p.tickLower, 100, "tickLower = ticks[0]");
         assertEq(p.tickUpper, 500, "tickUpper = ticks[1]");
 
-        (uint160 sqrtPriceX96,,,) = IPoolManager(fountain.poolManager()).getSlot0(p.key.toId());
+        (uint160 sqrtPriceX96,,,) = IPoolManager(fountain.poolManager()).getSlot0(_keyOf(p).toId());
         assertEq(sqrtPriceX96, TickMath.getSqrtPriceAtTick(100), "starting price = ticks[0]");
     }
 
@@ -105,12 +105,12 @@ contract FountainForkTest is ForkBase {
         bot.offer(Currency.wrap(address(token)), Currency.wrap(zeros), ticks, amounts);
 
         Position memory p = _positionAt(0);
-        assertEq(Currency.unwrap(p.key.currency0), zeros, "zeros is currency0");
-        assertEq(Currency.unwrap(p.key.currency1), address(token), "token is currency1");
+        assertEq(p.currency0, zeros, "zeros is currency0");
+        assertEq(p.currency1, address(token), "token is currency1");
         assertEq(p.tickLower, -500, "tickLower = -ticks[1]");
         assertEq(p.tickUpper, -100, "tickUpper = -ticks[0]");
 
-        (uint160 sqrtPriceX96,,,) = IPoolManager(fountain.poolManager()).getSlot0(p.key.toId());
+        (uint160 sqrtPriceX96,,,) = IPoolManager(fountain.poolManager()).getSlot0(_keyOf(p).toId());
         assertEq(sqrtPriceX96, TickMath.getSqrtPriceAtTick(-100), "starting price = -ticks[0]");
     }
 
@@ -122,12 +122,12 @@ contract FountainForkTest is ForkBase {
         bot.offer(Currency.wrap(address(token)), Currency.wrap(address(0)), ticks, amounts);
 
         Position memory p = _positionAt(0);
-        assertEq(Currency.unwrap(p.key.currency0), address(0), "ETH is currency0");
-        assertEq(Currency.unwrap(p.key.currency1), address(token), "token is currency1");
+        assertEq(p.currency0, address(0), "ETH is currency0");
+        assertEq(p.currency1, address(token), "token is currency1");
         assertEq(p.tickLower, -500);
         assertEq(p.tickUpper, -100);
 
-        (uint160 sqrtPriceX96,,,) = IPoolManager(fountain.poolManager()).getSlot0(p.key.toId());
+        (uint160 sqrtPriceX96,,,) = IPoolManager(fountain.poolManager()).getSlot0(_keyOf(p).toId());
         assertEq(sqrtPriceX96, TickMath.getSqrtPriceAtTick(-100), "starting price = -ticks[0]");
     }
 
@@ -158,7 +158,7 @@ contract FountainForkTest is ForkBase {
         assertEq(p2.tickLower, 400);
         assertEq(p2.tickUpper, 800);
 
-        (uint160 sqrtPriceX96,,,) = IPoolManager(fountain.poolManager()).getSlot0(p0.key.toId());
+        (uint160 sqrtPriceX96,,,) = IPoolManager(fountain.poolManager()).getSlot0(_keyOf(p0).toId());
         assertEq(sqrtPriceX96, TickMath.getSqrtPriceAtTick(100), "pool init at ticks[0]");
 
         // Token supply landed in PoolManager (modulo dust in Fountain).
@@ -194,7 +194,7 @@ contract FountainForkTest is ForkBase {
         assertEq(p2.tickLower, -800);
         assertEq(p2.tickUpper, -400);
 
-        (uint160 sqrtPriceX96,,,) = IPoolManager(fountain.poolManager()).getSlot0(p0.key.toId());
+        (uint160 sqrtPriceX96,,,) = IPoolManager(fountain.poolManager()).getSlot0(_keyOf(p0).toId());
         assertEq(sqrtPriceX96, TickMath.getSqrtPriceAtTick(-100), "pool init at -ticks[0]");
     }
 
@@ -702,5 +702,15 @@ contract FountainForkTest is ForkBase {
     function _positionAt(uint256 i) internal view returns (Position memory) {
         Position[] memory slice = fountain.positionsSlice(i, 1);
         return slice[0];
+    }
+
+    function _keyOf(Position memory p) internal pure returns (PoolKey memory) {
+        return PoolKey({
+            currency0: Currency.wrap(p.currency0),
+            currency1: Currency.wrap(p.currency1),
+            fee: p.fee,
+            tickSpacing: p.tickSpacing,
+            hooks: IHooks(address(0))
+        });
     }
 }

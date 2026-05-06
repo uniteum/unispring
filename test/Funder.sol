@@ -57,8 +57,8 @@ contract Funder {
         ids[0] = id;
         fountain.take(ids);
         Position memory p = fountain.positionsSlice(id, 1)[0];
-        _sweep(p.key.currency0);
-        _sweep(p.key.currency1);
+        _sweep(Currency.wrap(p.currency0));
+        _sweep(Currency.wrap(p.currency1));
     }
 
     /**
@@ -69,8 +69,8 @@ contract Funder {
         fountain.take(ids);
         for (uint256 i = 0; i < ids.length; i++) {
             Position memory p = fountain.positionsSlice(ids[i], 1)[0];
-            _sweep(p.key.currency0);
-            _sweep(p.key.currency1);
+            _sweep(Currency.wrap(p.currency0));
+            _sweep(Currency.wrap(p.currency1));
         }
     }
 
