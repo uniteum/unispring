@@ -31,6 +31,7 @@ FILES=(
     .claude/rules/deployment.md
     .claude/rules/submodule.md
     .claude/skills/bitsify/SKILL.md
+    .claude/skills/predict/SKILL.md
     .claude/skills/smelt/SKILL.md
     .claude/skills/smelt/smelt.sh
 )
