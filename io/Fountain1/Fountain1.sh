@@ -10,7 +10,7 @@ source "$(git rev-parse --show-toplevel)/lib/crucible/script/clone.sh"
 
 # Same-repo dep — Fountain prototype. Re-run io/Fountain/Fountain.sh
 # first, then update this address.
-Fountain=0xf00cA753ba198ffF307FDC1ECCCD41D30bA0e080
+Fountain=0xf0071849DD48444cf8B2b49C2B394EF1A087e080
 
 # Owner of this clone (passed to make(); seats positions on its behalf).
 owner=0x9891e323517761F525e55817F1b3fa2C52620b78
@@ -23,4 +23,4 @@ target=0xf11000000000000000000000000000000000e080
 
 clone_predict Fountain1 "$Fountain" \
     "address" "$owner" \
-    0x00000000000000000000000000000000000000000000000000000000cafab371
+    0x00000000000000000000000000000000000000000000000000000000c2096c43
