@@ -95,22 +95,22 @@ contract Mimicry is IMimicMaker, IMimicker {
      *         The prototype itself acts as the
      *         `(native ETH, "1x<native>")` factory: its `original` is
      *         the storage-default native ETH and its `symbol` is
-     *         `string.concat("1x", nativeSymbolLookup.value())`
+     *         `string.concat("1x", gasSymbolLookup.value())`
      *         resolved from the chain-local lookup at construction.
      * @param  fountain           The Fountain that will seat every mimic
      *                            position funded through this Mimicry.
      * @param  minter             The Coinage prototype used to mint mimics.
-     * @param  nativeSymbolLookup Chain-local {IStringLookup} whose `value()`
+     * @param  gasSymbolLookup Chain-local {IStringLookup} whose `value()`
      *                            returns the native currency symbol (e.g.
      *                            "ETH" on mainnet, "MATIC" on Polygon); used
      *                            as the suffix for the prototype's mimic
      *                            symbol `"1x<native>"`.
      */
-    constructor(IPlacer fountain, ICoinage minter, IStringLookup nativeSymbolLookup) {
+    constructor(IPlacer fountain, ICoinage minter, IStringLookup gasSymbolLookup) {
         proto = this;
         placer = fountain;
         coinage = minter;
-        symbol = string.concat("1x", nativeSymbolLookup.value());
+        symbol = string.concat("1x", gasSymbolLookup.value());
         emit Make(address(this), address(0), symbol);
     }
 
