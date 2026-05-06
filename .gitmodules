@@ -31,3 +31,6 @@
 [submodule "lib/icoinage"]
 	path = lib/icoinage
 	url = git@github.com:uniteum/icoinage.git
+[submodule "lib/iunispring"]
+	path = lib/iunispring
+	url = git@github.com:uniteum/iunispring.git
