@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {Currency} from "v4-core/types/Currency.sol";
-
 /**
  * @title IPlacer
  * @notice Minimal placer surface used by callers that only seat
@@ -16,14 +14,13 @@ interface IPlacer {
      *         positions.
      * @param  offerer          The address that called {offer}.
      * @param  token            The currency whose supply seats the positions
-     *                          (`Currency.wrap(address(0))` for native ETH).
-     * @param  quote            The quote currency (`Currency.wrap(address(0))`
-     *                          for native ETH).
+     *                          (`address(0)` for native ETH).
+     * @param  quote            The quote currency (`address(0)` for native ETH).
      * @param  firstPositionId  Index of the first position in the batch.
      * @param  positionCount    Number of positions in the batch.
      */
     event Offered(
-        address indexed offerer, Currency indexed token, Currency quote, uint256 firstPositionId, uint256 positionCount
+        address indexed offerer, address indexed token, address quote, uint256 firstPositionId, uint256 positionCount
     );
 
     /**
@@ -98,12 +95,11 @@ interface IPlacer {
      *         (no liquidity in the path) by walking spot back down with a
      *         1-wei swap before re-calling {offer}.
      * @param  token   The currency whose supply seats the positions
-     *                 (`Currency.wrap(address(0))` for native ETH).
-     * @param  quote   The quote currency (`Currency.wrap(address(0))`
-     *                 for native ETH).
+     *                 (`address(0)` for native ETH).
+     * @param  quote   The quote currency (`address(0)` for native ETH).
      * @param  ticks   Strictly ascending ticks in "token/quote" price
      *                 semantics. Length N + 1 for N positions.
      * @param  amounts Per-segment token amounts. Length N, all non-zero.
      */
-    function offer(Currency token, Currency quote, int24[] calldata ticks, uint256[] calldata amounts) external;
+    function offer(address token, address quote, int24[] calldata ticks, uint256[] calldata amounts) external;
 }

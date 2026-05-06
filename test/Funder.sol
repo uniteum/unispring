@@ -37,12 +37,12 @@ contract Funder {
      * @notice Approve the Fountain for the sum of `amounts`, then offer.
      *         `token` must be an ERC-20.
      */
-    function offer(Currency token, Currency quote, int24[] memory ticks, uint256[] memory amounts) external {
+    function offer(address token, address quote, int24[] memory ticks, uint256[] memory amounts) external {
         uint256 total;
         for (uint256 i = 0; i < amounts.length; i++) {
             total += amounts[i];
         }
-        IERC20(Currency.unwrap(token)).approve(address(fountain), total);
+        IERC20(token).approve(address(fountain), total);
         fountain.offer(token, quote, ticks, amounts);
     }
 

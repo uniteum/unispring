@@ -129,8 +129,8 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
     /**
      * @inheritdoc IPlacer
      */
-    function offer(Currency token, Currency quote, int24[] calldata ticks, uint256[] calldata amounts) external {
-        if (token.isAddressZero()) revert TokenIsNative();
+    function offer(address token, address quote, int24[] calldata ticks, uint256[] calldata amounts) external {
+        if (token == address(0)) revert TokenIsNative();
 
         uint256 n = amounts.length;
         if (n == 0) revert NoPositions();
@@ -152,7 +152,7 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
             total += amounts[i];
         }
 
-        IERC20(Currency.unwrap(token)).safeTransferFrom(msg.sender, address(this), total);
+        IERC20(token).safeTransferFrom(msg.sender, address(this), total);
 
         uint256 firstPositionId = positions.length;
         IPoolManager(poolManager).unlock(msg.data);
@@ -425,9 +425,9 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
         if (msg.sender != address(poolManager)) revert InvalidUnlockCaller();
         bytes4 selector = bytes4(data[:4]);
         if (selector == IPlacer.offer.selector) {
-            (Currency token, Currency quote, int24[] memory ticks, uint256[] memory amounts) =
-                abi.decode(data[4:], (Currency, Currency, int24[], uint256[]));
-            _offerUnlocked(token, quote, ticks, amounts);
+            (address token, address quote, int24[] memory ticks, uint256[] memory amounts) =
+                abi.decode(data[4:], (address, address, int24[], uint256[]));
+            _offerUnlocked(Currency.wrap(token), Currency.wrap(quote), ticks, amounts);
         } else if (selector == IFeeTaker.take.selector) {
             uint256[] memory ids = abi.decode(data[4:], (uint256[]));
             _takeUnlocked(ids);

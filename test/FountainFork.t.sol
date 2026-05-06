@@ -83,7 +83,7 @@ contract FountainForkTest is ForkBase {
         int24[] memory ticks = _twoTicks(100, 500);
         uint256[] memory amounts = _oneAmount(SEGMENT_AMOUNT);
         _mint(SEGMENT_AMOUNT);
-        bot.offer(Currency.wrap(address(token)), Currency.wrap(ffffff), ticks, amounts);
+        bot.offer(address(token), ffffff, ticks, amounts);
 
         assertEq(fountain.positionsCount(), 1, "one position created");
 
@@ -102,7 +102,7 @@ contract FountainForkTest is ForkBase {
         int24[] memory ticks = _twoTicks(100, 500);
         uint256[] memory amounts = _oneAmount(SEGMENT_AMOUNT);
         _mint(SEGMENT_AMOUNT);
-        bot.offer(Currency.wrap(address(token)), Currency.wrap(zeros), ticks, amounts);
+        bot.offer(address(token), zeros, ticks, amounts);
 
         Position memory p = _positionAt(0);
         assertEq(p.currency0, zeros, "zeros is currency0");
@@ -119,7 +119,7 @@ contract FountainForkTest is ForkBase {
         int24[] memory ticks = _twoTicks(100, 500);
         uint256[] memory amounts = _oneAmount(SEGMENT_AMOUNT);
         _mint(SEGMENT_AMOUNT);
-        bot.offer(Currency.wrap(address(token)), Currency.wrap(address(0)), ticks, amounts);
+        bot.offer(address(token), address(0), ticks, amounts);
 
         Position memory p = _positionAt(0);
         assertEq(p.currency0, address(0), "ETH is currency0");
@@ -145,7 +145,7 @@ contract FountainForkTest is ForkBase {
         uint256 total = 6e18;
         _mint(total);
 
-        bot.offer(Currency.wrap(address(token)), Currency.wrap(ffffff), ticks, amounts);
+        bot.offer(address(token), ffffff, ticks, amounts);
         assertEq(fountain.positionsCount(), 3, "three positions");
 
         Position memory p0 = _positionAt(0);
@@ -181,7 +181,7 @@ contract FountainForkTest is ForkBase {
         amounts[2] = 3e18;
         _mint(6e18);
 
-        bot.offer(Currency.wrap(address(token)), Currency.wrap(zeros), ticks, amounts);
+        bot.offer(address(token), zeros, ticks, amounts);
         assertEq(fountain.positionsCount(), 3);
 
         Position memory p0 = _positionAt(0);
@@ -210,7 +210,7 @@ contract FountainForkTest is ForkBase {
         IPoolManager(fountain.poolManager()).initialize(key, TickMath.getSqrtPriceAtTick(100));
 
         _mint(SEGMENT_AMOUNT);
-        bot.offer(Currency.wrap(address(token)), Currency.wrap(ffffff), ticks, amounts);
+        bot.offer(address(token), ffffff, ticks, amounts);
         assertEq(fountain.positionsCount(), 1, "offer succeeded after matching pre-init");
     }
 
@@ -230,7 +230,7 @@ contract FountainForkTest is ForkBase {
         IPoolManager(fountain.poolManager()).initialize(key, preInitSqrt);
 
         _mint(SEGMENT_AMOUNT);
-        bot.offer(Currency.wrap(address(token)), Currency.wrap(ffffff), ticks, amounts);
+        bot.offer(address(token), ffffff, ticks, amounts);
 
         assertEq(fountain.positionsCount(), 1, "position seated despite pre-init");
         (uint160 sqrt,,,) = IPoolManager(fountain.poolManager()).getSlot0(key.toId());
@@ -260,7 +260,7 @@ contract FountainForkTest is ForkBase {
 
         _mint(SEGMENT_AMOUNT);
         vm.expectRevert(IPoolManager.CurrencyNotSettled.selector);
-        bot.offer(Currency.wrap(address(token)), Currency.wrap(ffffff), ticks, amounts);
+        bot.offer(address(token), ffffff, ticks, amounts);
     }
 
     // ----------------------------------------------------------------------
@@ -271,7 +271,7 @@ contract FountainForkTest is ForkBase {
         int24[] memory ticks = new int24[](0);
         uint256[] memory amounts = new uint256[](0);
         vm.expectRevert(IPlacer.NoPositions.selector);
-        bot.offer(Currency.wrap(address(token)), Currency.wrap(ffffff), ticks, amounts);
+        bot.offer(address(token), ffffff, ticks, amounts);
     }
 
     function test_OfferRevertsOnLengthMismatch() public {
@@ -280,7 +280,7 @@ contract FountainForkTest is ForkBase {
         amounts[0] = 1e18;
         amounts[1] = 1e18;
         vm.expectRevert(abi.encodeWithSelector(IPlacer.TickAmountLengthMismatch.selector, uint256(2), uint256(2)));
-        bot.offer(Currency.wrap(address(token)), Currency.wrap(ffffff), ticks, amounts);
+        bot.offer(address(token), ffffff, ticks, amounts);
     }
 
     function test_OfferRevertsOnTickOutOfRange() public {
@@ -289,7 +289,7 @@ contract FountainForkTest is ForkBase {
         ticks[1] = TickMath.MAX_TICK + 1;
         uint256[] memory amounts = _oneAmount(SEGMENT_AMOUNT);
         vm.expectRevert(abi.encodeWithSelector(IPlacer.TickOutOfRange.selector, TickMath.MAX_TICK + 1));
-        bot.offer(Currency.wrap(address(token)), Currency.wrap(ffffff), ticks, amounts);
+        bot.offer(address(token), ffffff, ticks, amounts);
     }
 
     function test_OfferRevertsOnTicksNotAscending() public {
@@ -301,7 +301,7 @@ contract FountainForkTest is ForkBase {
         amounts[0] = 1e18;
         amounts[1] = 1e18;
         vm.expectRevert(abi.encodeWithSelector(IPlacer.TicksNotAscending.selector, uint256(2), int24(300), int24(200)));
-        bot.offer(Currency.wrap(address(token)), Currency.wrap(ffffff), ticks, amounts);
+        bot.offer(address(token), ffffff, ticks, amounts);
     }
 
     function test_OfferRevertsOnTicksEqual() public {
@@ -313,7 +313,7 @@ contract FountainForkTest is ForkBase {
         amounts[0] = 1e18;
         amounts[1] = 1e18;
         vm.expectRevert(abi.encodeWithSelector(IPlacer.TicksNotAscending.selector, uint256(1), int24(100), int24(100)));
-        bot.offer(Currency.wrap(address(token)), Currency.wrap(ffffff), ticks, amounts);
+        bot.offer(address(token), ffffff, ticks, amounts);
     }
 
     function test_OfferRevertsOnZeroAmount() public {
@@ -325,14 +325,14 @@ contract FountainForkTest is ForkBase {
         amounts[0] = 1e18;
         amounts[1] = 0;
         vm.expectRevert(abi.encodeWithSelector(IPlacer.ZeroAmount.selector, uint256(1)));
-        bot.offer(Currency.wrap(address(token)), Currency.wrap(ffffff), ticks, amounts);
+        bot.offer(address(token), ffffff, ticks, amounts);
     }
 
     function test_OfferRevertsWhenTokenIsNative() public {
         int24[] memory ticks = _twoTicks(100, 500);
         uint256[] memory amounts = _oneAmount(SEGMENT_AMOUNT);
         vm.expectRevert(IPlacer.TokenIsNative.selector);
-        fountain.offer(Currency.wrap(address(0)), Currency.wrap(ffffff), ticks, amounts);
+        fountain.offer(address(0), ffffff, ticks, amounts);
     }
 
     // ----------------------------------------------------------------------
@@ -398,7 +398,7 @@ contract FountainForkTest is ForkBase {
         int24[] memory ticks = _twoTicks(100, 500);
         uint256[] memory amounts = _oneAmount(SEGMENT_AMOUNT);
         _mint(SEGMENT_AMOUNT);
-        bot.offer(Currency.wrap(address(token)), Currency.wrap(ffffff), ticks, amounts);
+        bot.offer(address(token), ffffff, ticks, amounts);
 
         PoolKey memory key = _keyFor(ffffff);
         Trader alice = new Trader("alice", router);
@@ -428,7 +428,7 @@ contract FountainForkTest is ForkBase {
         int24[] memory ticks = _twoTicks(100, 500);
         uint256[] memory amounts = _oneAmount(SEGMENT_AMOUNT);
         _mint(SEGMENT_AMOUNT);
-        bot.offer(Currency.wrap(address(token)), Currency.wrap(zeros), ticks, amounts);
+        bot.offer(address(token), zeros, ticks, amounts);
 
         PoolKey memory key = _keyFor(zeros);
         Trader bobby = new Trader("bobby", router);
@@ -543,7 +543,7 @@ contract FountainForkTest is ForkBase {
         amounts[1] = 1e18;
         amounts[2] = 1e18;
         _mint(3e18);
-        bot.offer(Currency.wrap(address(token)), Currency.wrap(zeros), ticks, amounts);
+        bot.offer(address(token), zeros, ticks, amounts);
         PoolKey memory key = _keyFor(zeros);
 
         // Starting V4 tick is -100 (top of position 0 at V4 [-200, -100)).
@@ -588,7 +588,7 @@ contract FountainForkTest is ForkBase {
         uint256 pmTokenBefore = IERC20(address(token)).balanceOf(pm);
         uint256 pmZerosBefore = IERC20(zeros).balanceOf(pm);
 
-        bot.offer(Currency.wrap(address(token)), Currency.wrap(zeros), ticks, amounts);
+        bot.offer(address(token), zeros, ticks, amounts);
 
         console.log("=== flip-case interior-shift transfers ===");
         console.log("bot token (currency1) paid     :", botTokenBefore - IERC20(address(token)).balanceOf(address(bot)));
@@ -657,7 +657,7 @@ contract FountainForkTest is ForkBase {
         amounts[0] = 1e18;
         amounts[1] = 2e18;
         _mint(3e18);
-        bot.offer(Currency.wrap(address(token)), Currency.wrap(zeros), ticks, amounts);
+        bot.offer(address(token), zeros, ticks, amounts);
     }
 
     function _offerTwoNoFlip() internal {
@@ -670,7 +670,7 @@ contract FountainForkTest is ForkBase {
         amounts[0] = 1e18;
         amounts[1] = 2e18;
         _mint(3e18);
-        bot.offer(Currency.wrap(address(token)), Currency.wrap(ffffff), ticks, amounts);
+        bot.offer(address(token), ffffff, ticks, amounts);
     }
 
     function _twoTicks(int24 a, int24 b) internal pure returns (int24[] memory ticks) {

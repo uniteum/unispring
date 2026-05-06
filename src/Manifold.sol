@@ -204,7 +204,7 @@ contract Manifold {
             quote = Currency.wrap(hub);
         }
 
-        placer.offer(token, quote, ticks, amounts);
+        placer.offer(Currency.unwrap(token), Currency.unwrap(quote), ticks, amounts);
         emit Offered(msg.sender, token, supply, tickLower, tickUpper);
     }
 }

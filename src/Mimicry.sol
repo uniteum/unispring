@@ -298,7 +298,7 @@ contract Mimicry {
         uint256[] memory amounts = new uint256[](1);
         amounts[0] = supply;
 
-        placer.offer(Currency.wrap(address(token)), original, ticks, amounts);
+        placer.offer(address(token), Currency.unwrap(original), ticks, amounts);
 
         emit Mimic(this, token, name_);
     }
