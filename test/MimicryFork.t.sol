@@ -109,7 +109,7 @@ contract MimicryForkTest is ForkBase {
 
         assertEq(mimic.decimals(), IERC20Metadata(USDC).decimals(), "decimals must match original");
         assertEq(mimic.symbol(), "USDCx1", "symbol must round-trip through mimic");
-        assertEq(Currency.unwrap(clone.original()), USDC, "clone.original must point at USDC");
+        assertEq(clone.original(), USDC, "clone.original must point at USDC");
         assertEq(clone.symbol(), "USDCx1", "clone.symbol must round-trip");
 
         // Pool is initialized at tick 0 (sqrtPriceX96 for tick 0 = 2**96).
@@ -133,7 +133,7 @@ contract MimicryForkTest is ForkBase {
      */
     function test_ProtoIsETHFactory() public {
         assertEq(mimicry.symbol(), "1xETH", "proto symbol");
-        assertEq(Currency.unwrap(mimicry.original()), address(0), "proto original is native ETH");
+        assertEq(mimicry.original(), address(0), "proto original is native ETH");
 
         address native = address(0);
         (bool cloneExists, address cloneHome, bytes32 salt) = mimicry.made(native, "1xETH");
@@ -141,7 +141,7 @@ contract MimicryForkTest is ForkBase {
         assertEq(cloneHome, address(mimicry), "proto pair must map to proto address");
         assertEq(salt, bytes32(0), "proto pair must report zero salt");
 
-        Mimicry self = mimicry.make(native, "1xETH");
+        Mimicry self = Mimicry(mimicry.make(native, "1xETH"));
         assertEq(address(self), address(mimicry), "make on proto pair must return proto");
 
         (bool mimicExistsBefore, address predictedMimic) = mimicry.mimicked(native, "1xETH", "alpha");
@@ -171,7 +171,7 @@ contract MimicryForkTest is ForkBase {
 
         assertEq(mimic.decimals(), uint8(18), "native mimic must have 18 decimals");
         assertEq(mimic.symbol(), "ETHx1", "native mimic symbol must round-trip");
-        assertEq(Currency.unwrap(clone.original()), address(0), "clone.original must point to native ETH");
+        assertEq(clone.original(), address(0), "clone.original must point to native ETH");
 
         // Mimic is a contract address (> 0), ETH sorts below: ETH = currency0, mimic = currency1.
         PoolKey memory key = _poolKeyOf(clone, mimic);
@@ -204,7 +204,7 @@ contract MimicryForkTest is ForkBase {
 
         (Mimicry clone, IERC20Metadata token) = _makeAndMimic(native, symbol);
         assertEq(address(clone), predictedClone, "deployed clone differs from prediction");
-        assertEq(Currency.unwrap(clone.original()), address(0), "clone.original is native ETH");
+        assertEq(clone.original(), address(0), "clone.original is native ETH");
         assertEq(clone.symbol(), symbol, "clone.symbol must round-trip");
         assertEq(token.symbol(), symbol, "minted mimic carries clone symbol");
 
@@ -449,7 +449,7 @@ contract MimicryForkTest is ForkBase {
         PoolKey memory key = _predictedPoolKey(original, symbol, symbol);
         IPoolManager(fountain.poolManager()).initialize(key, TickMath.getSqrtPriceAtTick(100));
 
-        Mimicry clone = mimicry.make(original, symbol);
+        Mimicry clone = Mimicry(mimicry.make(original, symbol));
         vm.expectRevert(IPoolManager.CurrencyNotSettled.selector);
         clone.mimic(symbol);
 
@@ -467,7 +467,7 @@ contract MimicryForkTest is ForkBase {
         internal
         returns (Mimicry clone, IERC20Metadata token)
     {
-        clone = mimicry.make(original, symbol);
+        clone = Mimicry(mimicry.make(original, symbol));
         token = clone.mimic(symbol);
     }
 
@@ -490,14 +490,14 @@ contract MimicryForkTest is ForkBase {
         returns (PoolKey memory)
     {
         (, address predictedMimic) = mimicry.mimicked(original, symbol, name);
-        return _poolKey(predictedMimic, Currency.wrap(original));
+        return _poolKey(predictedMimic, original);
     }
 
-    function _poolKey(address mimic, Currency original) private view returns (PoolKey memory) {
-        bool mimicIsToken0 = mimic < Currency.unwrap(original);
+    function _poolKey(address mimic, address original) private view returns (PoolKey memory) {
+        bool mimicIsToken0 = mimic < original;
         return PoolKey({
-            currency0: mimicIsToken0 ? Currency.wrap(mimic) : original,
-            currency1: mimicIsToken0 ? original : Currency.wrap(mimic),
+            currency0: Currency.wrap(mimicIsToken0 ? mimic : original),
+            currency1: Currency.wrap(mimicIsToken0 ? original : mimic),
             fee: fountain.fee(),
             tickSpacing: fountain.tickSpacing(),
             hooks: IHooks(address(0))

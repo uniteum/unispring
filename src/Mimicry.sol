@@ -6,8 +6,9 @@ import {IAddressLookup} from "ilookup/IAddressLookup.sol";
 import {IStringLookup} from "ilookup/IStringLookup.sol";
 import {ICoinage} from "icoinage/ICoinage.sol";
 import {IERC20Metadata} from "ierc20/IERC20Metadata.sol";
+import {IMimicMaker} from "./IMimicMaker.sol";
+import {IMimicker} from "./IMimicker.sol";
 import {IPlacer} from "./IPlacer.sol";
-import {Currency} from "v4-core/types/Currency.sol";
 
 /**
  * @title Mimicry
@@ -42,7 +43,7 @@ import {Currency} from "v4-core/types/Currency.sol";
  *         {Fountain.untaken}, {Fountain.owner} — lives on Fountain.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
-contract Mimicry {
+contract Mimicry is IMimicMaker, IMimicker {
     string public constant version = "0.8.0";
 
     /**
@@ -75,44 +76,19 @@ contract Mimicry {
     ICoinage public immutable coinage;
 
     /**
-     * @notice The original currency every mimic minted by this clone is
-     *         pegged against (`Currency.wrap(address(0))` for native ETH).
-     *         Set on clones by {zzInit}; the prototype's value is the
-     *         storage default `Currency.wrap(address(0))` (native ETH).
+     * @inheritdoc IMimicker
+     * @dev Set on clones by {zzInit}; the prototype's value is the
+     *      storage default `address(0)` (native ETH).
      */
-    Currency public original;
+    address public original;
 
     /**
-     * @notice The symbol shared by every mimic minted by this clone
-     *         (mimics vary only by `name`). Set on clones by {zzInit};
-     *         the prototype's value is `"1x<native>"`, derived from the
-     *         chain-local {IStringLookup} passed at construction.
+     * @inheritdoc IMimicker
+     * @dev Set on clones by {zzInit}; the prototype's value is
+     *      `"1x<native>"`, derived from the chain-local {IStringLookup}
+     *      passed at construction.
      */
     string public symbol;
-
-    /**
-     * @notice Emitted when a new clone is created via {make}.
-     * @param  clone     The newly deployed Mimicry clone.
-     * @param  original  The original currency the clone's mimics are
-     *                   pegged against (`Currency.wrap(address(0))` for
-     *                   native ETH).
-     * @param  symbol    The shared symbol every mimic minted by this
-     *                   clone carries.
-     */
-    event Make(Mimicry indexed clone, Currency indexed original, string symbol);
-
-    /**
-     * @notice Emitted when a clone mints a new mimic via {mimic}.
-     * @param  clone The clone that minted the token.
-     * @param  token The newly minted mimic ERC-20.
-     * @param  name  The name carried by the token.
-     */
-    event Mimic(Mimicry indexed clone, IERC20Metadata indexed token, string name);
-
-    /**
-     * @notice Thrown when {zzInit} is called by anyone other than {proto}.
-     */
-    error Unauthorized();
 
     /**
      * @notice Construct the prototype. Clones are created via {make}.
@@ -135,7 +111,7 @@ contract Mimicry {
         placer = fountain;
         coinage = minter;
         symbol = string.concat("1x", nativeSymbolLookup.value());
-        emit Make(this, Currency.wrap(address(0)), symbol);
+        emit Make(address(this), address(0), symbol);
     }
 
     // ---- Bitsy factory: clones ----
@@ -166,6 +142,7 @@ contract Mimicry {
     function made(address original_, string calldata symbol_)
         public
         view
+        override
         returns (bool exists, address home, bytes32 salt)
     {
         if (_isProtoPair(_resolve(original_), symbol_)) {
@@ -195,20 +172,20 @@ contract Mimicry {
      * @return clone     The deployed (or existing) clone, or `proto`
      *                   itself for the proto pair.
      */
-    function make(address original_, string calldata symbol_) external returns (Mimicry clone) {
+    function make(address original_, string calldata symbol_) external override returns (address clone) {
         if (address(this) != address(proto)) {
             clone = proto.make(original_, symbol_);
         } else {
-            Currency resolved = _resolve(original_);
+            address resolved = _resolve(original_);
             if (_isProtoPair(resolved, symbol_)) {
-                clone = this;
+                clone = address(this);
             } else {
                 (bool exists, address home, bytes32 salt) = made(original_, symbol_);
-                clone = Mimicry(home);
+                clone = home;
                 if (!exists) {
                     Clones.cloneDeterministic(address(proto), salt, 0);
                     Mimicry(home).zzInit(resolved, symbol_);
-                    emit Make(clone, resolved, symbol_);
+                    emit Make(home, resolved, symbol_);
                 }
             }
         }
@@ -219,7 +196,7 @@ contract Mimicry {
      *         shared `(original, symbol)` on this clone. Callable only
      *         by {proto}.
      */
-    function zzInit(Currency original_, string calldata symbol_) external {
+    function zzInit(address original_, string calldata symbol_) external {
         if (msg.sender != address(proto)) revert Unauthorized();
         original = original_;
         symbol = symbol_;
@@ -243,9 +220,10 @@ contract Mimicry {
     function mimicked(address original_, string calldata symbol_, string calldata name_)
         public
         view
+        override
         returns (bool exists, address home)
     {
-        Currency resolved = _resolve(original_);
+        address resolved = _resolve(original_);
         address maker;
         if (_isProtoPair(resolved, symbol_)) {
             maker = address(proto);
@@ -264,7 +242,7 @@ contract Mimicry {
      *         the maker for {coinage}'s CREATE2 is `address(this)`, so no
      *         salt rederivation is needed.
      */
-    function mimicked(string calldata name_) external view returns (bool exists, address home) {
+    function mimicked(string calldata name_) external view override returns (bool exists, address home) {
         return _mimicked(address(this), original, symbol, name_);
     }
 
@@ -282,7 +260,7 @@ contract Mimicry {
      *                symbol)`.
      * @return token  The minted (or existing) mimic ERC-20.
      */
-    function mimic(string calldata name_) external returns (IERC20Metadata token) {
+    function mimic(string calldata name_) external override returns (IERC20Metadata token) {
         (bool exists, address home) = _mimicked(address(this), original, symbol, name_);
         if (exists) return IERC20Metadata(home);
 
@@ -298,9 +276,9 @@ contract Mimicry {
         uint256[] memory amounts = new uint256[](1);
         amounts[0] = supply;
 
-        placer.offer(address(token), Currency.unwrap(original), ticks, amounts);
+        placer.offer(address(token), original, ticks, amounts);
 
-        emit Mimic(this, token, name_);
+        emit Mimic(address(this), token, name_);
     }
 
     /**
@@ -311,7 +289,7 @@ contract Mimicry {
      *      {mimicked} overload computes `maker` from the salted clone
      *      prediction since no clone instance is in scope yet.
      */
-    function _mimicked(address maker, Currency original_, string memory symbol_, string memory name_)
+    function _mimicked(address maker, address original_, string memory symbol_, string memory name_)
         private
         view
         returns (bool exists, address home)
@@ -325,23 +303,24 @@ contract Mimicry {
      *      `(native ETH, proto.symbol())`, i.e. the pair for which the
      *      prototype itself is the factory.
      */
-    function _isProtoPair(Currency original_, string memory symbol_) private view returns (bool) {
-        return original_.isAddressZero() && keccak256(bytes(symbol_)) == keccak256(bytes(proto.symbol()));
+    function _isProtoPair(address original_, string memory symbol_) private view returns (bool) {
+        return original_ == address(0) && keccak256(bytes(symbol_)) == keccak256(bytes(proto.symbol()));
     }
 
     /**
-     * @dev Resolve `original_` into a {Currency}. `address(0)` is native
-     *      ETH; an {IAddressLookup} resolves to its `value()`; any other
-     *      address is treated as the token itself. A `value()` that
-     *      returns `address(0)` resolves to native ETH.
+     * @dev Resolve `original_` into the underlying token address.
+     *      `address(0)` is native ETH; an {IAddressLookup} resolves to
+     *      its `value()`; any other address is treated as the token
+     *      itself. A `value()` that returns `address(0)` resolves to
+     *      native ETH.
      */
-    function _resolve(address original_) private view returns (Currency) {
-        if (original_ == address(0)) return Currency.wrap(address(0));
-        if (original_.code.length == 0) return Currency.wrap(original_);
+    function _resolve(address original_) private view returns (address) {
+        if (original_ == address(0)) return address(0);
+        if (original_.code.length == 0) return original_;
         try IAddressLookup(original_).value() returns (address resolved) {
-            return Currency.wrap(resolved);
+            return resolved;
         } catch {
-            return Currency.wrap(original_);
+            return original_;
         }
     }
 
@@ -356,9 +335,9 @@ contract Mimicry {
      *      decimals (the conventional human-unit semantics) and
      *      {maxSupply}.
      */
-    function _mimicMetadata(Currency original_) private view returns (uint8 decimals, uint256 supply) {
-        if (original_.isAddressZero()) return (18, maxSupply);
-        decimals = IERC20Metadata(Currency.unwrap(original_)).decimals();
+    function _mimicMetadata(address original_) private view returns (uint8 decimals, uint256 supply) {
+        if (original_ == address(0)) return (18, maxSupply);
+        decimals = IERC20Metadata(original_).decimals();
         supply = uint256(maxSupply);
         if (decimals < 18) supply /= 10 ** uint256(18 - decimals);
     }
