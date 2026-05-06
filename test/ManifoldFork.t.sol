@@ -2,7 +2,7 @@
 pragma solidity ^0.8.30;
 
 import {Fountain} from "../src/Fountain.sol";
-import {Position} from "../src/IFeeTaker.sol";
+import {Position} from "iunispring/IFeeTaker.sol";
 import {Manifold} from "../src/Manifold.sol";
 import {ForkBase} from "./ForkBase.t.sol";
 import {Funder} from "./Funder.sol";

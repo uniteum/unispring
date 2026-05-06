@@ -6,9 +6,9 @@ import {IAddressLookup} from "ilookup/IAddressLookup.sol";
 import {IStringLookup} from "ilookup/IStringLookup.sol";
 import {ICoinage} from "icoinage/ICoinage.sol";
 import {IERC20Metadata} from "ierc20/IERC20Metadata.sol";
-import {IMimicMaker} from "./IMimicMaker.sol";
-import {IMimicker} from "./IMimicker.sol";
-import {IPlacer} from "./IPlacer.sol";
+import {IMimicMaker} from "iunispring/IMimicMaker.sol";
+import {IMimicker} from "iunispring/IMimicker.sol";
+import {IPlacer} from "iunispring/IPlacer.sol";
 
 /**
  * @title Mimicry

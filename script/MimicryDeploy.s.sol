@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {IPlacer} from "../src/IPlacer.sol";
+import {IPlacer} from "iunispring/IPlacer.sol";
 import {Mimicry} from "../src/Mimicry.sol";
 import {ICoinage} from "icoinage/ICoinage.sol";
 import {IStringLookup} from "ilookup/IStringLookup.sol";

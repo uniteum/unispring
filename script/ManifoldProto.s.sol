@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {IPlacer} from "../src/IPlacer.sol";
+import {IPlacer} from "iunispring/IPlacer.sol";
 import {Manifold} from "../src/Manifold.sol";
 import {Script, console2} from "forge-std/Script.sol";
 

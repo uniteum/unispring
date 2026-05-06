@@ -2,7 +2,7 @@
 pragma solidity ^0.8.30;
 
 import {Clones} from "clones/Clones.sol";
-import {IPlacer} from "./IPlacer.sol";
+import {IPlacer} from "iunispring/IPlacer.sol";
 import {IERC20} from "ierc20/IERC20.sol";
 import {SafeERC20} from "erc20/SafeERC20.sol";
 import {Currency} from "v4-core/types/Currency.sol";
