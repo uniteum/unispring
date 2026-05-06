@@ -28,6 +28,7 @@ FILES=(
     .claude/rules/lint.md
     .claude/rules/solidity.md
     .claude/rules/crucible-tests.md
+    .claude/rules/deployment.md
     .claude/rules/submodule.md
     .claude/skills/bitsify/SKILL.md
     .claude/skills/smelt/SKILL.md
