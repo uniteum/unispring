@@ -2,7 +2,7 @@
 pragma solidity ^0.8.30;
 
 import {Fountain} from "../src/Fountain.sol";
-import {Mimicry} from "../src/Mimicry.sol";
+import {Notable} from "../src/Notable.sol";
 import {ForkBase} from "./ForkBase.t.sol";
 import {Funder} from "./Funder.sol";
 import {SwapRouter} from "./SwapRouter.sol";
@@ -49,26 +49,26 @@ interface IV4Quoter {
 
 /**
  * @notice Fork test against `forknet` state. Deploys a fresh Fountain and a
- *         fresh Mimicry prototype against the real PoolManagerLookup
+ *         fresh Notable prototype against the real PoolManagerLookup
  *         and Coinage factory, then exercises the two-level factory:
- *         per-(original, symbol) clones and per-name mimics minted from
+ *         per-(original, symbol) clones and per-name issues minted from
  *         each clone. Fee take runs through {Fountain.take} directly —
- *         Mimicry clones only mint the mimic and seat its position;
+ *         Notable clones only mint the issue and seat its position;
  *         everything post-launch lives on the Fountain and PoolManager.
  *
  *         Tests use the convention `name == symbol` for the single
  *         in-test mint per clone.
  *
  *         Run with:
- *           forge test --match-contract MimicryForkTest -f forknet -vv
+ *           forge test --match-contract NotableForkTest -f forknet -vv
  *         or pin a block for reproducibility:
- *           FORK_BLOCK=458766451 forge test --match-contract MimicryForkTest -f forknet -vv
+ *           FORK_BLOCK=458766451 forge test --match-contract NotableForkTest -f forknet -vv
  */
-contract MimicryForkTest is ForkBase {
+contract NotableForkTest is ForkBase {
     using StateLibrary for IPoolManager;
 
     Fountain internal fountain;
-    Mimicry internal mimicry;
+    Notable internal notable;
     SwapRouter internal router;
     Funder internal bot;
 
@@ -79,7 +79,7 @@ contract MimicryForkTest is ForkBase {
         Fountain proto = new Fountain(IAddressLookup(PoolManagerLookup));
         bot.makeFountain(proto);
         fountain = bot.fountain();
-        mimicry = new Mimicry(fountain, Coinage(ICoinage), new NativeSymbolStub());
+        notable = new Notable(fountain, Coinage(ICoinage), new NativeSymbolStub());
         router = new SwapRouter(IPoolManager(fountain.poolManager()));
     }
 
@@ -87,103 +87,103 @@ contract MimicryForkTest is ForkBase {
         address original = USDC;
         string memory symbol = "USDCx1";
 
-        (bool cloneExistsBefore, address predictedClone,) = mimicry.made(original, symbol);
-        (bool mimicExistsBefore, address predictedMimic) = mimicry.mimicked(original, symbol, symbol);
-        assertFalse(cloneExistsBefore, "fresh Mimicry cannot have pre-existing clones");
-        assertFalse(mimicExistsBefore, "fresh Mimicry cannot have pre-existing mimics");
+        (bool cloneExistsBefore, address predictedClone,) = notable.made(original, symbol);
+        (bool issueExistsBefore, address predictedIssue) = notable.issued(original, symbol, symbol);
+        assertFalse(cloneExistsBefore, "fresh Notable cannot have pre-existing clones");
+        assertFalse(issueExistsBefore, "fresh Notable cannot have pre-existing issues");
         assertTrue(predictedClone != address(0), "predicted clone is zero");
-        assertTrue(predictedMimic != address(0), "predicted mimic is zero");
+        assertTrue(predictedIssue != address(0), "predicted issue is zero");
 
-        (Mimicry clone, IERC20Metadata mimic) = _makeAndMimic(original, symbol);
+        (Notable clone, IERC20Metadata issue) = _makeAndIssue(original, symbol);
         assertEq(address(clone), predictedClone, "deployed clone differs from prediction");
-        assertEq(address(mimic), predictedMimic, "minted mimic differs from prediction");
+        assertEq(address(issue), predictedIssue, "minted issue differs from prediction");
 
-        (bool cloneExistsAfter,,) = mimicry.made(original, symbol);
-        (bool mimicExistsAfter,) = mimicry.mimicked(original, symbol, symbol);
+        (bool cloneExistsAfter,,) = notable.made(original, symbol);
+        (bool issueExistsAfter,) = notable.issued(original, symbol, symbol);
         assertTrue(cloneExistsAfter, "clone not registered as existing after make");
-        assertTrue(mimicExistsAfter, "mimic not registered as existing after mimic()");
+        assertTrue(issueExistsAfter, "issue not registered as existing after issue()");
     }
 
     function test_MakeUSDC() public {
-        (Mimicry clone, IERC20Metadata mimic) = _makeAndMimic(USDC, "USDCx1");
+        (Notable clone, IERC20Metadata issue) = _makeAndIssue(USDC, "USDCx1");
 
-        assertEq(mimic.decimals(), IERC20Metadata(USDC).decimals(), "decimals must match original");
-        assertEq(mimic.symbol(), "USDCx1", "symbol must round-trip through mimic");
+        assertEq(issue.decimals(), IERC20Metadata(USDC).decimals(), "decimals must match original");
+        assertEq(issue.symbol(), "USDCx1", "symbol must round-trip through issue");
         assertEq(clone.original(), USDC, "clone.original must point at USDC");
         assertEq(clone.symbol(), "USDCx1", "clone.symbol must round-trip");
 
         // Pool is initialized at tick 0 (sqrtPriceX96 for tick 0 = 2**96).
-        PoolId id = _poolKeyOf(clone, mimic).toId();
+        PoolId id = _poolKeyOf(clone, issue).toId();
         (uint160 sqrtPriceX96, int24 tick,,) = IPoolManager(fountain.poolManager()).getSlot0(id);
         assertEq(tick, int24(0), "pool must initialize at tick 0");
         assertGt(sqrtPriceX96, 0, "pool not initialized");
 
         // Entire supply is seated in the position — neither the clone nor the prototype holds any.
-        assertEq(mimic.balanceOf(address(clone)), 0, "supply should be in V4, not in clone");
-        assertEq(mimic.balanceOf(address(mimicry)), 0, "supply should be in V4, not in prototype");
+        assertEq(issue.balanceOf(address(clone)), 0, "supply should be in V4, not in clone");
+        assertEq(issue.balanceOf(address(notable)), 0, "supply should be in V4, not in prototype");
     }
 
     /**
      * @notice The prototype is itself the canonical factory for the
-     *         `(native ETH, "1xETH")` pair: `proto.mimic(name)` mints a
-     *         1xETH-ETH mimic directly from the prototype, `make` for
+     *         `(native ETH, "1xETH")` pair: `proto.issue(name)` mints a
+     *         1xETH-ETH issue directly from the prototype, `make` for
      *         that pair returns proto without deploying a separate
      *         clone, and `made` reports the proto address with a zero
      *         salt.
      */
     function test_ProtoIsETHFactory() public {
-        assertEq(mimicry.symbol(), "1xETH", "proto symbol");
-        assertEq(mimicry.original(), address(0), "proto original is native ETH");
+        assertEq(notable.symbol(), "1xETH", "proto symbol");
+        assertEq(notable.original(), address(0), "proto original is native ETH");
 
         address native = address(0);
-        (bool cloneExists, address cloneHome, bytes32 salt) = mimicry.made(native, "1xETH");
+        (bool cloneExists, address cloneHome, bytes32 salt) = notable.made(native, "1xETH");
         assertTrue(cloneExists, "proto pair must report exists=true");
-        assertEq(cloneHome, address(mimicry), "proto pair must map to proto address");
+        assertEq(cloneHome, address(notable), "proto pair must map to proto address");
         assertEq(salt, bytes32(0), "proto pair must report zero salt");
 
-        Mimicry self = Mimicry(mimicry.make(native, "1xETH"));
-        assertEq(address(self), address(mimicry), "make on proto pair must return proto");
+        Notable self = Notable(notable.make(native, "1xETH"));
+        assertEq(address(self), address(notable), "make on proto pair must return proto");
 
-        (bool mimicExistsBefore, address predictedMimic) = mimicry.mimicked(native, "1xETH", "alpha");
-        assertFalse(mimicExistsBefore, "fresh proto cannot have pre-existing mimics");
+        (bool issueExistsBefore, address predictedIssue) = notable.issued(native, "1xETH", "alpha");
+        assertFalse(issueExistsBefore, "fresh proto cannot have pre-existing issues");
 
-        IERC20Metadata token = mimicry.mimic("alpha");
-        assertEq(address(token), predictedMimic, "minted mimic differs from prediction");
+        IERC20Metadata token = notable.issue("alpha");
+        assertEq(address(token), predictedIssue, "minted issue differs from prediction");
         assertEq(token.symbol(), "1xETH", "minted symbol must round-trip");
-        assertEq(token.decimals(), uint8(18), "native mimic must have 18 decimals");
+        assertEq(token.decimals(), uint8(18), "native issue must have 18 decimals");
 
         // Pool initialized at tick 0 with the entire supply seated single-sided.
-        PoolKey memory key = _poolKeyOf(mimicry, token);
+        PoolKey memory key = _poolKeyOf(notable, token);
         (uint160 sqrtPriceX96, int24 tick,,) = IPoolManager(fountain.poolManager()).getSlot0(key.toId());
         assertEq(tick, int24(0), "pool must initialize at tick 0");
         assertGt(sqrtPriceX96, 0, "pool not initialized");
-        assertEq(token.balanceOf(address(mimicry)), 0, "supply should be in V4, not in proto");
+        assertEq(token.balanceOf(address(notable)), 0, "supply should be in V4, not in proto");
     }
 
     /**
-     * @notice Native ETH as the original: Mimicry falls back to 18
+     * @notice Native ETH as the original: Notable falls back to 18
      *         decimals (no on-chain metadata to read), records the original
-     *         on the clone, and seats the mimic in a Fountain position
+     *         on the clone, and seats the issue in a Fountain position
      *         whose `currency0` is `address(0)`.
      */
     function test_MakeNativeETH() public {
-        (Mimicry clone, IERC20Metadata mimic) = _makeAndMimic(address(0), "ETHx1");
+        (Notable clone, IERC20Metadata issue) = _makeAndIssue(address(0), "ETHx1");
 
-        assertEq(mimic.decimals(), uint8(18), "native mimic must have 18 decimals");
-        assertEq(mimic.symbol(), "ETHx1", "native mimic symbol must round-trip");
+        assertEq(issue.decimals(), uint8(18), "native issue must have 18 decimals");
+        assertEq(issue.symbol(), "ETHx1", "native issue symbol must round-trip");
         assertEq(clone.original(), address(0), "clone.original must point to native ETH");
 
-        // Mimic is a contract address (> 0), ETH sorts below: ETH = currency0, mimic = currency1.
-        PoolKey memory key = _poolKeyOf(clone, mimic);
+        // Issue is a contract address (> 0), ETH sorts below: ETH = currency0, issue = currency1.
+        PoolKey memory key = _poolKeyOf(clone, issue);
         assertEq(Currency.unwrap(key.currency0), address(0), "ETH is currency0");
-        assertEq(Currency.unwrap(key.currency1), address(mimic), "mimic is currency1");
+        assertEq(Currency.unwrap(key.currency1), address(issue), "issue is currency1");
 
-        // Pool initialized at tick 0; entire mimic supply seated in Fountain position.
+        // Pool initialized at tick 0; entire issue supply seated in Fountain position.
         (uint160 sqrtPriceX96, int24 tick,,) = IPoolManager(fountain.poolManager()).getSlot0(key.toId());
         assertEq(tick, int24(0), "pool must initialize at tick 0");
         assertGt(sqrtPriceX96, 0, "pool not initialized");
-        assertEq(mimic.balanceOf(address(clone)), 0, "supply should be in V4, not in clone");
-        assertEq(fountain.positionsCount(), 1, "mimic must seat exactly one Fountain position");
+        assertEq(issue.balanceOf(address(clone)), 0, "supply should be in V4, not in clone");
+        assertEq(fountain.positionsCount(), 1, "issue must seat exactly one Fountain position");
     }
 
     /**
@@ -191,48 +191,48 @@ contract MimicryForkTest is ForkBase {
      *         not yet exist deploys via the normal clone path:
      *         `made` flips from false to true, `make` produces a clone
      *         at the predicted address with the requested symbol, and
-     *         the minted mimic carries the clone's symbol rather than
+     *         the minted issue carries the clone's symbol rather than
      *         proto's `"1xETH"`.
      */
     function test_MakeNativeETHWithNonProtoSymbol() public {
         address native = address(0);
         string memory symbol = "ETHx1";
 
-        (bool existsBefore, address predictedClone,) = mimicry.made(native, symbol);
+        (bool existsBefore, address predictedClone,) = notable.made(native, symbol);
         assertFalse(existsBefore, "fresh non-proto clone cannot pre-exist");
         assertTrue(predictedClone != address(0), "predicted clone is zero");
 
-        (Mimicry clone, IERC20Metadata token) = _makeAndMimic(native, symbol);
+        (Notable clone, IERC20Metadata token) = _makeAndIssue(native, symbol);
         assertEq(address(clone), predictedClone, "deployed clone differs from prediction");
         assertEq(clone.original(), address(0), "clone.original is native ETH");
         assertEq(clone.symbol(), symbol, "clone.symbol must round-trip");
-        assertEq(token.symbol(), symbol, "minted mimic carries clone symbol");
+        assertEq(token.symbol(), symbol, "minted issue carries clone symbol");
 
-        (bool existsAfter,,) = mimicry.made(native, symbol);
+        (bool existsAfter,,) = notable.made(native, symbol);
         assertTrue(existsAfter, "clone must register as existing after make");
     }
 
     /**
      * @notice Both orderings must initialize at the identical 1:1 spot price.
-     *         `ffffff` is a high-address lepton (mimic sorts below → token0);
-     *         `zeros` is a low-address lepton (mimic sorts above → token1).
+     *         `ffffff` is a high-address lepton (issue sorts below → token0);
+     *         `zeros` is a low-address lepton (issue sorts above → token1).
      *         Sanity checks the ordering, then asserts both pools land at
      *         tick 0 with sqrtPriceX96 = 2**96.
      */
-    function test_BothOrderingsMimicAtIdenticalPrice() public {
+    function test_BothOrderingsIssueAtIdenticalPrice() public {
         require(ffffff.code.length > 0, "ffffff lepton missing at forked block");
         require(zeros.code.length > 0, "zeros lepton missing at forked block");
 
-        (Mimicry hiClone, IERC20Metadata hiMimic) = _makeAndMimic(ffffff, "FFx1");
-        (Mimicry loClone, IERC20Metadata loMimic) = _makeAndMimic(zeros, "ZZx1");
+        (Notable hiClone, IERC20Metadata hiIssue) = _makeAndIssue(ffffff, "FFx1");
+        (Notable loClone, IERC20Metadata loIssue) = _makeAndIssue(zeros, "ZZx1");
 
-        assertLt(uint160(address(hiMimic)), uint160(ffffff), "mimic of high lepton must sort below (token0)");
-        assertGt(uint160(address(loMimic)), uint160(zeros), "mimic of low lepton must sort above (token1)");
+        assertLt(uint160(address(hiIssue)), uint160(ffffff), "issue of high lepton must sort below (token0)");
+        assertGt(uint160(address(loIssue)), uint160(zeros), "issue of low lepton must sort above (token1)");
 
         (uint160 hiSqrt, int24 hiTick,,) =
-            IPoolManager(fountain.poolManager()).getSlot0(_poolKeyOf(hiClone, hiMimic).toId());
+            IPoolManager(fountain.poolManager()).getSlot0(_poolKeyOf(hiClone, hiIssue).toId());
         (uint160 loSqrt, int24 loTick,,) =
-            IPoolManager(fountain.poolManager()).getSlot0(_poolKeyOf(loClone, loMimic).toId());
+            IPoolManager(fountain.poolManager()).getSlot0(_poolKeyOf(loClone, loIssue).toId());
 
         assertEq(hiTick, int24(0), "high-lepton pool must initialize at tick 0");
         assertEq(loTick, int24(0), "low-lepton pool must initialize at tick 0");
@@ -243,21 +243,21 @@ contract MimicryForkTest is ForkBase {
 
     /**
      * @notice Equivalent swaps across the two orderings must quote the same
-     *         output. Buys `mimic` with `original` in each pool; the range
-     *         geometry differs (mimic-above vs mimic-below) but the fee tier,
+     *         output. Buys `issue` with `original` in each pool; the range
+     *         geometry differs (issue-above vs issue-below) but the fee tier,
      *         tick spacing, and seated supply are identical, so outputs
      *         should match to sub-bp precision.
      */
     function test_QuotedOutputsMatchAcrossOrdering() public {
-        (Mimicry hiClone, IERC20Metadata hiMimic) = _makeAndMimic(ffffff, "FFx1");
-        (Mimicry loClone, IERC20Metadata loMimic) = _makeAndMimic(zeros, "ZZx1");
+        (Notable hiClone, IERC20Metadata hiIssue) = _makeAndIssue(ffffff, "FFx1");
+        (Notable loClone, IERC20Metadata loIssue) = _makeAndIssue(zeros, "ZZx1");
 
-        PoolKey memory hiKey = _poolKeyOf(hiClone, hiMimic);
-        PoolKey memory loKey = _poolKeyOf(loClone, loMimic);
+        PoolKey memory hiKey = _poolKeyOf(hiClone, hiIssue);
+        PoolKey memory loKey = _poolKeyOf(loClone, loIssue);
 
-        // Buy mimic with original:
-        //   hi pool — mimic is token0, original is token1 → oneForZero (zeroForOne=false)
-        //   lo pool — mimic is token1, original is token0 → zeroForOne=true
+        // Buy issue with original:
+        //   hi pool — issue is token0, original is token1 → oneForZero (zeroForOne=false)
+        //   lo pool — issue is token1, original is token0 → zeroForOne=true
         uint128 amountIn = 1e18;
         IV4Quoter quoter = IV4Quoter(V4Quoter);
 
@@ -282,11 +282,11 @@ contract MimicryForkTest is ForkBase {
      *         stateless, so this executes real swaps via persona traders.
      */
     function test_SequentialBuysMatchAcrossOrdering() public {
-        (Mimicry hiClone, IERC20Metadata hiMimic) = _makeAndMimic(ffffff, "FFx1");
-        (Mimicry loClone, IERC20Metadata loMimic) = _makeAndMimic(zeros, "ZZx1");
+        (Notable hiClone, IERC20Metadata hiIssue) = _makeAndIssue(ffffff, "FFx1");
+        (Notable loClone, IERC20Metadata loIssue) = _makeAndIssue(zeros, "ZZx1");
 
-        PoolKey memory hiKey = _poolKeyOf(hiClone, hiMimic);
-        PoolKey memory loKey = _poolKeyOf(loClone, loMimic);
+        PoolKey memory hiKey = _poolKeyOf(hiClone, hiIssue);
+        PoolKey memory loKey = _poolKeyOf(loClone, loIssue);
 
         uint128 amountIn = 1e18;
         Trader alice = new Trader("alice", router);
@@ -302,7 +302,7 @@ contract MimicryForkTest is ForkBase {
         uint256 lo2 = bob.swap(loKey, true, amountIn);
         assertApproxEqRel(hi2, lo2, 1e14, "second buy: outputs diverge across orderings");
 
-        // Sanity: price moved after the first buy, so the second buy gets less mimic.
+        // Sanity: price moved after the first buy, so the second buy gets less issue.
         assertLt(hi2, hi1, "hi: second buy did not reflect advanced pool state");
         assertLt(lo2, lo1, "lo: second buy did not reflect advanced pool state");
     }
@@ -313,11 +313,11 @@ contract MimicryForkTest is ForkBase {
      *         the {Fountain.untaken} forecast and the actual transfer.
      */
     function test_TakeRoutesFeesToTaker() public {
-        // mimic sorts below ffffff → mimic is currency0, ffffff is currency1.
+        // issue sorts below ffffff → issue is currency0, ffffff is currency1.
         // A zeroForOne=false swap spends currency1 (ffffff), so fees accrue on currency1.
         uint256 positionId = fountain.positionsCount();
-        (Mimicry clone, IERC20Metadata mimic) = _makeAndMimic(ffffff, "FFx1");
-        PoolKey memory key = _poolKeyOf(clone, mimic);
+        (Notable clone, IERC20Metadata issue) = _makeAndIssue(ffffff, "FFx1");
+        PoolKey memory key = _poolKeyOf(clone, issue);
 
         uint128 amountIn = 1e18;
         Trader alice = new Trader("alice", router);
@@ -327,7 +327,7 @@ contract MimicryForkTest is ForkBase {
         uint256[] memory ids = new uint256[](1);
         ids[0] = positionId;
         (uint256[] memory pending0, uint256[] memory pending1) = fountain.untaken(ids);
-        assertEq(pending0[0], 0, "no fees should accrue on currency0 (mimic)");
+        assertEq(pending0[0], 0, "no fees should accrue on currency0 (issue)");
         assertGt(pending1[0], 0, "fees should accrue on currency1 (ffffff) after a buy");
 
         uint256 expected = pending1[0];
@@ -345,19 +345,19 @@ contract MimicryForkTest is ForkBase {
     }
 
     /**
-     * @notice Batch take sweeps several mimic positions in one unlock. Two
-     *         mimics accrue fees on opposite currencies (ffffff as currency1
+     * @notice Batch take sweeps several issue positions in one unlock. Two
+     *         issues accrue fees on opposite currencies (ffffff as currency1
      *         vs zeros as currency0); a single {Fountain.take} pushes both
      *         forecasts to the taker.
      */
     function test_TakeBatchRoutesFeesToTaker() public {
         uint256 hiId = fountain.positionsCount();
-        (Mimicry hiClone, IERC20Metadata hiMimic) = _makeAndMimic(ffffff, "FFx1");
+        (Notable hiClone, IERC20Metadata hiIssue) = _makeAndIssue(ffffff, "FFx1");
         uint256 loId = fountain.positionsCount();
-        (Mimicry loClone, IERC20Metadata loMimic) = _makeAndMimic(zeros, "ZZx1");
+        (Notable loClone, IERC20Metadata loIssue) = _makeAndIssue(zeros, "ZZx1");
 
-        PoolKey memory hiKey = _poolKeyOf(hiClone, hiMimic);
-        PoolKey memory loKey = _poolKeyOf(loClone, loMimic);
+        PoolKey memory hiKey = _poolKeyOf(hiClone, hiIssue);
+        PoolKey memory loKey = _poolKeyOf(loClone, loIssue);
 
         uint128 amountIn = 1e18;
         Trader alice = new Trader("alice", router);
@@ -396,40 +396,40 @@ contract MimicryForkTest is ForkBase {
 
     /**
      * @notice If the PoolKey was already initialized at the 1:1 genesis price
-     *         (by someone else beating us to it benignly), {mimic} skips the
+     *         (by someone else beating us to it benignly), {issue} skips the
      *         re-init and completes normally.
      */
-    function test_MimicIdempotentAtGenesisPrice() public {
+    function test_IssueIdempotentAtGenesisPrice() public {
         address original = ffffff;
         string memory symbol = "FFx1";
-        (, address predictedMimic) = mimicry.mimicked(original, symbol, symbol);
+        (, address predictedIssue) = notable.issued(original, symbol, symbol);
         PoolKey memory key = _predictedPoolKey(original, symbol, symbol);
         IPoolManager(fountain.poolManager()).initialize(key, TickMath.getSqrtPriceAtTick(0));
 
-        (, IERC20Metadata mimic) = _makeAndMimic(original, symbol);
-        assertEq(address(mimic), predictedMimic, "minted address != predicted");
+        (, IERC20Metadata issue) = _makeAndIssue(original, symbol);
+        assertEq(address(issue), predictedIssue, "minted address != predicted");
 
-        (bool exists,,) = mimicry.made(original, symbol);
+        (bool exists,,) = notable.made(original, symbol);
         assertTrue(exists, "clone not deployed after make at pre-init genesis");
     }
 
     /**
-     * @notice Mimicry seats at `ticks[0] = 0`. A pre-init below user
-     *         tick 0 is silently absorbed by Fountain — {mimic} succeeds,
+     * @notice Notable seats at `ticks[0] = 0`. A pre-init below user
+     *         tick 0 is silently absorbed by Fountain — {issue} succeeds,
      *         spot stays at the pre-init price, and the curve activates
-     *         when buyers push spot up to 0. (No-flip orientation: mimic
-     *         sorts below ffffff, so mimic = currency0 and "below user
+     *         when buyers push spot up to 0. (No-flip orientation: issue
+     *         sorts below ffffff, so issue = currency0 and "below user
      *         tick 0" matches "V4 tick < 0".)
      */
-    function test_MimicAbsorbsPreInitBelowTicksZero() public {
+    function test_IssueAbsorbsPreInitBelowTicksZero() public {
         address original = ffffff;
         string memory symbol = "FFx1";
         PoolKey memory key = _predictedPoolKey(original, symbol, symbol);
         uint160 preInitSqrt = TickMath.getSqrtPriceAtTick(-100);
         IPoolManager(fountain.poolManager()).initialize(key, preInitSqrt);
 
-        (, IERC20Metadata mimic) = _makeAndMimic(original, symbol);
-        assertTrue(address(mimic) != address(0), "mimic not minted after below-tick pre-init");
+        (, IERC20Metadata issue) = _makeAndIssue(original, symbol);
+        assertTrue(address(issue) != address(0), "issue not minted after below-tick pre-init");
 
         (uint160 sqrt,,,) = IPoolManager(fountain.poolManager()).getSlot0(key.toId());
         assertEq(sqrt, preInitSqrt, "spot stays at pre-init price, not at ticks[0]=0");
@@ -438,66 +438,66 @@ contract MimicryForkTest is ForkBase {
     /**
      * @notice A pre-init above user tick 0 leaves the first position
      *         spanning or below spot, so V4 demands the quote currency
-     *         that Fountain doesn't settle. {mimic} reverts with V4's
+     *         that Fountain doesn't settle. {issue} reverts with V4's
      *         {IPoolManager.CurrencyNotSettled}; the clone itself is
-     *         already deployed (cheap) and can mint another mimic under
+     *         already deployed (cheap) and can mint another issue under
      *         a different `name` to dodge the locked PoolKey.
      */
-    function test_MimicRevertsOnPreInitAboveTicksZero() public {
+    function test_IssueRevertsOnPreInitAboveTicksZero() public {
         address original = ffffff;
         string memory symbol = "FFx1";
         PoolKey memory key = _predictedPoolKey(original, symbol, symbol);
         IPoolManager(fountain.poolManager()).initialize(key, TickMath.getSqrtPriceAtTick(100));
 
-        Mimicry clone = Mimicry(mimicry.make(original, symbol));
+        Notable clone = Notable(notable.make(original, symbol));
         vm.expectRevert(IPoolManager.CurrencyNotSettled.selector);
-        clone.mimic(symbol);
+        clone.issue(symbol);
 
-        // Re-mint under a different name yields a different mimic and PoolKey, succeeds.
-        IERC20Metadata escapedMimic = clone.mimic("FFx1-escape");
-        assertTrue(address(escapedMimic) != address(0), "rescue mimic under new name failed");
+        // Re-mint under a different name yields a different issue and PoolKey, succeeds.
+        IERC20Metadata escapedIssue = clone.issue("FFx1-escape");
+        assertTrue(address(escapedIssue) != address(0), "rescue issue under new name failed");
     }
 
     /**
-     * @dev Make a clone for `(original, symbol)` and mint a single mimic
+     * @dev Make a clone for `(original, symbol)` and mint a single issue
      *      under the convention `name == symbol`. Returns the (clone,
      *      token) pair tests need to recover the PoolKey.
      */
-    function _makeAndMimic(address original, string memory symbol)
+    function _makeAndIssue(address original, string memory symbol)
         internal
-        returns (Mimicry clone, IERC20Metadata token)
+        returns (Notable clone, IERC20Metadata token)
     {
-        clone = Mimicry(mimicry.make(original, symbol));
-        token = clone.mimic(symbol);
+        clone = Notable(notable.make(original, symbol));
+        token = clone.issue(symbol);
     }
 
     /**
      * @dev Rebuild the {PoolKey} for a (clone, token) pair using this
      *      factory's fee/tickSpacing/hooks constants.
      */
-    function _poolKeyOf(Mimicry clone, IERC20Metadata token) internal view returns (PoolKey memory) {
+    function _poolKeyOf(Notable clone, IERC20Metadata token) internal view returns (PoolKey memory) {
         return _poolKey(address(token), clone.original());
     }
 
     /**
-     * @dev Rebuild the {PoolKey} that {mimic} will compute for `(original,
-     *      symbol, name)` using the predicted mimic CREATE2 address — lets
-     *      a test pre-init the target pool before the mimic is minted.
+     * @dev Rebuild the {PoolKey} that {issue} will compute for `(original,
+     *      symbol, name)` using the predicted issue CREATE2 address — lets
+     *      a test pre-init the target pool before the issue is minted.
      */
     function _predictedPoolKey(address original, string memory symbol, string memory name)
         internal
         view
         returns (PoolKey memory)
     {
-        (, address predictedMimic) = mimicry.mimicked(original, symbol, name);
-        return _poolKey(predictedMimic, original);
+        (, address predictedIssue) = notable.issued(original, symbol, name);
+        return _poolKey(predictedIssue, original);
     }
 
-    function _poolKey(address mimic, address original) private view returns (PoolKey memory) {
-        bool mimicIsToken0 = mimic < original;
+    function _poolKey(address issue, address original) private view returns (PoolKey memory) {
+        bool issueIsToken0 = issue < original;
         return PoolKey({
-            currency0: Currency.wrap(mimicIsToken0 ? mimic : original),
-            currency1: Currency.wrap(mimicIsToken0 ? original : mimic),
+            currency0: Currency.wrap(issueIsToken0 ? issue : original),
+            currency1: Currency.wrap(issueIsToken0 ? original : issue),
             fee: fountain.fee(),
             tickSpacing: fountain.tickSpacing(),
             hooks: IHooks(address(0))

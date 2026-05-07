@@ -6,55 +6,55 @@ import {IAddressLookup} from "ilookup/IAddressLookup.sol";
 import {IStringLookup} from "ilookup/IStringLookup.sol";
 import {ICoinage} from "icoinage/ICoinage.sol";
 import {IERC20Metadata} from "ierc20/IERC20Metadata.sol";
-import {IMimicMaker} from "iunispring/IMimicMaker.sol";
-import {IMimicker} from "iunispring/IMimicker.sol";
+import {INotable} from "iunispring/INotable.sol";
+import {INotableMaker} from "iunispring/INotableMaker.sol";
 import {IPlacer} from "iunispring/IPlacer.sol";
 
 /**
- * @title Mimicry
+ * @title Notable
  * @notice Two-level Bitsy factory. The prototype mints clones keyed by
  *         `(original, symbol)`; each clone is itself a token factory
- *         that mints mimic ERC-20s — one per `name`, all sharing the
- *         clone's `(original, symbol)`. Each minted mimic is pegged 1:1
+ *         that issues ERC-20s — one per `name`, all sharing the
+ *         clone's `(original, symbol)`. Each issued token is pegged 1:1
  *         against the clone's original (ERC-20 or native ETH) and has
  *         its entire supply seated as a single-tick segment in {placer}.
  * @notice The prototype is itself the canonical factory for the
  *         pair `(native ETH, "1x<native>")`, where `<native>` is the
  *         native currency symbol resolved from a chain-local
  *         {IStringLookup} at construction (e.g. "1xETH" on mainnet,
- *         "1xMATIC" on Polygon). `proto.mimic(name)` mints the pegged
+ *         "1xMATIC" on Polygon). `proto.issue(name)` mints the pegged
  *         ERC-20 directly from the prototype, and
  *         `make(address(0), proto.symbol())` returns `proto` (no
  *         separate clone is deployed for that pair).
- * @dev    The mimic token carries the original's decimals (18 for native
+ * @dev    The issued token carries the original's decimals (18 for native
  *         ETH) so the raw price of 1 at tick 0 corresponds to a 1:1
  *         human-unit peg. Each position uses {Fountain.fee} (0.01%),
  *         {tickSpacing} = 1, and no hook. The user-semantic range is
  *         `[0, 1)`; Fountain flips and negates into V4-native ticks
- *         internally when the mimic sorts above the original, so both
- *         orderings seat only the mimic at genesis with tick 0 at the
+ *         internally when the issue sorts above the original, so both
+ *         orderings seat only the issue at genesis with tick 0 at the
  *         edge of the V4 range.
  * @dev    A clone's deterministic address derives from `(original,
  *         symbol)`, so `(USDC, "USDCx1")` and `(DAI, "USDCx1")` are
- *         distinct clones. Within a clone, each mimic's deterministic
+ *         distinct clones. Within a clone, each issue's deterministic
  *         address derives from `(clone, name, symbol, decimals, supply)`,
- *         so `clone.mimic("alpha")` and `clone.mimic("beta")` are
+ *         so `clone.issue("alpha")` and `clone.issue("beta")` are
  *         distinct tokens. All fee machinery — {Fountain.take},
  *         {Fountain.untaken}, {Fountain.owner} — lives on Fountain.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
-contract Mimicry is IMimicMaker, IMimicker {
+contract Notable is INotableMaker, INotable {
     string public constant version = "0.8.0";
 
     /**
-     * @notice Raw supply minted for a mimic with 18 or more decimals.
-     *         Mimics with fewer decimals reduce this by a factor of 10
+     * @notice Raw supply minted for an issue with 18 or more decimals.
+     *         Issues with fewer decimals reduce this by a factor of 10
      *         per decimal below 18, keeping the human-unit supply
      *         roughly constant across originals. Sized to stay well
      *         below the `maxLiquidityPerTick` cap at `tickSpacing = 1`
      *         for any reasonable decimals, so a single-tick position
-     *         seating the full mimic supply cannot overflow V4's
-     *         per-tick liquidity limit. Native ETH mimics use 18
+     *         seating the full issue supply cannot overflow V4's
+     *         per-tick liquidity limit. Native ETH issues use 18
      *         decimals and this value directly.
      */
     uint128 public constant maxSupply = 10 ** 27;
@@ -62,28 +62,28 @@ contract Mimicry is IMimicMaker, IMimicker {
     /**
      * @notice The prototype instance that acts as the clone factory.
      */
-    Mimicry public immutable proto;
+    Notable public immutable proto;
 
     /**
-     * @notice The Fountain that holds each mimic's single-tick position
+     * @notice The Fountain that holds each issue's single-tick position
      *         and routes its swap fees to {Fountain.owner}.
      */
     IPlacer public immutable placer;
 
     /**
-     * @notice The Coinage factory used to mint each clone's mimic ERC-20s.
+     * @notice The Coinage factory used to mint each clone's issue ERC-20s.
      */
     ICoinage public immutable coinage;
 
     /**
-     * @inheritdoc IMimicker
+     * @inheritdoc INotable
      * @dev Set on clones by {zzInit}; the prototype's value is the
      *      storage default `address(0)` (native ETH).
      */
     address public original;
 
     /**
-     * @inheritdoc IMimicker
+     * @inheritdoc INotable
      * @dev Set on clones by {zzInit}; the prototype's value is
      *      `"1x<native>"`, derived from the chain-local {IStringLookup}
      *      passed at construction.
@@ -97,13 +97,13 @@ contract Mimicry is IMimicMaker, IMimicker {
      *         the storage-default native ETH and its `symbol` is
      *         `string.concat("1x", gasSymbolLookup.value())`
      *         resolved from the chain-local lookup at construction.
-     * @param  fountain           The Fountain that will seat every mimic
-     *                            position funded through this Mimicry.
-     * @param  minter             The Coinage prototype used to mint mimics.
+     * @param  fountain           The Fountain that will seat every issue
+     *                            position funded through this Notable.
+     * @param  minter             The Coinage prototype used to mint issues.
      * @param  gasSymbolLookup Chain-local {IStringLookup} whose `value()`
      *                            returns the native currency symbol (e.g.
      *                            "ETH" on mainnet, "MATIC" on Polygon); used
-     *                            as the suffix for the prototype's mimic
+     *                            as the suffix for the prototype's issue
      *                            symbol `"1x<native>"`.
      */
     constructor(IPlacer fountain, ICoinage minter, IStringLookup gasSymbolLookup) {
@@ -130,7 +130,7 @@ contract Mimicry is IMimicMaker, IMimicker {
      *                   {IAddressLookup} on different chains yields the
      *                   same deterministic clone address even when the
      *                   resolved token differs.
-     * @param  symbol_   The shared symbol every mimic minted by the clone
+     * @param  symbol_   The shared symbol every issue minted by the clone
      *                   would carry.
      * @return exists    True if the clone is already deployed (always true
      *                   for the proto pair).
@@ -154,20 +154,20 @@ contract Mimicry is IMimicMaker, IMimicker {
     }
 
     /**
-     * @notice Deploy a deterministic Mimicry clone for `(original_,
+     * @notice Deploy a deterministic Notable clone for `(original_,
      *         symbol_)`. Idempotent — returns the existing clone if
      *         already deployed. For the proto pair
      *         `(native ETH, "1xETH")` this returns `proto` directly
      *         (no clone is deployed; the proto IS the factory for that
-     *         pair). The clone mints mimic tokens via {mimic}.
+     *         pair). The clone issues tokens via {issue}.
      * @param  original_ The reference token to peg against. `address(0)`
-     *                   selects native ETH (mimics minted with 18 decimals);
+     *                   selects native ETH (issues minted with 18 decimals);
      *                   an {IAddressLookup} resolves to its `value()` address
      *                   (the chain-local token); any other address is treated
      *                   as the token directly. The salt is computed from
      *                   this raw input, so the same {IAddressLookup} yields
      *                   the same clone address across chains.
-     * @param  symbol_   Shared symbol every mimic minted by this clone
+     * @param  symbol_   Shared symbol every issue minted by this clone
      *                   will carry.
      * @return clone     The deployed (or existing) clone, or `proto`
      *                   itself for the proto pair.
@@ -184,7 +184,7 @@ contract Mimicry is IMimicMaker, IMimicker {
                 clone = home;
                 if (!exists) {
                     Clones.cloneDeterministic(address(proto), salt, 0);
-                    Mimicry(home).zzInit(resolved, symbol_);
+                    Notable(home).zzInit(resolved, symbol_);
                     emit Make(home, resolved, symbol_);
                 }
             }
@@ -202,22 +202,22 @@ contract Mimicry is IMimicMaker, IMimicker {
         symbol = symbol_;
     }
 
-    // ---- Bitsy factory: mimics ----
+    // ---- Bitsy factory: issues ----
 
     /**
-     * @notice Predict the deterministic address of a mimic minted by the
+     * @notice Predict the deterministic address of an issue minted by the
      *         clone for `(original_, symbol_)` with `name_`. Works whether
      *         or not the clone is already deployed.
      * @param  original_ The reference token, accepted under the same rules
      *                   as {make} / {made}: `address(0)` is native ETH;
      *                   an {IAddressLookup} resolves through `value()`;
      *                   any other address is the token itself.
-     * @param  symbol_   Shared symbol every mimic of the clone carries.
-     * @param  name_     Per-mimic name.
-     * @return exists    True if the mimic token is already deployed.
-     * @return home      The deterministic mimic address.
+     * @param  symbol_   Shared symbol every issue of the clone carries.
+     * @param  name_     Per-issue name.
+     * @return exists    True if the issue token is already deployed.
+     * @return home      The deterministic issue address.
      */
-    function mimicked(address original_, string calldata symbol_, string calldata name_)
+    function issued(address original_, string calldata symbol_, string calldata name_)
         public
         view
         override
@@ -232,39 +232,39 @@ contract Mimicry is IMimicMaker, IMimicker {
             bytes32 salt = keccak256(abi.encode(original_, symbol_));
             maker = Clones.predictDeterministicAddress(address(proto), salt, address(proto));
         }
-        return _mimicked(maker, resolved, symbol_, name_);
+        return _issued(maker, resolved, symbol_, name_);
     }
 
     /**
-     * @notice Predict the deterministic mimic address for `name_` under
+     * @notice Predict the deterministic issue address for `name_` under
      *         this instance's stored `(original, symbol)`. Convenience
      *         wrapper for callers that already hold the clone (or proto):
      *         the maker for {coinage}'s CREATE2 is `address(this)`, so no
      *         salt rederivation is needed.
      */
-    function mimicked(string calldata name_) external view override returns (bool exists, address home) {
-        return _mimicked(address(this), original, symbol, name_);
+    function issued(string calldata name_) external view override returns (bool exists, address home) {
+        return _issued(address(this), original, symbol, name_);
     }
 
     /**
-     * @notice Mint a fresh mimic ERC-20 with `name_`, this instance's
+     * @notice Mint a fresh issue ERC-20 with `name_`, this instance's
      *         stored `symbol`, and decimals + supply derived from
      *         `original`, and seat its entire supply as a single-tick
      *         segment in {placer}. Idempotent — returns the existing
-     *         token if a mimic with `name_` was already minted by this
+     *         token if an issue with `name_` was already minted by this
      *         instance. Callable on the prototype (mints under the
      *         proto pair `(native ETH, "1xETH")`) or on any clone
      *         (mints under that clone's pair).
-     * @param  name_  Per-mimic name. Must vary across calls to mint
-     *                distinct mimics under this instance's `(original,
+     * @param  name_  Per-issue name. Must vary across calls to mint
+     *                distinct issues under this instance's `(original,
      *                symbol)`.
-     * @return token  The minted (or existing) mimic ERC-20.
+     * @return token  The minted (or existing) issue ERC-20.
      */
-    function mimic(string calldata name_) external override returns (IERC20Metadata token) {
-        (bool exists, address home) = _mimicked(address(this), original, symbol, name_);
+    function issue(string calldata name_) external override returns (IERC20Metadata token) {
+        (bool exists, address home) = _issued(address(this), original, symbol, name_);
         if (exists) return IERC20Metadata(home);
 
-        (uint8 decimals, uint256 supply) = _mimicMetadata(original);
+        (uint8 decimals, uint256 supply) = _issueMetadata(original);
         token = coinage.make(name_, symbol, decimals, supply, 0);
 
         // forge-lint: disable-next-line(erc20-unchecked-transfer)
@@ -278,23 +278,23 @@ contract Mimicry is IMimicMaker, IMimicker {
 
         placer.offer(address(token), original, ticks, amounts);
 
-        emit Mimic(address(this), token, name_);
+        emit Issue(address(this), token, name_);
     }
 
     /**
-     * @dev Ask {coinage} for the deterministic mimic address `maker` would
+     * @dev Ask {coinage} for the deterministic issue address `maker` would
      *      produce for `(name_, symbol_)` with metadata derived from
-     *      `original_`. Callers from this instance (action {mimic} and
-     *      convenience {mimicked}) pass `address(this)`; the public
-     *      {mimicked} overload computes `maker` from the salted clone
+     *      `original_`. Callers from this instance (action {issue} and
+     *      convenience {issued}) pass `address(this)`; the public
+     *      {issued} overload computes `maker` from the salted clone
      *      prediction since no clone instance is in scope yet.
      */
-    function _mimicked(address maker, address original_, string memory symbol_, string memory name_)
+    function _issued(address maker, address original_, string memory symbol_, string memory name_)
         private
         view
         returns (bool exists, address home)
     {
-        (uint8 decimals, uint256 supply) = _mimicMetadata(original_);
+        (uint8 decimals, uint256 supply) = _issueMetadata(original_);
         (exists, home,) = coinage.made(maker, name_, symbol_, decimals, supply, 0);
     }
 
@@ -325,17 +325,17 @@ contract Mimicry is IMimicMaker, IMimicker {
     }
 
     /**
-     * @dev Resolve the decimals and supply used to mint a mimic of
+     * @dev Resolve the decimals and supply used to mint an issue of
      *      `original_`. ERC-20 originals contribute their decimals 1:1
      *      and a decimals-adjusted supply: {maxSupply} when decimals are
      *      18 or more, reduced by a factor of 10 per decimal below 18 —
-     *      sized to stay below `maxLiquidityPerTick` when the mimic is
+     *      sized to stay below `maxLiquidityPerTick` when the issue is
      *      seated single-sided in a one-tick range. Native ETH
-     *      (`address(0)`) has no on-chain metadata, so the mimic uses 18
+     *      (`address(0)`) has no on-chain metadata, so the issue uses 18
      *      decimals (the conventional human-unit semantics) and
      *      {maxSupply}.
      */
-    function _mimicMetadata(address original_) private view returns (uint8 decimals, uint256 supply) {
+    function _issueMetadata(address original_) private view returns (uint8 decimals, uint256 supply) {
         if (original_ == address(0)) return (18, maxSupply);
         decimals = IERC20Metadata(original_).decimals();
         supply = uint256(maxSupply);
