@@ -30,44 +30,33 @@ import {ModifyLiquidityParams} from "v4-core/types/PoolOperation.sol";
 
 /**
  * @title Fountain
- * @notice Shapes a bonding curve for an externally-supplied token (ERC-20
- *         or native ETH) by seating multiple permanent, single-sided V4
- *         positions against a quote currency (ERC-20 or native ETH).
- *         Callers partition a price range with an ascending array of
- *         V4-native ticks and assign a token amount to each segment;
- *         Fountain flips and negates into V4-native tick ranges when
- *         the token sorts above the quote (forcing it into `currency1`),
- *         then seats every segment in a single unlock.
- * @dev    Bitsy factory: the prototype is permissionless and governance-free;
- *         clones are deployed via {make} and carry their own {owner} in
- *         storage. Each clone's owner is the `owner` argument passed to
- *         {make} — the caller need not be the owner, so anyone may seed
- *         a Fountain on behalf of a third party. One clone exists per
- *         `(owner, variant)` pair.
- * @dev    Positions are permanent — no function on this contract decreases
- *         or unwinds liquidity. {take} pulls accrued swap fees from the
- *         PoolManager into Fountain's own balance; the {owner} reclaims
- *         them via {withdraw}. Holding fees in Fountain lets {offer} use
- *         a few hundred wei of dust to nudge the starting price one
- *         sqrt-wei interior to the first segment in the flipped (token =
- *         currency1) case, so position 0 has nonzero active liquidity at
- *         genesis instead of sitting at the upper-boundary L=0 dead zone.
- *         When Fountain doesn't have enough of the quote on hand the
- *         start falls back to the boundary.
- * @dev    Fixed pool parameters: {fee} = 100 (0.01%),
- *         {tickSpacing} = 1, no hooks. Spacing 1 gives exact tick
- *         precision for position bounds and the initial price; the
- *         extra bitmap-iteration cost on large swaps is negligible
- *         for Fountain's single-position usage pattern.
- * @dev    Tick convention: callers pass ticks in V4-native semantics
- *         (`log_1.0001(currency1/currency0)` = `log_1.0001(quote/token)`
- *         when the token is `currency0`). When the token sorts below the
- *         quote it becomes `currency0` and the mapping is the identity:
- *         user segment `[T[i], T[i+1])` is seated at V4 `[T[i], T[i+1])`.
- *         When the token sorts above the quote it becomes `currency1`,
- *         V4's internal price becomes the reciprocal, and Fountain maps
- *         `[T[i], T[i+1])` to V4 `[-T[i+1], -T[i])` so the user's intent
- *         is preserved.
+ * @notice Seeds bonding-curve liquidity on Uniswap V4 in one
+ *         transaction. A caller partitions a price range into N
+ *         contiguous segments and Fountain seats N permanent,
+ *         single-sided V4 positions against a quote currency.
+ *         Liquidity is permanent: only accrued swap fees ever leave
+ *         the pool. See {IPlacer.offer} for the seeding call,
+ *         {IFeeTaker} and {IWithdrawer} for fee handling, and
+ *         {IOwnableMaker} for the clone factory.
+ * @dev    Tick mapping. Callers express ticks in quote-per-token
+ *         price semantics. When the seeded token sorts as
+ *         `currency0`, V4's native direction matches and the user's
+ *         tick range is seated as-is. When it sorts as `currency1`,
+ *         V4's internal price is the reciprocal, so Fountain seats
+ *         user range `[T[i], T[i+1])` at V4 range `[-T[i+1], -T[i])`.
+ * @dev    Flipped-case genesis bootstrap. When the token sorts as
+ *         `currency1`, the natural starting tick places position 0
+ *         at its upper edge — out of range, zero active liquidity
+ *         at genesis. {offer} nudges the start one sqrt-wei interior
+ *         using a few hundred wei of dust from Fountain's own
+ *         balance (seeded by {take} fees or a plain transfer). If
+ *         Fountain holds too little, the start falls back to the
+ *         boundary.
+ * @dev    Fixed pool parameters ({fee} = 100, {tickSpacing} = 1,
+ *         hookless) are exposed via {IPoolConfig}. Spacing 1 buys
+ *         exact tick precision at position bounds and the initial
+ *         price; the extra bitmap-iteration cost is negligible for
+ *         Fountain's single-batch usage.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
 contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer, IUnlockCallback, Ownable, Prototype {
