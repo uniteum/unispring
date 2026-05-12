@@ -3,6 +3,7 @@ pragma solidity ^0.8.30;
 
 import {ICoinage} from "icoinage/ICoinage.sol";
 import {IERC20Metadata} from "ierc20/IERC20Metadata.sol";
+import {IPrototype} from "iproto/IPrototype.sol";
 import {NeutrinoChannel} from "../src/NeutrinoChannel.sol";
 import {TestToken} from "./TestToken.sol";
 import {Test} from "forge-std/Test.sol";
@@ -93,8 +94,8 @@ contract NeutrinoChannelTest is Test {
 
     function test_ZzInitRevertsIfNotCalledByProto() public {
         NeutrinoChannel clone = proto.make(int24(-100), int24(100));
-        vm.expectRevert(NeutrinoChannel.Unauthorized.selector);
-        clone.zzInit(address(this));
+        vm.expectRevert(IPrototype.Unauthorized.selector);
+        clone.zzInit("", 0);
     }
 
     // ---- mint ----
@@ -115,7 +116,7 @@ contract NeutrinoChannelTest is Test {
     function test_MintRevertsIfCallerIsNotSource() public {
         NeutrinoChannel clone = proto.make(int24(-100), int24(100));
         vm.prank(address(0xBEEF));
-        vm.expectRevert(NeutrinoChannel.Unauthorized.selector);
+        vm.expectRevert(IPrototype.Unauthorized.selector);
         clone.mint(minter, "TestToken", "TT", 18, 1 ether, 0);
     }
 }

@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.34;
 
-import {Clones} from "clones/Clones.sol";
 import {ICoinage} from "icoinage/ICoinage.sol";
 import {IERC20Metadata} from "ierc20/IERC20Metadata.sol";
+import {IPrototype} from "iproto/IPrototype.sol";
+import {Prototype} from "proto/Prototype.sol";
 
 /**
  * @title NeutrinoChannel
@@ -18,14 +19,8 @@ import {IERC20Metadata} from "ierc20/IERC20Metadata.sol";
  *         boundaries.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
-contract NeutrinoChannel {
+contract NeutrinoChannel is Prototype {
     string public constant version = "0.7.0";
-
-    /**
-     * @notice The prototype instance. On clones, this points back to the
-     *         original deployment.
-     */
-    NeutrinoChannel public immutable proto;
 
     /**
      * @notice The address that created this clone by calling {make}, and the
@@ -34,62 +29,6 @@ contract NeutrinoChannel {
      */
     address public source;
 
-    /**
-     * @notice Thrown when {zzInit} is called by anyone other than {proto},
-     *         or when {mint} is called by anyone other than {source}.
-     */
-    error Unauthorized();
-
-    constructor() {
-        proto = this;
-    }
-
-    // ---- Bitsy factory ----
-
-    /**
-     * @notice Predict the deterministic address of a clone for a sender and tick range.
-     * @param sender    The address that will call {make}.
-     * @param tickLower Lower tick.
-     * @param tickUpper Upper tick.
-     * @return exists True if the clone is already deployed.
-     * @return home   The deterministic clone address.
-     * @return salt   The CREATE2 salt (derived from sender and tick range).
-     */
-    function made(address sender, int24 tickLower, int24 tickUpper)
-        public
-        view
-        returns (bool exists, address home, bytes32 salt)
-    {
-        salt = keccak256(abi.encode(sender, tickLower, tickUpper));
-        home = Clones.predictDeterministicAddress(address(proto), salt, address(proto));
-        exists = home.code.length > 0;
-    }
-
-    /**
-     * @notice Deploy a clone for the caller's tick range. Idempotent.
-     * @param tickLower Lower tick.
-     * @param tickUpper Upper tick.
-     * @return clone The deployed (or existing) clone.
-     */
-    function make(int24 tickLower, int24 tickUpper) external returns (NeutrinoChannel clone) {
-        (bool exists, address home, bytes32 salt) = made(msg.sender, tickLower, tickUpper);
-        clone = NeutrinoChannel(home);
-        if (!exists) {
-            Clones.cloneDeterministic(address(proto), salt, 0);
-            clone.zzInit(msg.sender);
-        }
-    }
-
-    /**
-     * @notice Initializer called by {proto} on a freshly deployed clone.
-     *         Sets {source} to the address that called {make}. Reverts with
-     *         {Unauthorized} if called by anyone other than {proto}.
-     */
-    function zzInit(address source_) external {
-        if (msg.sender != address(proto)) revert Unauthorized();
-        source = source_;
-    }
-
     // ---- Relay ----
 
     /**
@@ -97,13 +36,13 @@ contract NeutrinoChannel {
      *         supply to the caller. Because each clone has a tick-dependent
      *         address, Coinage sees a different deployer per tick range.
      *         Only {source} may call.
-     * @param minter  Coinage prototype to mint through.
-     * @param name     Token name.
-     * @param symbol   Token symbol.
-     * @param decimals Token decimals.
-     * @param supply   Token supply, denominated in the smallest unit.
-     * @param salt     Coinage variant (free for vanity grinding).
-     * @return token The minted token.
+     * @param  minter   Coinage prototype to mint through.
+     * @param  name     Token name.
+     * @param  symbol   Token symbol.
+     * @param  decimals Token decimals.
+     * @param  supply   Token supply, denominated in the smallest unit.
+     * @param  salt     Coinage variant (free for vanity grinding).
+     * @return token    The minted token.
      */
     function mint(
         ICoinage minter,
@@ -117,5 +56,63 @@ contract NeutrinoChannel {
         token = minter.make(name, symbol, decimals, supply, salt);
         // forge-lint: disable-next-line(erc20-unchecked-transfer)
         token.transfer(msg.sender, supply);
+    }
+
+    // ---- Bitsy factory ----
+
+    /**
+     * @notice ABI-encode the per-clone init args.
+     * @dev    The returned bytes are the canonical args passed to
+     *         {Prototype.make} and {zzInit}. `tickLower` and `tickUpper` are
+     *         baked into the salt to give each tick range a distinct clone
+     *         address; only `sender` is stored at init time (as {source}).
+     */
+    function encode(address sender, int24 tickLower, int24 tickUpper) public pure returns (bytes memory args) {
+        args = abi.encode(sender, tickLower, tickUpper);
+    }
+
+    /**
+     * @notice Predict the deterministic address of a clone for a sender and tick range.
+     * @param  sender    The address that will call {make}.
+     * @param  tickLower Lower tick.
+     * @param  tickUpper Upper tick.
+     * @return exists True if the clone is already deployed.
+     * @return home   The deterministic clone address.
+     * @return salt   The CREATE2 salt.
+     */
+    function made(address sender, int24 tickLower, int24 tickUpper)
+        external
+        view
+        returns (bool exists, address home, bytes32 salt)
+    {
+        (exists, home, salt) = this.made(encode(sender, tickLower, tickUpper), 0);
+    }
+
+    /**
+     * @notice Deploy a clone for the caller's tick range. Idempotent.
+     * @param  tickLower Lower tick.
+     * @param  tickUpper Upper tick.
+     * @return clone The deployed (or existing) clone.
+     */
+    function make(int24 tickLower, int24 tickUpper) external returns (NeutrinoChannel clone) {
+        (, address home,) = this.make(encode(msg.sender, tickLower, tickUpper), 0);
+        clone = NeutrinoChannel(home);
+    }
+
+    /**
+     * @inheritdoc IPrototype
+     * @dev Decodes `(sender, tickLower, tickUpper)` and assigns `sender` to {source}.
+     *      The ticks shape the salt but are not stored.
+     */
+    function zzInit(
+        bytes calldata args,
+        uint256 /*variant*/
+    )
+        public
+        override
+        onlyProto
+    {
+        (address sender,,) = abi.decode(args, (address, int24, int24));
+        source = sender;
     }
 }
