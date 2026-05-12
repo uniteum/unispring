@@ -43,7 +43,7 @@ contract ManifoldForkTest is ForkBase {
         super.setUp();
 
         bot = new Funder("bot");
-        Fountain fountainProto = new Fountain(IAddressLookup(PoolManagerLookup));
+        Fountain fountainProto = new Fountain(address(this), IAddressLookup(PoolManagerLookup));
         bot.makeFountain(fountainProto);
         fountain = bot.fountain();
         proto = new Manifold(fountain);

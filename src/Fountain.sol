@@ -108,12 +108,15 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
     error UnknownSelector(bytes4 selector);
 
     /**
-     * @notice Construct the Fountain prototype. The deployer becomes the
-     *         prototype's owner; clones receive their own owner via
-     *         {zzInit} at {make} time.
+     * @notice Construct the Fountain prototype. The owner is supplied
+     *         explicitly so anyone may deploy on behalf of a third party
+     *         (e.g. via Nick's CREATE2 factory, where `msg.sender` is the
+     *         factory rather than the intended owner). Clones receive
+     *         their own owner via {zzInit} at {make} time.
+     * @param  owner Address that will own the prototype.
      * @param  poolManagerLookup Lookup for the chain-local Uniswap V4 PoolManager.
      */
-    constructor(IAddressLookup poolManagerLookup) Ownable(msg.sender) {
+    constructor(address owner, IAddressLookup poolManagerLookup) Ownable(owner) {
         poolManager = poolManagerLookup.value();
         // Sanity-check the lookup: reverts if the resolved address isn't a PoolManager.
         IExtsload(poolManager).extsload(bytes32(0));

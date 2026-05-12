@@ -54,7 +54,7 @@ contract FountainForkTest is ForkBase {
         super.setUp();
 
         bot = new Funder("bot");
-        Fountain proto = new Fountain(IAddressLookup(PoolManagerLookup));
+        Fountain proto = new Fountain(address(this), IAddressLookup(PoolManagerLookup));
         bot.makeFountain(proto);
         fountain = bot.fountain();
         router = new SwapRouter(IPoolManager(fountain.poolManager()));

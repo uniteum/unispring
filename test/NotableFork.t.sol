@@ -76,7 +76,7 @@ contract NotableForkTest is ForkBase {
         super.setUp();
 
         bot = new Funder("bot");
-        Fountain proto = new Fountain(IAddressLookup(PoolManagerLookup));
+        Fountain proto = new Fountain(address(this), IAddressLookup(PoolManagerLookup));
         bot.makeFountain(proto);
         fountain = bot.fountain();
         notable = new Notable(fountain, Coinage(ICoinage), new NativeSymbolStub());
