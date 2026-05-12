@@ -35,3 +35,9 @@
 [submodule "lib/iunispring"]
 	path = lib/iunispring
 	url = git@github.com:uniteum/iunispring.git
+[submodule "lib/iproto"]
+	path = lib/iproto
+	url = https://github.com/uniteum/iproto
+[submodule "lib/proto"]
+	path = lib/proto
+	url = https://github.com/uniteum/proto
