@@ -411,8 +411,8 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
     /**
      * @inheritdoc IUnlockCallback
      * @dev Selector-dispatches on the original entrypoint's calldata:
-     *      {IPlacer.offer} seats a batch of positions; {IFeeTaker.take}
-     *      iterates a batch of ids for fee take.
+     *      {IPlacer.offer} seats a batch of positions;
+     *      {IFeeTaker.take} iterates a batch of ids for fee take.
      */
     function unlockCallback(bytes calldata data) external returns (bytes memory) {
         if (msg.sender != address(poolManager)) revert InvalidUnlockCaller();
