@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.34;
 
-import {Clones} from "clones/Clones.sol";
 import {IAddressLookup} from "ilookup/IAddressLookup.sol";
 import {IStringLookup} from "ilookup/IStringLookup.sol";
 import {ICoinage} from "icoinage/ICoinage.sol";
@@ -9,6 +8,8 @@ import {IERC20Metadata} from "ierc20/IERC20Metadata.sol";
 import {INotable} from "iunispring/INotable.sol";
 import {INotableMaker} from "iunispring/INotableMaker.sol";
 import {IPlacer} from "iunispring/IPlacer.sol";
+import {IPrototype} from "iproto/IPrototype.sol";
+import {Prototype} from "proto/Prototype.sol";
 
 /**
  * @title Notable
@@ -43,7 +44,7 @@ import {IPlacer} from "iunispring/IPlacer.sol";
  *         {Fountain.untaken}, {Fountain.owner} — lives on Fountain.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
-contract Notable is INotableMaker, INotable {
+contract Notable is Prototype, INotableMaker, INotable {
     string public constant version = "0.8.0";
 
     /**
@@ -58,11 +59,6 @@ contract Notable is INotableMaker, INotable {
      *         decimals and this value directly.
      */
     uint128 public constant maxSupply = 10 ** 27;
-
-    /**
-     * @notice The prototype instance that acts as the clone factory.
-     */
-    Notable public immutable proto;
 
     /**
      * @notice The Fountain that holds each issue's single-tick position
@@ -107,99 +103,10 @@ contract Notable is INotableMaker, INotable {
      *                            symbol `"1x<native>"`.
      */
     constructor(IPlacer fountain, ICoinage minter, IStringLookup gasSymbolLookup) {
-        proto = this;
         placer = fountain;
         coinage = minter;
         symbol = string.concat("1x", gasSymbolLookup.value());
         emit Make(address(this), address(0), symbol);
-    }
-
-    // ---- Bitsy factory: clones ----
-
-    /**
-     * @notice Predict the deterministic address of a clone for `(original_,
-     *         symbol_)`. For the proto pair `(native ETH, "1xETH")` this
-     *         returns `(true, address(proto), bytes32(0))` — the proto
-     *         itself serves as the canonical factory and no separate
-     *         clone exists.
-     * @param  original_ The reference token. `address(0)` selects native
-     *                   ETH; an {IAddressLookup} resolves to its `value()`
-     *                   address (the chain-local token); any other address
-     *                   is treated as the token directly. The salt is
-     *                   computed from this raw input, so passing the same
-     *                   {IAddressLookup} on different chains yields the
-     *                   same deterministic clone address even when the
-     *                   resolved token differs.
-     * @param  symbol_   The shared symbol every issue minted by the clone
-     *                   would carry.
-     * @return exists    True if the clone is already deployed (always true
-     *                   for the proto pair).
-     * @return home      The deterministic clone address (or `address(proto)`
-     *                   for the proto pair).
-     * @return salt      The CREATE2 salt (`bytes32(0)` for the proto pair,
-     *                   which never uses CREATE2).
-     */
-    function made(address original_, string calldata symbol_)
-        public
-        view
-        override
-        returns (bool exists, address home, bytes32 salt)
-    {
-        if (_isProtoPair(_resolve(original_), symbol_)) {
-            return (true, address(proto), bytes32(0));
-        }
-        salt = keccak256(abi.encode(original_, symbol_));
-        home = Clones.predictDeterministicAddress(address(proto), salt, address(proto));
-        exists = home.code.length > 0;
-    }
-
-    /**
-     * @notice Deploy a deterministic Notable clone for `(original_,
-     *         symbol_)`. Idempotent — returns the existing clone if
-     *         already deployed. For the proto pair
-     *         `(native ETH, "1xETH")` this returns `proto` directly
-     *         (no clone is deployed; the proto IS the factory for that
-     *         pair). The clone issues tokens via {issue}.
-     * @param  original_ The reference token to peg against. `address(0)`
-     *                   selects native ETH (issues minted with 18 decimals);
-     *                   an {IAddressLookup} resolves to its `value()` address
-     *                   (the chain-local token); any other address is treated
-     *                   as the token directly. The salt is computed from
-     *                   this raw input, so the same {IAddressLookup} yields
-     *                   the same clone address across chains.
-     * @param  symbol_   Shared symbol every issue minted by this clone
-     *                   will carry.
-     * @return clone     The deployed (or existing) clone, or `proto`
-     *                   itself for the proto pair.
-     */
-    function make(address original_, string calldata symbol_) external override returns (address clone) {
-        if (address(this) != address(proto)) {
-            clone = proto.make(original_, symbol_);
-        } else {
-            address resolved = _resolve(original_);
-            if (_isProtoPair(resolved, symbol_)) {
-                clone = address(this);
-            } else {
-                (bool exists, address home, bytes32 salt) = made(original_, symbol_);
-                clone = home;
-                if (!exists) {
-                    Clones.cloneDeterministic(address(proto), salt, 0);
-                    Notable(home).zzInit(resolved, symbol_);
-                    emit Make(home, resolved, symbol_);
-                }
-            }
-        }
-    }
-
-    /**
-     * @notice Initializer for a freshly deployed clone. Records the
-     *         shared `(original, symbol)` on this clone. Callable only
-     *         by {proto}.
-     */
-    function zzInit(address original_, string calldata symbol_) external {
-        if (msg.sender != address(proto)) revert Unauthorized();
-        original = original_;
-        symbol = symbol_;
     }
 
     // ---- Bitsy factory: issues ----
@@ -223,16 +130,8 @@ contract Notable is INotableMaker, INotable {
         override
         returns (bool exists, address home)
     {
-        address resolved = _resolve(original_);
-        address maker;
-        if (_isProtoPair(resolved, symbol_)) {
-            maker = address(proto);
-        } else {
-            // forge-lint: disable-next-line(asm-keccak256)
-            bytes32 salt = keccak256(abi.encode(original_, symbol_));
-            maker = Clones.predictDeterministicAddress(address(proto), salt, address(proto));
-        }
-        return _issued(maker, resolved, symbol_, name_);
+        (, address maker,) = made(original_, symbol_);
+        return _issued(maker, _resolve(original_), symbol_, name_);
     }
 
     /**
@@ -299,15 +198,6 @@ contract Notable is INotableMaker, INotable {
     }
 
     /**
-     * @dev True when `(original_, symbol_)` is the prototype's own pair
-     *      `(native ETH, proto.symbol())`, i.e. the pair for which the
-     *      prototype itself is the factory.
-     */
-    function _isProtoPair(address original_, string memory symbol_) private view returns (bool) {
-        return original_ == address(0) && keccak256(bytes(symbol_)) == keccak256(bytes(proto.symbol()));
-    }
-
-    /**
      * @dev Resolve `original_` into the underlying token address.
      *      `address(0)` is native ETH; an {IAddressLookup} resolves to
      *      its `value()`; any other address is treated as the token
@@ -340,5 +230,116 @@ contract Notable is INotableMaker, INotable {
         decimals = IERC20Metadata(original_).decimals();
         supply = uint256(maxSupply);
         if (decimals < 18) supply /= 10 ** uint256(18 - decimals);
+    }
+
+    // ---- Bitsy factory: clones ----
+
+    /**
+     * @notice ABI-encode the per-clone init args.
+     * @dev    The returned bytes are the canonical args passed to
+     *         {Prototype.make} and {zzInit}. The clone's address is keyed
+     *         by `(original, symbol)` so the typed wrappers always use the
+     *         default variant `0`; bytes-form callers passing a non-zero
+     *         variant would land on a separate clone whose {zzInit} reverts
+     *         on the proto-pair check, but is otherwise valid.
+     */
+    function encode(address original_, string memory symbol_) public pure returns (bytes memory args) {
+        args = abi.encode(original_, symbol_);
+    }
+
+    /**
+     * @notice Predict the deterministic address of a clone for `(original_,
+     *         symbol_)`. For the proto pair `(native ETH, "1x<native>")` this
+     *         returns `(true, proto, bytes32(0))` — the proto itself serves
+     *         as the canonical factory and no separate clone exists.
+     * @param  original_ The reference token. `address(0)` selects native
+     *                   ETH; an {IAddressLookup} resolves to its `value()`
+     *                   address (the chain-local token); any other address
+     *                   is treated as the token directly. The salt is
+     *                   computed from this raw input, so passing the same
+     *                   {IAddressLookup} on different chains yields the
+     *                   same deterministic clone address even when the
+     *                   resolved token differs.
+     * @param  symbol_   The shared symbol every issue minted by the clone
+     *                   would carry.
+     * @return exists    True if the clone is already deployed (always true
+     *                   for the proto pair).
+     * @return home      The deterministic clone address (or `proto` for the
+     *                   proto pair).
+     * @return salt      The CREATE2 salt (`bytes32(0)` for the proto pair,
+     *                   which never uses CREATE2).
+     */
+    function made(address original_, string calldata symbol_)
+        public
+        view
+        override
+        returns (bool exists, address home, bytes32 salt)
+    {
+        if (_isProtoPair(_resolve(original_), symbol_)) {
+            return (true, proto, bytes32(0));
+        }
+        (exists, home, salt) = this.made(encode(original_, symbol_), 0);
+    }
+
+    /**
+     * @notice Deploy a deterministic Notable clone for `(original_,
+     *         symbol_)`. Idempotent — returns the existing clone if
+     *         already deployed. For the proto pair
+     *         `(native ETH, "1x<native>")` this returns `proto` directly
+     *         (no clone is deployed; the proto IS the factory for that
+     *         pair). The clone issues tokens via {issue}.
+     * @param  original_ The reference token to peg against. `address(0)`
+     *                   selects native ETH (issues minted with 18 decimals);
+     *                   an {IAddressLookup} resolves to its `value()` address
+     *                   (the chain-local token); any other address is treated
+     *                   as the token directly. The salt is computed from
+     *                   this raw input, so the same {IAddressLookup} yields
+     *                   the same clone address across chains.
+     * @param  symbol_   Shared symbol every issue minted by this clone
+     *                   will carry.
+     * @return clone     The deployed (or existing) clone, or `proto`
+     *                   itself for the proto pair.
+     */
+    function make(address original_, string calldata symbol_) external override returns (address clone) {
+        address resolved = _resolve(original_);
+        if (_isProtoPair(resolved, symbol_)) {
+            clone = proto;
+        } else {
+            (bool exists, address home,) = this.make(encode(original_, symbol_), 0);
+            clone = home;
+            if (!exists) emit Make(home, resolved, symbol_);
+        }
+    }
+
+    /**
+     * @inheritdoc IPrototype
+     * @dev Decodes `(original_, symbol_)`, resolves any {IAddressLookup} to
+     *      its underlying address, and records the pair on the clone.
+     *      Reverts if the args encode the proto pair so the prototype
+     *      remains the sole canonical factory for `(native ETH, proto.symbol())`
+     *      even when callers bypass the typed wrappers.
+     */
+    function zzInit(bytes calldata args, uint256 variant) public override {
+        super.zzInit(args, variant);
+        (address original_, string memory symbol_) = abi.decode(args, (address, string));
+        address resolved = _resolve(original_);
+        if (_isProtoPair(resolved, symbol_)) revert ProtoPairReserved();
+        original = resolved;
+        symbol = symbol_;
+    }
+
+    /**
+     * @notice Thrown by {zzInit} when a clone deployment would duplicate
+     *         the prototype's own `(native ETH, proto.symbol())` pair.
+     */
+    error ProtoPairReserved();
+
+    /**
+     * @dev True when `(original_, symbol_)` is the prototype's own pair
+     *      `(native ETH, proto.symbol())`, i.e. the pair for which the
+     *      prototype itself is the factory.
+     */
+    function _isProtoPair(address original_, string memory symbol_) private view returns (bool) {
+        return original_ == address(0) && keccak256(bytes(symbol_)) == keccak256(bytes(Notable(proto).symbol()));
     }
 }
