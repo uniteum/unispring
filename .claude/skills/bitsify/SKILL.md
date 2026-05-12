@@ -108,16 +108,19 @@ The mechanical migration steps:
    typed `zzInit(typed args)` becomes:
 
    ```solidity
-   function zzInit(bytes calldata args, uint256 /*variant*/)
-       public override onlyProto
+   function zzInit(bytes calldata args, uint256 variant)
+       public override
    {
+       super.zzInit(args, variant);
        (Type1 p1, Type2 p2, ...) = abi.decode(args, (Type1, Type2, ...));
        // existing init body, unchanged
    }
    ```
 
-   Replace any `if (msg.sender != proto) revert Unauthorized();` with
-   the `onlyProto` modifier — same guard, less boilerplate.
+   Call `super.zzInit(args, variant)` at the top of the override —
+   the base's `onlyProto` modifier runs through `super`, so you get
+   the access-control guard without having to repeat the modifier or
+   restate the `msg.sender != proto` check.
 
 5. **Rewrite `make`/`made` as thin typed wrappers over the inherited
    bytes overloads** (see [Step 3](#step-3-optional-typed-makemade-wrappers)).
@@ -234,31 +237,30 @@ constructor() ERC20("", "") {}
 ### 2b: Override `zzInit`
 
 The base `Prototype.zzInit` takes `(bytes args, uint256 variant)`,
-already guarded by `onlyProto`. Override it and decode your typed
-parameters:
+already guarded by `onlyProto`. Override it, call `super.zzInit` to
+inherit the guard, and decode your typed parameters:
 
 ```solidity
 /**
  * @inheritdoc IPrototype
  * @dev Decodes `(p1, p2, ...)` and applies them to clone storage.
  */
-function zzInit(bytes calldata args, uint256 /*variant*/)
+function zzInit(bytes calldata args, uint256 variant)
     public
     override
-    onlyProto
 {
+    super.zzInit(args, variant);
     (Type1 p1, Type2 p2, ...) = abi.decode(args, (Type1, Type2, ...));
     // ... initialization logic from the old constructor ...
 }
 ```
 
-Keep the `onlyProto` modifier on the override — it's a static guard
-in the base contract; repeating it on the override makes the safety
-read obvious without changing behavior.
-
-If you need a `variant`-aware init (e.g. to distinguish vanity-mined
-clones from each other), name the parameter and use it; otherwise
-leave it unnamed to silence the lint.
+Calling `super.zzInit(args, variant)` is how the base's `onlyProto`
+modifier reaches the override — it runs the access-control guard
+without the override having to repeat the modifier or restate the
+`msg.sender != proto` check. If your init needs to distinguish
+vanity-mined clones from each other, read `variant` in the body;
+otherwise it's just being forwarded to `super`.
 
 ### 2c: Handle ERC-20 metadata
 
