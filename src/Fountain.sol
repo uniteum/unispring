@@ -367,12 +367,7 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
     /**
      * @inheritdoc IFeeTaker
      */
-    function take(uint256[] calldata ids) external {
-        if (ids.length == 0) return;
-        uint256 length = positions.length;
-        for (uint256 i = 0; i < ids.length; i++) {
-            if (ids[i] >= length) revert UnknownPosition(ids[i]);
-        }
+    function take(uint256[] calldata) external {
         IPoolManager(poolManager).unlock(msg.data);
     }
 
@@ -384,8 +379,10 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
      */
     function _takeUnlocked(uint256[] memory ids) private {
         IPoolManager pm = IPoolManager(poolManager);
+        uint256 length = positions.length;
         for (uint256 i = 0; i < ids.length; i++) {
             uint256 id = ids[i];
+            if (id >= length) revert UnknownPosition(id);
             Position memory p = positions[id];
             PoolKey memory key = _keyOf(p);
             (, BalanceDelta feesAccrued) = pm.modifyLiquidity(
