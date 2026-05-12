@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.34;
 
-import {Clones} from "clones/Clones.sol";
 import {SafeERC20} from "erc20/SafeERC20.sol";
 import {IAddressLookup} from "ilookup/IAddressLookup.sol";
 import {IERC20} from "ierc20/IERC20.sol";
+import {IPrototype} from "iproto/IPrototype.sol";
 import {IPlacer} from "iunispring/IPlacer.sol";
 import {IPoolConfig} from "iunispring/IPoolConfig.sol";
 import {IFeeTaker, Position} from "iunispring/IFeeTaker.sol";
 import {IOwnableMaker} from "iunispring/IOwnableMaker.sol";
 import {IWithdrawer} from "iunispring/IWithdrawer.sol";
 import {Ownable} from "ownable/Ownable.sol";
+import {Prototype} from "proto/Prototype.sol";
 import {IExtsload} from "v4-core/interfaces/IExtsload.sol";
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
@@ -69,8 +70,8 @@ import {ModifyLiquidityParams} from "v4-core/types/PoolOperation.sol";
  *         is preserved.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
-contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer, IUnlockCallback, Ownable {
-    string public constant version = "0.8.0";
+contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer, IUnlockCallback, Ownable, Prototype {
+    string public constant version = "0.9.0";
 
     /**
      * @inheritdoc IPoolConfig
@@ -83,11 +84,6 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
      * @dev Fixed at 1 for exact tick precision.
      */
     int24 public constant tickSpacing = 1;
-
-    /**
-     * @notice The prototype instance; on clones, points to the original.
-     */
-    Fountain public immutable proto = this;
 
     /**
      * @inheritdoc IPoolConfig
@@ -494,40 +490,46 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
         return uint128(x);
     }
 
+    // ---- Bitsy factory ----
+
     /**
-     * @inheritdoc IOwnableMaker
+     * @notice ABI-encode the per-clone init args.
+     * @dev    The returned bytes are the canonical args passed to
+     *         {Prototype.make} and {zzInit}. The clone's address is keyed
+     *         by `owner`, so each owner gets a distinct clone per variant.
      */
-    function made(address owner, uint256 variant) public view returns (bool exists, address home, bytes32 salt) {
-        salt = keccak256(abi.encode(owner)) ^ bytes32(variant);
-        home = Clones.predictDeterministicAddress(address(proto), salt, address(proto));
-        exists = home.code.length > 0;
+    function encode(address owner) public pure returns (bytes memory args) {
+        args = abi.encode(owner);
     }
 
     /**
      * @inheritdoc IOwnableMaker
-     * @dev Must be called on the prototype. Calling on a clone reverts
-     *      with {Unauthorized}. The clone's owner is `owner`, not
-     *      `msg.sender` — anyone may seed a Fountain on behalf of a
-     *      third party.
+     */
+    function made(address owner, uint256 variant) external view returns (bool exists, address home, bytes32 salt) {
+        (exists, home, salt) = this.made(encode(owner), variant);
+    }
+
+    /**
+     * @inheritdoc IOwnableMaker
+     * @dev Idempotent. The clone's owner is `owner`, not `msg.sender` —
+     *      anyone may seed a Fountain on behalf of a third party. When
+     *      called on a clone, the inherited {Prototype.make} forwards
+     *      back to the prototype.
      */
     function make(address owner, uint256 variant) external returns (address instance) {
-        if (address(this) != address(proto)) revert Unauthorized();
-        (bool exists, address home, bytes32 salt) = made(owner, variant);
+        bytes memory args = encode(owner);
+        (bool exists, address home,) = this.make(args, variant);
         instance = home;
-        if (!exists) {
-            Clones.cloneDeterministic(address(proto), salt, 0);
-            Fountain(payable(home)).zzInit(owner);
-            emit Made(owner, variant, home);
-        }
+        if (!exists) emit Made(owner, variant, home);
     }
 
     /**
-     * @notice Initializer called by the prototype on a freshly deployed
-     *         clone. Sets the clone's owner. Reverts with {Unauthorized}
-     *         if called by anyone other than the prototype.
+     * @inheritdoc IPrototype
+     * @dev Decodes `(owner)` and assigns it as the clone's {Ownable} owner.
      */
-    function zzInit(address owner) public {
-        if (msg.sender != address(proto)) revert Unauthorized();
+    function zzInit(bytes calldata args, uint256 variant) public override {
+        super.zzInit(args, variant);
+        (address owner) = abi.decode(args, (address));
         _transferOwnership(owner);
     }
 }
