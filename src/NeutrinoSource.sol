@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.34;
 
-import {Clones} from "clones/Clones.sol";
 import {ICoinage} from "icoinage/ICoinage.sol";
 import {IERC20Metadata} from "ierc20/IERC20Metadata.sol";
+import {IPrototype} from "iproto/IPrototype.sol";
+import {Prototype} from "proto/Prototype.sol";
 import {Currency} from "v4-core/types/Currency.sol";
 
 import {NeutrinoChannel} from "./NeutrinoChannel.sol";
@@ -23,13 +24,8 @@ import {Manifold} from "./Manifold.sol";
  *         whatever DEX routers reach it. See README §Trust boundaries.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
-contract NeutrinoSource {
+contract NeutrinoSource is Prototype {
     string public constant version = "0.7.0";
-
-    /**
-     * @notice The prototype instance that acts as the Bitsy factory.
-     */
-    NeutrinoSource public immutable proto;
 
     /**
      * @notice The Manifold prototype used to create fair-launch pools.
@@ -72,105 +68,15 @@ contract NeutrinoSource {
     event Launch(IERC20Metadata indexed token, uint256 supply, int24 tickLower, int24 tickUpper);
 
     /**
-     * @notice Thrown when {zzInit} is called by anyone other than {proto}.
-     */
-    error Unauthorized();
-
-    /**
      * @notice Construct the prototype.
      * @param manifold The Manifold prototype.
-     * @param channel   The NeutrinoChannel prototype.
+     * @param channel  The NeutrinoChannel prototype.
      * @param minter   The Coinage prototype.
      */
     constructor(Manifold manifold, NeutrinoChannel channel, ICoinage minter) {
-        proto = this;
         springProto = manifold;
         channelProto = channel;
         coinage = minter;
-    }
-
-    // ---- Bitsy factory ----
-
-    /**
-     * @notice Predict the deterministic address of a clone.
-     * @param name      Hub token name (passed to Coinage).
-     * @param symbol    Hub token symbol (passed to Coinage).
-     * @param decimals  Hub token decimals (passed to Coinage).
-     * @param supply    Hub token supply (passed to Coinage).
-     * @param tickLower Lower tick for the hub's ETH pool.
-     * @param tickUpper Upper tick for the hub's ETH pool.
-     * @param tokenSalt Salt for the Coinage hub token.
-     * @return exists   True if the clone is already deployed.
-     * @return home     The deterministic clone address.
-     * @return salt     The CREATE2 salt (derived from the input parameters).
-     * @return hubHome  The deterministic hub token address.
-     */
-    function made(
-        string calldata name,
-        string calldata symbol,
-        uint8 decimals,
-        uint256 supply,
-        int24 tickLower,
-        int24 tickUpper,
-        uint256 tokenSalt
-    ) public view returns (bool exists, address home, bytes32 salt, address hubHome) {
-        salt = keccak256(abi.encode(name, symbol, decimals, supply, tickLower, tickUpper, tokenSalt));
-        home = Clones.predictDeterministicAddress(address(proto), salt, address(proto));
-        exists = home.code.length > 0;
-        (, address channel,) = channelProto.made(address(proto), tickLower, tickUpper, 0);
-        (, hubHome,) = coinage.made(channel, name, symbol, decimals, supply, tokenSalt);
-    }
-
-    /**
-     * @notice Create a hub token, a Manifold clone for it, and a
-     *         NeutrinoSource clone that bundles them together. Idempotent.
-     * @param name      Hub token name.
-     * @param symbol    Hub token symbol.
-     * @param decimals  Hub token decimals.
-     * @param supply    Hub token supply (entire supply funds the ETH/hub pool).
-     * @param tickLower Lower tick for the hub's ETH pool.
-     * @param tickUpper Upper tick for the hub's ETH pool.
-     * @param tokenSalt Salt for the Coinage hub token.
-     * @return clone The deployed (or existing) NeutrinoSource clone.
-     */
-    function make(
-        string calldata name,
-        string calldata symbol,
-        uint8 decimals,
-        uint256 supply,
-        int24 tickLower,
-        int24 tickUpper,
-        uint256 tokenSalt
-    ) external returns (NeutrinoSource clone) {
-        if (this != proto) {
-            clone = proto.make(name, symbol, decimals, supply, tickLower, tickUpper, tokenSalt);
-        } else {
-            (bool exists, address home, bytes32 salt,) =
-                made(name, symbol, decimals, supply, tickLower, tickUpper, tokenSalt);
-            clone = NeutrinoSource(home);
-            if (!exists) {
-                NeutrinoChannel hubChannel = channelProto.make(tickLower, tickUpper, 0);
-                IERC20Metadata hubToken = hubChannel.mint(coinage, name, symbol, decimals, supply, tokenSalt);
-
-                (, address springHome,) = springProto.made(hubToken, tickLower, tickUpper);
-                // forge-lint: disable-next-line(erc20-unchecked-transfer)
-                IERC20Metadata(address(hubToken)).transfer(springHome, supply);
-                Manifold manifold = springProto.make(hubToken, tickLower, tickUpper);
-
-                Clones.cloneDeterministic(address(proto), salt, 0);
-                NeutrinoSource(home).zzInit(manifold);
-                emit Make(clone, IERC20Metadata(address(hubToken)), manifold);
-            }
-        }
-    }
-
-    /**
-     * @notice Initializer called by {proto} on a freshly deployed clone.
-     * @param spring_ The Manifold clone for this NeutrinoSource's hub token.
-     */
-    function zzInit(Manifold spring_) external {
-        if (msg.sender != address(proto)) revert Unauthorized();
-        spring = spring_;
     }
 
     // ---- Fair launch ----
@@ -202,5 +108,130 @@ contract NeutrinoSource {
         token.approve(address(spring), supply);
         spring.offer(Currency.wrap(address(token)), supply, tickLower, tickUpper);
         emit Launch(token, supply, tickLower, tickUpper);
+    }
+
+    // ---- Bitsy factory ----
+
+    /**
+     * @notice ABI-encode the per-clone init args.
+     * @dev    The returned bytes are the canonical args passed to
+     *         {Prototype.make} and {zzInit}.
+     */
+    function encode(
+        string calldata name,
+        string calldata symbol,
+        uint8 decimals,
+        uint256 supply,
+        int24 tickLower,
+        int24 tickUpper,
+        uint256 tokenSalt
+    ) public pure returns (bytes memory args) {
+        args = abi.encode(name, symbol, decimals, supply, tickLower, tickUpper, tokenSalt);
+    }
+
+    /**
+     * @notice Predict the deterministic address of a clone and its hub token.
+     * @param  name      Hub token name (passed to Coinage).
+     * @param  symbol    Hub token symbol (passed to Coinage).
+     * @param  decimals  Hub token decimals (passed to Coinage).
+     * @param  supply    Hub token supply (passed to Coinage).
+     * @param  tickLower Lower tick for the hub's ETH pool.
+     * @param  tickUpper Upper tick for the hub's ETH pool.
+     * @param  tokenSalt Salt for the Coinage hub token.
+     * @param  variant   Salt variant (free for vanity grinding).
+     * @return exists  True if the clone is already deployed.
+     * @return home    The deterministic clone address.
+     * @return salt    The CREATE2 salt.
+     * @return hubHome The deterministic hub token address.
+     */
+    function made(
+        string calldata name,
+        string calldata symbol,
+        uint8 decimals,
+        uint256 supply,
+        int24 tickLower,
+        int24 tickUpper,
+        uint256 tokenSalt,
+        uint256 variant
+    ) external view returns (bool exists, address home, bytes32 salt, address hubHome) {
+        (exists, home, salt) =
+            this.made(encode(name, symbol, decimals, supply, tickLower, tickUpper, tokenSalt), variant);
+        (, address channel,) = channelProto.made(proto, tickLower, tickUpper, 0);
+        (, hubHome,) = coinage.made(channel, name, symbol, decimals, supply, tokenSalt);
+    }
+
+    /**
+     * @notice Create a hub token, a Manifold clone for it, and a
+     *         NeutrinoSource clone that bundles them together. Idempotent.
+     * @dev    Hub-side setup (channel, hub token, Manifold) is performed on
+     *         the prototype before invoking inherited {Prototype.make} so the
+     *         hub channel is keyed by {proto} — one channel per tick range,
+     *         shared across all NeutrinoSource clones. Spoke channels (made
+     *         inside {launch}) are keyed by the calling clone instead.
+     * @param  name      Hub token name.
+     * @param  symbol    Hub token symbol.
+     * @param  decimals  Hub token decimals.
+     * @param  supply    Hub token supply (entire supply funds the ETH/hub pool).
+     * @param  tickLower Lower tick for the hub's ETH pool.
+     * @param  tickUpper Upper tick for the hub's ETH pool.
+     * @param  tokenSalt Salt for the Coinage hub token.
+     * @param  variant   Salt variant (free for vanity grinding).
+     * @return clone The deployed (or existing) NeutrinoSource clone.
+     */
+    function make(
+        string calldata name,
+        string calldata symbol,
+        uint8 decimals,
+        uint256 supply,
+        int24 tickLower,
+        int24 tickUpper,
+        uint256 tokenSalt,
+        uint256 variant
+    ) external returns (NeutrinoSource clone) {
+        if (address(this) != proto) {
+            return NeutrinoSource(proto).make(name, symbol, decimals, supply, tickLower, tickUpper, tokenSalt, variant);
+        }
+
+        bytes memory args = encode(name, symbol, decimals, supply, tickLower, tickUpper, tokenSalt);
+        (bool exists, address home,) = this.made(args, variant);
+        clone = NeutrinoSource(home);
+
+        if (!exists) {
+            NeutrinoChannel hubChannel = channelProto.make(tickLower, tickUpper, 0);
+            IERC20Metadata hubToken = hubChannel.mint(coinage, name, symbol, decimals, supply, tokenSalt);
+
+            (, address springHome,) = springProto.made(hubToken, tickLower, tickUpper);
+            // forge-lint: disable-next-line(erc20-unchecked-transfer)
+            hubToken.transfer(springHome, supply);
+            Manifold manifold = springProto.make(hubToken, tickLower, tickUpper);
+
+            this.make(args, variant);
+            emit Make(clone, hubToken, manifold);
+        }
+    }
+
+    /**
+     * @inheritdoc IPrototype
+     * @dev Decodes the hub-token args, predicts the Manifold address for this
+     *      clone's hub, and stores it as {spring}. {make} pre-deploys the
+     *      underlying hub channel, hub token, and Manifold before invoking
+     *      inherited {Prototype.make}, so all predicted addresses already
+     *      exist by the time this runs.
+     */
+    function zzInit(bytes calldata args, uint256 variant) public override {
+        super.zzInit(args, variant);
+        (
+            string memory name,
+            string memory symbol,
+            uint8 decimals,
+            uint256 supply,
+            int24 tickLower,
+            int24 tickUpper,
+            uint256 tokenSalt
+        ) = abi.decode(args, (string, string, uint8, uint256, int24, int24, uint256));
+        (, address channel,) = channelProto.made(proto, tickLower, tickUpper, 0);
+        (, address hubHome,) = coinage.made(channel, name, symbol, decimals, supply, tokenSalt);
+        (, address springHome,) = springProto.made(IERC20Metadata(hubHome), tickLower, tickUpper);
+        spring = Manifold(springHome);
     }
 }

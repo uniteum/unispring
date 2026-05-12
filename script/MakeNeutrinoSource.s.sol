@@ -15,6 +15,7 @@ import {Script, console2} from "forge-std/Script.sol";
  *           HubTickLower        — lower tick for the hub's ETH pool (required)
  *           HubTickUpper        — upper tick for the hub's ETH pool (required)
  *           HubSalt             — Coinage salt for the hub token (required)
+ *           HubVariant          — clone salt variant (required)
  *
  *         Usage:
  * forge script script/MakeNeutrinoSource.s.sol -f $chain --private-key $tx_key --broadcast
@@ -29,6 +30,7 @@ contract MakeNeutrinoSource is Script {
         int24 tickLower = int24(vm.envInt("HubTickLower"));
         int24 tickUpper = int24(vm.envInt("HubTickUpper"));
         uint256 salt = vm.envUint("HubSalt");
+        uint256 variant = vm.envUint("HubVariant");
 
         console2.log("NeutrinoSourceProto :", address(proto));
         console2.log("name                :", name);
@@ -38,9 +40,10 @@ contract MakeNeutrinoSource is Script {
         console2.log("tickLower           :", int256(tickLower));
         console2.log("tickUpper           :", int256(tickUpper));
         console2.log("salt                :", salt);
+        console2.log("variant             :", variant);
 
         vm.startBroadcast();
-        NeutrinoSource clone = proto.make(name, symbol, decimals, supply, tickLower, tickUpper, salt);
+        NeutrinoSource clone = proto.make(name, symbol, decimals, supply, tickLower, tickUpper, salt, variant);
         vm.stopBroadcast();
 
         console2.log("NeutrinoSource clone:", address(clone));
