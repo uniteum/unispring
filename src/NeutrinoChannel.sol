@@ -72,30 +72,32 @@ contract NeutrinoChannel is Prototype {
     }
 
     /**
-     * @notice Predict the deterministic address of a clone for a sender and tick range.
+     * @notice Predict the deterministic address of a clone for a sender, tick range, and variant.
      * @param  sender    The address that will call {make}.
      * @param  tickLower Lower tick.
      * @param  tickUpper Upper tick.
+     * @param  variant   Salt variant (free for vanity grinding).
      * @return exists True if the clone is already deployed.
      * @return home   The deterministic clone address.
      * @return salt   The CREATE2 salt.
      */
-    function made(address sender, int24 tickLower, int24 tickUpper)
+    function made(address sender, int24 tickLower, int24 tickUpper, uint256 variant)
         external
         view
         returns (bool exists, address home, bytes32 salt)
     {
-        (exists, home, salt) = this.made(encode(sender, tickLower, tickUpper), 0);
+        (exists, home, salt) = this.made(encode(sender, tickLower, tickUpper), variant);
     }
 
     /**
-     * @notice Deploy a clone for the caller's tick range. Idempotent.
+     * @notice Deploy a clone for the caller's tick range and variant. Idempotent.
      * @param  tickLower Lower tick.
      * @param  tickUpper Upper tick.
+     * @param  variant   Salt variant (free for vanity grinding).
      * @return clone The deployed (or existing) clone.
      */
-    function make(int24 tickLower, int24 tickUpper) external returns (NeutrinoChannel clone) {
-        (, address home,) = this.make(encode(msg.sender, tickLower, tickUpper), 0);
+    function make(int24 tickLower, int24 tickUpper, uint256 variant) external returns (NeutrinoChannel clone) {
+        (, address home,) = this.make(encode(msg.sender, tickLower, tickUpper), variant);
         clone = NeutrinoChannel(home);
     }
 

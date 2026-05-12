@@ -117,7 +117,7 @@ contract NeutrinoSource {
         salt = keccak256(abi.encode(name, symbol, decimals, supply, tickLower, tickUpper, tokenSalt));
         home = Clones.predictDeterministicAddress(address(proto), salt, address(proto));
         exists = home.code.length > 0;
-        (, address channel,) = channelProto.made(address(proto), tickLower, tickUpper);
+        (, address channel,) = channelProto.made(address(proto), tickLower, tickUpper, 0);
         (, hubHome,) = coinage.made(channel, name, symbol, decimals, supply, tokenSalt);
     }
 
@@ -149,7 +149,7 @@ contract NeutrinoSource {
                 made(name, symbol, decimals, supply, tickLower, tickUpper, tokenSalt);
             clone = NeutrinoSource(home);
             if (!exists) {
-                NeutrinoChannel hubChannel = channelProto.make(tickLower, tickUpper);
+                NeutrinoChannel hubChannel = channelProto.make(tickLower, tickUpper, 0);
                 IERC20Metadata hubToken = hubChannel.mint(coinage, name, symbol, decimals, supply, tokenSalt);
 
                 (, address springHome,) = springProto.made(hubToken, tickLower, tickUpper);
@@ -197,7 +197,7 @@ contract NeutrinoSource {
         int24 tickLower,
         int24 tickUpper
     ) external returns (IERC20Metadata token) {
-        NeutrinoChannel channel = channelProto.make(tickLower, tickUpper);
+        NeutrinoChannel channel = channelProto.make(tickLower, tickUpper, 0);
         token = channel.mint(coinage, name, symbol, decimals, supply, salt);
         token.approve(address(spring), supply);
         spring.offer(Currency.wrap(address(token)), supply, tickLower, tickUpper);
