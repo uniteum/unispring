@@ -112,17 +112,7 @@ contract Notable is Prototype, INotableMaker, INotable {
     // ---- Bitsy factory: issues ----
 
     /**
-     * @notice Predict the deterministic address of an issue minted by the
-     *         clone for `(original_, symbol_)` with `name_`. Works whether
-     *         or not the clone is already deployed.
-     * @param  original_ The reference token, accepted under the same rules
-     *                   as {make} / {made}: `address(0)` is native ETH;
-     *                   an {IAddressLookup} resolves through `value()`;
-     *                   any other address is the token itself.
-     * @param  symbol_   Shared symbol every issue of the clone carries.
-     * @param  name_     Per-issue name.
-     * @return exists    True if the issue token is already deployed.
-     * @return home      The deterministic issue address.
+     * @inheritdoc INotable
      */
     function issued(address original_, string calldata symbol_, string calldata name_)
         public
@@ -135,29 +125,14 @@ contract Notable is Prototype, INotableMaker, INotable {
     }
 
     /**
-     * @notice Predict the deterministic issue address for `name_` under
-     *         this instance's stored `(original, symbol)`. Convenience
-     *         wrapper for callers that already hold the clone (or proto):
-     *         the maker for {coinage}'s CREATE2 is `address(this)`, so no
-     *         salt rederivation is needed.
+     * @inheritdoc INotable
      */
     function issued(string calldata name_) external view override returns (bool exists, address home) {
         return _issued(address(this), original, symbol, name_);
     }
 
     /**
-     * @notice Mint a fresh issue ERC-20 with `name_`, this instance's
-     *         stored `symbol`, and decimals + supply derived from
-     *         `original`, and seat its entire supply as a single-tick
-     *         segment in {placer}. Idempotent — returns the existing
-     *         token if an issue with `name_` was already minted by this
-     *         instance. Callable on the prototype (mints under the
-     *         proto pair `(native ETH, "1xETH")`) or on any clone
-     *         (mints under that clone's pair).
-     * @param  name_  Per-issue name. Must vary across calls to mint
-     *                distinct issues under this instance's `(original,
-     *                symbol)`.
-     * @return token  The minted (or existing) issue ERC-20.
+     * @inheritdoc INotable
      */
     function issue(string calldata name_) external override returns (IERC20Metadata token) {
         (bool exists, address home) = _issued(address(this), original, symbol, name_);
@@ -248,26 +223,7 @@ contract Notable is Prototype, INotableMaker, INotable {
     }
 
     /**
-     * @notice Predict the deterministic address of a clone for `(original_,
-     *         symbol_)`. For the proto pair `(native ETH, "1x<native>")` this
-     *         returns `(true, proto, bytes32(0))` — the proto itself serves
-     *         as the canonical factory and no separate clone exists.
-     * @param  original_ The reference token. `address(0)` selects native
-     *                   ETH; an {IAddressLookup} resolves to its `value()`
-     *                   address (the chain-local token); any other address
-     *                   is treated as the token directly. The salt is
-     *                   computed from this raw input, so passing the same
-     *                   {IAddressLookup} on different chains yields the
-     *                   same deterministic clone address even when the
-     *                   resolved token differs.
-     * @param  symbol_   The shared symbol every issue minted by the clone
-     *                   would carry.
-     * @return exists    True if the clone is already deployed (always true
-     *                   for the proto pair).
-     * @return home      The deterministic clone address (or `proto` for the
-     *                   proto pair).
-     * @return salt      The CREATE2 salt (`bytes32(0)` for the proto pair,
-     *                   which never uses CREATE2).
+     * @inheritdoc INotableMaker
      */
     function made(address original_, string calldata symbol_)
         public
@@ -282,23 +238,7 @@ contract Notable is Prototype, INotableMaker, INotable {
     }
 
     /**
-     * @notice Deploy a deterministic Notable clone for `(original_,
-     *         symbol_)`. Idempotent — returns the existing clone if
-     *         already deployed. For the proto pair
-     *         `(native ETH, "1x<native>")` this returns `proto` directly
-     *         (no clone is deployed; the proto IS the factory for that
-     *         pair). The clone issues tokens via {issue}.
-     * @param  original_ The reference token to peg against. `address(0)`
-     *                   selects native ETH (issues minted with 18 decimals);
-     *                   an {IAddressLookup} resolves to its `value()` address
-     *                   (the chain-local token); any other address is treated
-     *                   as the token directly. The salt is computed from
-     *                   this raw input, so the same {IAddressLookup} yields
-     *                   the same clone address across chains.
-     * @param  symbol_   Shared symbol every issue minted by this clone
-     *                   will carry.
-     * @return clone     The deployed (or existing) clone, or `proto`
-     *                   itself for the proto pair.
+     * @inheritdoc INotableMaker
      */
     function make(address original_, string calldata symbol_) external override returns (address clone) {
         address resolved = _resolve(original_);
@@ -327,12 +267,6 @@ contract Notable is Prototype, INotableMaker, INotable {
         original = resolved;
         symbol = symbol_;
     }
-
-    /**
-     * @notice Thrown by {zzInit} when a clone deployment would duplicate
-     *         the prototype's own `(native ETH, proto.symbol())` pair.
-     */
-    error ProtoPairReserved();
 
     /**
      * @dev True when `(original_, symbol_)` is the prototype's own pair
