@@ -226,9 +226,9 @@ contract Reflector is Prototype, IReflectorMaker, IReflector {
      */
     function zzInit(bytes calldata args, uint256) external override onlyProto {
         (address peg_, string memory symbol_) = abi.decode(args, (address, string));
-        address resolved = _resolve(peg_);
-        if (_isProtoPair(resolved, symbol_)) revert ProtoPairReserved();
-        peg = resolved;
+        peg_ = _resolve(peg_);
+        if (_isProtoPair(peg_, symbol_)) revert ProtoPairReserved();
+        peg = peg_;
         symbol = symbol_;
     }
 
