@@ -162,15 +162,10 @@ contract Reflector is Prototype, IReflectorMaker, IReflector {
     }
 
     /**
-     * @dev Resolve the decimals and supply used to mint an issue of
-     *      `peg_`. ERC-20 pegs contribute their decimals 1:1
-     *      and a decimals-adjusted supply: {maxSupply} when decimals are
-     *      18 or more, reduced by a factor of 10 per decimal below 18 —
-     *      sized to stay below `maxLiquidityPerTick` when the issue is
-     *      seated single-sided in a one-tick range. Native ETH
-     *      (`address(0)`) has no on-chain metadata, so the issue uses 18
-     *      decimals (the conventional human-unit semantics) and
-     *      {maxSupply}.
+     * @dev Decimals and supply to mint against `peg_`. Native ETH: 18
+     *      and {maxSupply}. ERC-20: peg's decimals, and {maxSupply}
+     *      scaled down by 10 per decimal under 18 — kept below
+     *      `maxLiquidityPerTick` for a single-sided one-tick seat.
      */
     function _issueMetadata(address peg_) private view returns (uint8 decimals, uint256 supply) {
         if (peg_ == address(0)) return (18, maxSupply);
