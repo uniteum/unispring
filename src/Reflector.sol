@@ -146,13 +146,15 @@ contract Reflector is Prototype, IReflectorMaker, IReflector {
      * @dev Resolve `peg_` into the underlying token address.
      *      `address(0)` is native ETH; an {IAddressLookup} resolves to
      *      its `value()`; any other address is treated as the token
-     *      itself. A `value()` that returns `address(0)` resolves to
-     *      native ETH.
+     *      itself. Reverts with {UnmappedLookup} when an
+     *      {IAddressLookup}'s `value()` returns `address(0)`, i.e. the
+     *      underlying token is not deployed on the current chain.
      */
     function _resolve(address peg_) private view returns (address) {
         if (peg_ == address(0)) return address(0);
         if (peg_.code.length == 0) return peg_;
         try IAddressLookup(peg_).value() returns (address resolved) {
+            if (resolved == address(0)) revert UnmappedLookup(peg_);
             return resolved;
         } catch {
             return peg_;
@@ -206,13 +208,13 @@ contract Reflector is Prototype, IReflectorMaker, IReflector {
      * @inheritdoc IReflectorMaker
      */
     function make(address peg_, string calldata symbol_) external returns (address clone) {
-        peg_ = _resolve(peg_);
-        if (_isProtoPair(peg_, symbol_)) {
+        address resolved = _resolve(peg_);
+        if (_isProtoPair(resolved, symbol_)) {
             clone = proto;
         } else {
             (bool exists, address home,) = this.make(encode(peg_, symbol_), 0);
             clone = home;
-            if (!exists) emit Make(home, peg_, symbol_);
+            if (!exists) emit Make(home, resolved, symbol_);
         }
     }
 

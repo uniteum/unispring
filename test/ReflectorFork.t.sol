@@ -32,6 +32,24 @@ contract NativeSymbolStub is IStringLookup {
 }
 
 /**
+ * @notice Fixed-address IAddressLookup for fork tests — returns the
+ *         address configured at construction. Used to exercise the
+ *         lookup-peg paths in Reflector without depending on a chain's
+ *         specific deployed lookup contract.
+ */
+contract AddressLookupStub is IAddressLookup {
+    address private immutable VALUE;
+
+    constructor(address v) {
+        VALUE = v;
+    }
+
+    function value() external view returns (address) {
+        return VALUE;
+    }
+}
+
+/**
  * @notice Minimal V4Quoter interface — single-hop exact-input entrypoint.
  */
 interface IV4Quoter {
@@ -105,6 +123,94 @@ contract ReflectorForkTest is ForkBase {
         (bool issueExistsAfter,) = clone.issued(symbol);
         assertTrue(cloneExistsAfter, "clone not registered as existing after make");
         assertTrue(issueExistsAfter, "issue not registered as existing after issue()");
+    }
+
+    /**
+     * @notice A lookup peg must round-trip through made() ↔ make(): the
+     *         clone is keyed on the lookup's own address (per the
+     *         {IReflectorMaker.made} docs — "salt is computed from this
+     *         raw input"), so both views must agree on the predicted
+     *         address before and after deployment. The clone's stored
+     *         {peg} resolves to the lookup's underlying token, since the
+     *         clone itself uses the resolved address for issue logic.
+     */
+    function test_MadeMatchesMakeWithLookupPeg() public {
+        AddressLookupStub lookup = new AddressLookupStub(USDC);
+        string memory symbol = "USDCx1";
+
+        (bool cloneExistsBefore, address predictedClone,) = reflector.made(address(lookup), symbol);
+        assertFalse(cloneExistsBefore, "fresh Reflector cannot have a pre-existing lookup-peg clone");
+        assertTrue(predictedClone != address(0), "predicted clone is zero");
+
+        Reflector clone = Reflector(reflector.make(address(lookup), symbol));
+        assertEq(address(clone), predictedClone, "deployed clone differs from made() prediction");
+
+        (bool cloneExistsAfter, address homeAfter,) = reflector.made(address(lookup), symbol);
+        assertTrue(cloneExistsAfter, "made() must see the clone after make()");
+        assertEq(homeAfter, address(clone), "made() post-deploy must report the deployed home");
+
+        assertEq(clone.peg(), USDC, "clone.peg() must store the resolved underlying token");
+        assertEq(clone.symbol(), symbol, "clone.symbol must round-trip");
+    }
+
+    /**
+     * @notice A lookup peg and the resolved token reached directly must
+     *         produce DISTINCT clones — `made`/`make` salt on the raw
+     *         peg input (lookup address vs token address), even though
+     *         both clones end up with the same stored {peg}. Cross-chain
+     *         determinism for the lookup case depends on this: the
+     *         lookup-keyed clone has the same address on every chain,
+     *         while the direct-keyed clone necessarily varies with the
+     *         chain-local token address.
+     */
+    function test_LookupAndDirectYieldDistinctClones() public {
+        AddressLookupStub lookup = new AddressLookupStub(USDC);
+        string memory symbol = "USDCx1";
+
+        address viaLookup = reflector.make(address(lookup), symbol);
+        address viaDirect = reflector.make(USDC, symbol);
+
+        assertTrue(viaLookup != viaDirect, "lookup-peg and direct-peg must produce distinct clones");
+        assertEq(Reflector(viaLookup).peg(), USDC, "lookup-clone stored peg must be resolved USDC");
+        assertEq(Reflector(viaDirect).peg(), USDC, "direct-clone stored peg must be USDC");
+    }
+
+    /**
+     * @notice An IAddressLookup whose `value()` returns `address(0)`
+     *         signals "this token is not deployed on the current
+     *         chain" — calling {make} through such a lookup must
+     *         revert rather than silently fall back to a native-ETH
+     *         peg (which would shadow real native-ETH clones).
+     */
+    function test_UnmappedLookupRevertsMake() public {
+        AddressLookupStub lookup = new AddressLookupStub(address(0));
+        vm.expectRevert();
+        reflector.make(address(lookup), "USDCx1");
+    }
+
+    /**
+     * @notice {made} must revert under the same unmapped-lookup
+     *         condition as {make} so the read and write views stay
+     *         symmetric — a caller cannot get a usable prediction for
+     *         a peg that {make} would refuse to deploy.
+     */
+    function test_UnmappedLookupRevertsMade() public {
+        AddressLookupStub lookup = new AddressLookupStub(address(0));
+        vm.expectRevert();
+        reflector.made(address(lookup), "USDCx1");
+    }
+
+    /**
+     * @notice An unmapped lookup must revert even when the symbol
+     *         matches the proto's own symbol: the caller's intent is
+     *         the lookup's underlying token, not native ETH, so
+     *         falling through to `proto` would silently substitute
+     *         the wrong asset.
+     */
+    function test_UnmappedLookupRevertsForProtoSymbol() public {
+        AddressLookupStub lookup = new AddressLookupStub(address(0));
+        vm.expectRevert();
+        reflector.make(address(lookup), "1xETH");
     }
 
     function test_MakeUSDC() public {
