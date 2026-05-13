@@ -134,15 +134,16 @@ contract Reflector is Prototype, IReflectorMaker, IReflector {
     /**
      * @inheritdoc IReflector
      */
-    function issue(string calldata name_) external override returns (IERC20Metadata token) {
+    function issue(string calldata name_) external override returns (address token) {
         (bool exists, address home) = _issued(address(this), original, symbol, name_);
-        if (exists) return IERC20Metadata(home);
+        if (exists) return home;
 
         (uint8 decimals, uint256 supply) = _issueMetadata(original);
-        token = coinage.make(name_, symbol, decimals, supply, 0);
+        IERC20Metadata issued_ = coinage.make(name_, symbol, decimals, supply, 0);
+        token = address(issued_);
 
         // forge-lint: disable-next-line(erc20-unchecked-transfer)
-        token.approve(address(placer), supply);
+        issued_.approve(address(placer), supply);
 
         int24[] memory ticks = new int24[](2);
         ticks[0] = 0;
@@ -150,7 +151,7 @@ contract Reflector is Prototype, IReflectorMaker, IReflector {
         uint256[] memory amounts = new uint256[](1);
         amounts[0] = supply;
 
-        placer.offer(address(token), original, ticks, amounts);
+        placer.offer(token, original, ticks, amounts);
 
         emit Issue(address(this), token, name_);
     }

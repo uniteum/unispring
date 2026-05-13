@@ -147,7 +147,7 @@ contract ReflectorForkTest is ForkBase {
         (bool issueExistsBefore, address predictedIssue) = reflector.issued(native, "1xETH", "alpha");
         assertFalse(issueExistsBefore, "fresh proto cannot have pre-existing issues");
 
-        IERC20Metadata token = reflector.issue("alpha");
+        IERC20Metadata token = IERC20Metadata(reflector.issue("alpha"));
         assertEq(address(token), predictedIssue, "minted issue differs from prediction");
         assertEq(token.symbol(), "1xETH", "minted symbol must round-trip");
         assertEq(token.decimals(), uint8(18), "native issue must have 18 decimals");
@@ -454,7 +454,7 @@ contract ReflectorForkTest is ForkBase {
         clone.issue(symbol);
 
         // Re-mint under a different name yields a different issue and PoolKey, succeeds.
-        IERC20Metadata escapedIssue = clone.issue("FFx1-escape");
+        IERC20Metadata escapedIssue = IERC20Metadata(clone.issue("FFx1-escape"));
         assertTrue(address(escapedIssue) != address(0), "rescue issue under new name failed");
     }
 
@@ -468,7 +468,7 @@ contract ReflectorForkTest is ForkBase {
         returns (Reflector clone, IERC20Metadata token)
     {
         clone = Reflector(reflector.make(original, symbol));
-        token = clone.issue(symbol);
+        token = IERC20Metadata(clone.issue(symbol));
     }
 
     /**
