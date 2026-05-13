@@ -97,14 +97,14 @@ contract Reflector is Prototype, IReflectorMaker, IReflector {
     /**
      * @inheritdoc IReflector
      */
-    function issued(string calldata name_) external view override returns (bool exists, address home) {
+    function issued(string calldata name_) external view returns (bool exists, address home) {
         return _issued(peg, symbol, name_);
     }
 
     /**
      * @inheritdoc IReflector
      */
-    function issue(string calldata name_) external override returns (address token) {
+    function issue(string calldata name_) external returns (address token) {
         address peg_ = peg;
         (bool exists, address home) = _issued(peg_, symbol, name_);
         if (exists) return home;
@@ -224,8 +224,7 @@ contract Reflector is Prototype, IReflectorMaker, IReflector {
      *      remains the sole canonical factory for `(native ETH, proto.symbol())`
      *      even when callers bypass the typed wrappers.
      */
-    function zzInit(bytes calldata args, uint256 variant) public override {
-        super.zzInit(args, variant);
+    function zzInit(bytes calldata args, uint256) external override onlyProto {
         (address peg_, string memory symbol_) = abi.decode(args, (address, string));
         address resolved = _resolve(peg_);
         if (_isProtoPair(resolved, symbol_)) revert ProtoPairReserved();

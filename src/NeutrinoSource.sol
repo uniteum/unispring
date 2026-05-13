@@ -225,8 +225,7 @@ contract NeutrinoSource is Prototype {
      *      inherited {Prototype.make}, so all predicted addresses already
      *      exist by the time this runs.
      */
-    function zzInit(bytes calldata args, uint256 variant) public override {
-        super.zzInit(args, variant);
+    function zzInit(bytes calldata args, uint256) external override onlyProto {
         (
             string memory name,
             string memory symbol,

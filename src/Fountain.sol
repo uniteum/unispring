@@ -516,8 +516,7 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
      * @inheritdoc IPrototype
      * @dev Decodes `(owner)` and assigns it as the clone's {Ownable} owner.
      */
-    function zzInit(bytes calldata args, uint256 variant) public override {
-        super.zzInit(args, variant);
+    function zzInit(bytes calldata args, uint256) external override onlyProto {
         (address owner) = abi.decode(args, (address));
         _transferOwnership(owner);
     }

@@ -106,8 +106,7 @@ contract NeutrinoChannel is Prototype {
      * @dev Decodes `(sender, tickLower, tickUpper)` and assigns `sender` to {source}.
      *      The ticks shape the salt but are not stored.
      */
-    function zzInit(bytes calldata args, uint256 variant) public override {
-        super.zzInit(args, variant);
+    function zzInit(bytes calldata args, uint256) external override onlyProto {
         (address sender,,) = abi.decode(args, (address, int24, int24));
         source = sender;
     }
