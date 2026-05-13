@@ -197,7 +197,11 @@ contract Reflector is Prototype, IReflectorMaker, IReflector {
     /**
      * @inheritdoc IReflectorMaker
      */
-    function made(address peg_, string calldata symbol_) public view returns (bool exists, address home, bytes32 salt) {
+    function made(address peg_, string calldata symbol_)
+        external
+        view
+        returns (bool exists, address home, bytes32 salt)
+    {
         if (_isProtoPair(_resolve(peg_), symbol_)) {
             return (true, proto, bytes32(0));
         }
