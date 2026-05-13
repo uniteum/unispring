@@ -1,4 +1,5 @@
 - [Native-ETH spoke collides with hub pool](canon_native_eth_spoke_collision.md) — ETH-as-spoke against an ERC-20 hub seats into the hub's own ETH pool, so it only works when `tickLower == HUB_TICK_UPPER`
+- [try/catch doesn't catch EXTCODESIZE](canon/try_catch_extcodesize.md) — Solidity typed external calls revert *outside* the try frame on no-code targets; guard `address(0)` / EOAs explicitly
 - [V4 protocol fee currently zero, capped at 0.1%](canon_v4_protocol_fee.md) — V4 charges no protocol fee today; controller can set up to 1000 pips (0.1%) per swap direction
 - [Don't reference sibling contracts](feedback_no_sibling_references.md) — NatSpec shouldn't name other contracts unless this one imports/depends on them; lower-level pieces especially shouldn't name their callers
 - [Don't stage files](feedback_no_staging.md) — never `git add`/`git mv`/`git rm`; use plain `mv`/`rm` so the user can commit everything together
