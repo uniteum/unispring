@@ -52,7 +52,7 @@ contract Reflector is Prototype, IReflectorMaker, IReflector {
     uint128 public constant maxSupply = 10 ** 27;
 
     /**
-     * @notice The placer that seats each issue's single-tick position.
+     * @notice Places each issue's supply in a pool for sale at a single price.
      */
     IPlacer public immutable placer;
 
