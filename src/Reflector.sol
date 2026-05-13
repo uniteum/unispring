@@ -206,13 +206,13 @@ contract Reflector is Prototype, IReflectorMaker, IReflector {
      * @inheritdoc IReflectorMaker
      */
     function make(address peg_, string calldata symbol_) external returns (address clone) {
-        address resolved = _resolve(peg_);
-        if (_isProtoPair(resolved, symbol_)) {
+        peg_ = _resolve(peg_);
+        if (_isProtoPair(peg_, symbol_)) {
             clone = proto;
         } else {
             (bool exists, address home,) = this.make(encode(peg_, symbol_), 0);
             clone = home;
-            if (!exists) emit Make(home, resolved, symbol_);
+            if (!exists) emit Make(home, peg_, symbol_);
         }
     }
 
