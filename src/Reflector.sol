@@ -29,19 +29,16 @@ import {Prototype} from "proto/Prototype.sol";
  *         separate clone is deployed for that pair).
  * @dev    The issued token carries the peg's decimals (18 for native
  *         ETH) so the raw price of 1 at tick 0 corresponds to a 1:1
- *         human-unit peg. Each position uses {Fountain.fee} (0.01%),
- *         {tickSpacing} = 1, and no hook. The user-semantic range is
- *         `[0, 1)`; Fountain flips and negates into V4-native ticks
- *         internally when the issue sorts above the peg, so both
- *         orderings seat only the issue at genesis with tick 0 at the
- *         edge of the V4 range.
+ *         human-unit peg. The user-semantic price range is `[0, 1)`;
+ *         {placer} is responsible for seating the full supply
+ *         single-sided in the issued token regardless of how
+ *         `(token, peg)` sorts on-chain.
  * @dev    A clone's deterministic address derives from `(peg,
  *         symbol)`, so `(USDC, "USDCx1")` and `(DAI, "USDCx1")` are
  *         distinct clones. Within a clone, each issue's deterministic
  *         address derives from `(clone, name, symbol, decimals, supply)`,
  *         so `clone.issue("alpha")` and `clone.issue("beta")` are
- *         distinct tokens. All fee machinery — {Fountain.take},
- *         {Fountain.untaken}, {Fountain.owner} — lives on Fountain.
+ *         distinct tokens.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
 contract Reflector is Prototype, IReflectorMaker, IReflector {
@@ -61,8 +58,7 @@ contract Reflector is Prototype, IReflectorMaker, IReflector {
     uint128 public constant maxSupply = 10 ** 27;
 
     /**
-     * @notice The Fountain that holds each issue's single-tick position
-     *         and routes its swap fees to {Fountain.owner}.
+     * @notice The placer that seats each issue's single-tick position.
      */
     IPlacer public immutable placer;
 
@@ -88,7 +84,7 @@ contract Reflector is Prototype, IReflectorMaker, IReflector {
      *         the storage-default native ETH and its `symbol` is
      *         `string.concat("1x", gasSymbolLookup.value())`
      *         resolved from the chain-local lookup at construction.
-     * @param  fountain           The Fountain that will seat every issue
+     * @param  placer_            The placer that will seat every issue
      *                            position funded through this Reflector.
      * @param  minter             The Coinage prototype used to mint issues.
      * @param  gasSymbolLookup Chain-local {IStringLookup} whose `value()`
@@ -97,8 +93,8 @@ contract Reflector is Prototype, IReflectorMaker, IReflector {
      *                            as the suffix for the prototype's issue
      *                            symbol `"1x<native>"`.
      */
-    constructor(IPlacer fountain, ICoinage minter, IStringLookup gasSymbolLookup) {
-        placer = fountain;
+    constructor(IPlacer placer_, ICoinage minter, IStringLookup gasSymbolLookup) {
+        placer = placer_;
         coinage = minter;
         symbol = string.concat("1x", gasSymbolLookup.value());
         emit Make(address(this), address(0), symbol);
