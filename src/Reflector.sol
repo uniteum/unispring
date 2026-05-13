@@ -13,32 +13,18 @@ import {Prototype} from "proto/Prototype.sol";
 
 /**
  * @title Reflector
- * @notice Two-level Bitsy factory. The prototype mints clones keyed by
- *         `(peg, symbol)`; each clone is itself a token factory
- *         that issues ERC-20s — one per `name`, all sharing the
- *         clone's `(peg, symbol)`. Each issued token is pegged 1:1
- *         against the clone's peg (ERC-20 or native ETH) and has
- *         its entire supply seated as a single-tick segment in {placer}.
- * @notice The prototype is itself the canonical factory for the
- *         pair `(native ETH, "1x<native>")`, where `<native>` is the
- *         native currency symbol resolved from a chain-local
- *         {IStringLookup} at construction (e.g. "1xETH" on mainnet,
- *         "1xMATIC" on Polygon). `proto.issue(name)` mints the pegged
- *         ERC-20 directly from the prototype, and
- *         `make(address(0), proto.symbol())` returns `proto` (no
- *         separate clone is deployed for that pair).
- * @dev    The issued token carries the peg's decimals (18 for native
- *         ETH) so the raw price of 1 at tick 0 corresponds to a 1:1
- *         human-unit peg. The user-semantic price range is `[0, 1)`;
- *         {placer} is responsible for seating the full supply
- *         single-sided in the issued token regardless of how
- *         `(token, peg)` sorts on-chain.
- * @dev    A clone's deterministic address derives from `(peg,
- *         symbol)`, so `(USDC, "USDCx1")` and `(DAI, "USDCx1")` are
- *         distinct clones. Within a clone, each issue's deterministic
- *         address derives from `(clone, name, symbol, decimals, supply)`,
- *         so `clone.issue("alpha")` and `clone.issue("beta")` are
- *         distinct tokens.
+ * @notice Factory for pegged ERC-20s. Each issued token is backed
+ *         1:1 by a reference asset (native ETH or any ERC-20) — the
+ *         full supply is locked into a tiny single-tick V4 pool at
+ *         price 1, so a buyer pays one peg unit to mint one issued
+ *         unit and a seller does the reverse. Reflector is what
+ *         mints "1xETH"-style wrappers.
+ * @dev    Two-level factory. The prototype mints clones keyed by
+ *         `(peg, symbol)`; each clone mints ERC-20s keyed by `name`.
+ *         The prototype itself doubles as the clone for the
+ *         native-ETH pair — its symbol is `"1x<native>"` resolved
+ *         at construction from a chain-local symbol lookup
+ *         ("1xETH" on mainnet, "1xMATIC" on Polygon).
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
 contract Reflector is Prototype, IReflectorMaker, IReflector {

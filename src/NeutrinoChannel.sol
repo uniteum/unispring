@@ -8,14 +8,14 @@ import {Prototype} from "proto/Prototype.sol";
 
 /**
  * @title NeutrinoChannel
- * @notice Lightweight relay cloned per tick range so that each (tickLower,
- *         tickUpper) pair produces a distinct Coinage deployer address — and
- *         therefore a distinct minted-token address — without consuming the
- *         minter salt. The minted tokens are neutrinos — fair-launched
- *         (neutral) leptons.
- * @dev    Pure factory. Once {mint} returns, this contract has no further
- *         authority over the minted token — all post-mint behavior is
- *         governed by the lepton ERC-20 implementation. See README §Trust
+ * @notice Per-tick-range mint relay used by NeutrinoSource. A clone
+ *         is deployed per `(tickLower, tickUpper)` and acts as the
+ *         deployer that calls Coinage's mint; distinct deployers
+ *         give distinct minted-token addresses, so each tick range
+ *         produces a different token address without consuming
+ *         Coinage's salt slot.
+ * @dev    Pure factory. After {mint} returns, this contract has no
+ *         authority over the minted token. See README §Trust
  *         boundaries.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */

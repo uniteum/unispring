@@ -9,30 +9,19 @@ import {Currency} from "v4-core/types/Currency.sol";
 
 /**
  * @title Manifold
- * @notice Clone-per-hub factory that seats fair-launch pools on {placer}.
- *         Each clone owns a single hub token and pairs it against spokes
- *         supplied by callers. The hub's own ETH pool is seated single-sided
- *         by {zzInit}; spoke pools are seated single-sided by {offer}.
- * @dev    All V4 plumbing — unlock, modifyLiquidity, liquidity math, fee
- *         take — lives on {placer}. Manifold only mints/tracks
- *         the clone-per-hub key, pre-approves {placer} against pulled
- *         tokens, and delegates to {IPlacer.offer}. Pools inherit
- *         {Fountain.fee} (0.01%) and accrued fees flow to Fountain's owner.
- * @dev    Ticks: callers pass V4-native `(tickLower, tickUpper)` in the
- *         log_1.0001(currency1/currency0) convention. For the hub pool the
- *         hub sorts above ETH (currency1), so Manifold translates into
- *         Fountain's log(quote/token) user-tick semantics by negating and
- *         swapping; spoke pools (spoke sorts below hub as currency0) pass
- *         through identity. Either way, the V4 position is seated at
- *         `[tickLower, tickUpper]` in V4-native terms. (V4's active-
- *         liquidity check uses the half-open convention
- *         `tickLower <= currentTick < tickUpper`; its token-composition
- *         check is closed on both ends. See README §Token ordering.)
- * @dev    Pure factory. Once {offer} settles, the position is permanent and
- *         this contract has no authority to unwind it or modify the pool —
- *         no owner, no upgrade path, no admin keys. All post-launch swap
- *         behavior belongs to the Uniswap V4 PoolManager and whatever DEX
- *         routers reach the pool. See README §Trust boundaries.
+ * @notice Launches a hub token together with any number of spokes,
+ *         each in its own permanent single-sided pool. The hub
+ *         launches paired against ETH; spokes launch paired against
+ *         the hub. Liquidity is locked in {placer} (a Fountain);
+ *         only swap fees can be claimed, forwarded to Fountain's
+ *         owner.
+ * @dev    One Manifold clone per hub. The hub's ETH pool is funded
+ *         by {zzInit} at clone creation; spoke pools are funded by
+ *         later {offer} calls. Manifold itself only tracks the hub
+ *         and forwards calls — all V4 plumbing lives on {placer}.
+ * @dev    Pure factory. After {offer} settles, Manifold has no
+ *         authority over the pool — no owner, no upgrade path, no
+ *         admin keys. See README §Trust boundaries.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
 contract Manifold {
