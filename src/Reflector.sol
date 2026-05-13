@@ -97,21 +97,8 @@ contract Reflector is Prototype, IReflectorMaker, IReflector {
     /**
      * @inheritdoc IReflector
      */
-    function issued(address peg_, string calldata symbol_, string calldata name_)
-        public
-        view
-        override
-        returns (bool exists, address home)
-    {
-        (, address maker,) = made(peg_, symbol_);
-        return _issued(maker, _resolve(peg_), symbol_, name_);
-    }
-
-    /**
-     * @inheritdoc IReflector
-     */
     function issued(string calldata name_) external view override returns (bool exists, address home) {
-        return _issued(address(this), peg, symbol, name_);
+        return _issued(peg, symbol, name_);
     }
 
     /**
@@ -119,7 +106,7 @@ contract Reflector is Prototype, IReflectorMaker, IReflector {
      */
     function issue(string calldata name_) external override returns (address token) {
         address peg_ = peg;
-        (bool exists, address home) = _issued(address(this), peg_, symbol, name_);
+        (bool exists, address home) = _issued(peg_, symbol, name_);
         if (exists) return home;
 
         (uint8 decimals, uint256 supply) = _issueMetadata(peg_);
@@ -142,20 +129,17 @@ contract Reflector is Prototype, IReflectorMaker, IReflector {
     }
 
     /**
-     * @dev Ask {coinage} for the deterministic issue address `maker` would
-     *      produce for `(name_, symbol_)` with metadata derived from
-     *      `peg_`. Callers from this instance (action {issue} and
-     *      convenience {issued}) pass `address(this)`; the public
-     *      {issued} overload computes `maker` from the salted clone
-     *      prediction since no clone instance is in scope yet.
+     * @dev Ask {coinage} for the deterministic issue address this
+     *      instance would produce for `(name_, symbol_)` with metadata
+     *      derived from `peg_`.
      */
-    function _issued(address maker, address peg_, string memory symbol_, string memory name_)
+    function _issued(address peg_, string memory symbol_, string memory name_)
         private
         view
         returns (bool exists, address home)
     {
         (uint8 decimals, uint256 supply) = _issueMetadata(peg_);
-        (exists, home,) = coinage.made(maker, name_, symbol_, decimals, supply, 0);
+        (exists, home,) = coinage.made(address(this), name_, symbol_, decimals, supply, 0);
     }
 
     /**

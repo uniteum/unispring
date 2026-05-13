@@ -88,18 +88,21 @@ contract ReflectorForkTest is ForkBase {
         string memory symbol = "USDCx1";
 
         (bool cloneExistsBefore, address predictedClone,) = reflector.made(peg, symbol);
-        (bool issueExistsBefore, address predictedIssue) = reflector.issued(peg, symbol, symbol);
         assertFalse(cloneExistsBefore, "fresh Reflector cannot have pre-existing clones");
-        assertFalse(issueExistsBefore, "fresh Reflector cannot have pre-existing issues");
         assertTrue(predictedClone != address(0), "predicted clone is zero");
+
+        Reflector clone = Reflector(reflector.make(peg, symbol));
+        assertEq(address(clone), predictedClone, "deployed clone differs from prediction");
+
+        (bool issueExistsBefore, address predictedIssue) = clone.issued(symbol);
+        assertFalse(issueExistsBefore, "fresh clone cannot have pre-existing issues");
         assertTrue(predictedIssue != address(0), "predicted issue is zero");
 
-        (Reflector clone, IERC20Metadata issue) = _makeAndIssue(peg, symbol);
-        assertEq(address(clone), predictedClone, "deployed clone differs from prediction");
+        IERC20Metadata issue = IERC20Metadata(clone.issue(symbol));
         assertEq(address(issue), predictedIssue, "minted issue differs from prediction");
 
         (bool cloneExistsAfter,,) = reflector.made(peg, symbol);
-        (bool issueExistsAfter,) = reflector.issued(peg, symbol, symbol);
+        (bool issueExistsAfter,) = clone.issued(symbol);
         assertTrue(cloneExistsAfter, "clone not registered as existing after make");
         assertTrue(issueExistsAfter, "issue not registered as existing after issue()");
     }
@@ -144,7 +147,7 @@ contract ReflectorForkTest is ForkBase {
         Reflector self = Reflector(reflector.make(native, "1xETH"));
         assertEq(address(self), address(reflector), "make on proto pair must return proto");
 
-        (bool issueExistsBefore, address predictedIssue) = reflector.issued(native, "1xETH", "alpha");
+        (bool issueExistsBefore, address predictedIssue) = reflector.issued("alpha");
         assertFalse(issueExistsBefore, "fresh proto cannot have pre-existing issues");
 
         IERC20Metadata token = IERC20Metadata(reflector.issue("alpha"));
@@ -402,11 +405,13 @@ contract ReflectorForkTest is ForkBase {
     function test_IssueIdempotentAtGenesisPrice() public {
         address peg = ffffff;
         string memory symbol = "FFx1";
-        (, address predictedIssue) = reflector.issued(peg, symbol, symbol);
-        PoolKey memory key = _predictedPoolKey(peg, symbol, symbol);
+
+        Reflector clone = Reflector(reflector.make(peg, symbol));
+        (, address predictedIssue) = clone.issued(symbol);
+        PoolKey memory key = _poolKey(predictedIssue, peg);
         IPoolManager(fountain.poolManager()).initialize(key, TickMath.getSqrtPriceAtTick(0));
 
-        (, IERC20Metadata issue) = _makeAndIssue(peg, symbol);
+        IERC20Metadata issue = IERC20Metadata(clone.issue(symbol));
         assertEq(address(issue), predictedIssue, "minted address != predicted");
 
         (bool exists,,) = reflector.made(peg, symbol);
@@ -424,11 +429,14 @@ contract ReflectorForkTest is ForkBase {
     function test_IssueAbsorbsPreInitBelowTicksZero() public {
         address peg = ffffff;
         string memory symbol = "FFx1";
-        PoolKey memory key = _predictedPoolKey(peg, symbol, symbol);
+
+        Reflector clone = Reflector(reflector.make(peg, symbol));
+        (, address predictedIssue) = clone.issued(symbol);
+        PoolKey memory key = _poolKey(predictedIssue, peg);
         uint160 preInitSqrt = TickMath.getSqrtPriceAtTick(-100);
         IPoolManager(fountain.poolManager()).initialize(key, preInitSqrt);
 
-        (, IERC20Metadata issue) = _makeAndIssue(peg, symbol);
+        IERC20Metadata issue = IERC20Metadata(clone.issue(symbol));
         assertTrue(address(issue) != address(0), "issue not minted after below-tick pre-init");
 
         (uint160 sqrt,,,) = IPoolManager(fountain.poolManager()).getSlot0(key.toId());
@@ -446,10 +454,12 @@ contract ReflectorForkTest is ForkBase {
     function test_IssueRevertsOnPreInitAboveTicksZero() public {
         address peg = ffffff;
         string memory symbol = "FFx1";
-        PoolKey memory key = _predictedPoolKey(peg, symbol, symbol);
-        IPoolManager(fountain.poolManager()).initialize(key, TickMath.getSqrtPriceAtTick(100));
 
         Reflector clone = Reflector(reflector.make(peg, symbol));
+        (, address predictedIssue) = clone.issued(symbol);
+        PoolKey memory key = _poolKey(predictedIssue, peg);
+        IPoolManager(fountain.poolManager()).initialize(key, TickMath.getSqrtPriceAtTick(100));
+
         vm.expectRevert(IPoolManager.CurrencyNotSettled.selector);
         clone.issue(symbol);
 
@@ -474,20 +484,6 @@ contract ReflectorForkTest is ForkBase {
      */
     function _poolKeyOf(Reflector clone, IERC20Metadata token) internal view returns (PoolKey memory) {
         return _poolKey(address(token), clone.peg());
-    }
-
-    /**
-     * @dev Rebuild the {PoolKey} that {issue} will compute for `(peg,
-     *      symbol, name)` using the predicted issue CREATE2 address — lets
-     *      a test pre-init the target pool before the issue is minted.
-     */
-    function _predictedPoolKey(address peg, string memory symbol, string memory name)
-        internal
-        view
-        returns (PoolKey memory)
-    {
-        (, address predictedIssue) = reflector.issued(peg, symbol, name);
-        return _poolKey(predictedIssue, peg);
     }
 
     function _poolKey(address issue, address peg) private view returns (PoolKey memory) {
