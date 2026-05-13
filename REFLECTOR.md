@@ -1,16 +1,16 @@
-# Notable
+# Reflector
 
-A **Notable issue** is an ERC-20 token whose price tracks a chosen
+A **Reflector issue** is an ERC-20 token whose price tracks a chosen
 **original** token (USDC, WBTC, USDe, …) inside a one-basis-point
 band: never below `1.0 × original`, never above `1.0001 × original`.
 The peg is held by a single permanent Uniswap V4 position holding the
 real original. No oracle, no operator, no path to unwind the backing.
 
-The factory that issues them is **Notable**.
+The factory that issues them is **Reflector**.
 
-## How Notable is laid out
+## How Reflector is laid out
 
-Notable is a two-level factory built on the prototype-and-clones
+Reflector is a two-level factory built on the prototype-and-clones
 pattern: one **prototype** contract is deployed once per chain, and
 each call to its `make` function creates a cheap [EIP-1167] minimal
 proxy clone at a deterministic [CREATE2] address. The prototype holds
@@ -19,10 +19,10 @@ all the logic; clones hold only their own configuration.
 [EIP-1167]: https://eips.ethereum.org/EIPS/eip-1167
 [CREATE2]: https://eips.ethereum.org/EIPS/eip-1014
 
-Notable stacks two of these levels:
+Reflector stacks two of these levels:
 
 1. **Clones, one per `(original, symbol)` pair.**
-   `notable.make(USDC, "USDCx1")` deploys (or returns) the clone that
+   `reflector.make(USDC, "USDCx1")` deploys (or returns) the clone that
    acts as the `USDCx1` factory. Every issue minted by this clone
    carries the symbol `USDCx1` and is pegged against USDC.
 2. **Issues, one per `name` within a clone.**
@@ -35,7 +35,7 @@ Notable stacks two of these levels:
 
 Native ETH is a special case. Because deploying a clone for the canonical
 ETH pair would be wasted gas, the **prototype itself** is the factory
-for `(native ETH, "1xETH")`. So `notable.issue("alpha")` — called
+for `(native ETH, "1xETH")`. So `reflector.issue("alpha")` — called
 directly on the prototype, with no `make` first — mints a 1xETH issue
 pegged against ETH.
 
@@ -48,7 +48,7 @@ Each `issue(name)` call is a one-shot:
    position spanning a single tick (the smallest unit Uniswap permits)
    at price 1, anchored to the floor.
 4. Locks the position permanently in a **Fountain** — the
-   liquidity backend Notable delegates to. Neither Notable nor
+   liquidity backend Reflector delegates to. Neither Reflector nor
    Fountain has any way to decrease, withdraw, or destroy the
    position. Only accrued swap fees can be collected.
 
@@ -64,7 +64,7 @@ contributes no liquidity, and a swap that would push the price off
 the end of the range simply has nothing to fill against. This is what
 **concentrated liquidity** means in V4: every position is bounded.
 
-Notable seats every issue's entire supply into one position spanning
+Reflector seats every issue's entire supply into one position spanning
 the tick range `[0, 1)` — exactly one tick wide, one bp. Because the
 pool is initialized at the lower edge (tick 0), the position starts
 holding 100% of the issue and 0% original.
@@ -126,7 +126,7 @@ or modify the pool.
 
 ## TL;DR
 
-A Notable issue is a real ERC-20 with a hard one-basis-point price
+A Reflector issue is a real ERC-20 with a hard one-basis-point price
 corridor: its price never drops below `1.0 ×` the original and never
 rises above `1.0001 ×`. The backing is real originals locked in a
 permanent V4 position that no one — including the Fountain owner —

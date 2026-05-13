@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Fountain1 — Bitsy clone of Fountain. The placer that Notable uses to
-# seat every issue-token V4 position.
+# Fountain1 — Bitsy clone of Fountain used by Uniteum.
 #
 # The Fountain prototype's make(address owner, uint256 variant) computes
 #   salt = keccak(abi.encode(owner)) ^ variant

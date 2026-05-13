@@ -2,7 +2,7 @@
 pragma solidity ^0.8.30;
 
 import {Fountain} from "../src/Fountain.sol";
-import {Notable} from "../src/Notable.sol";
+import {Reflector} from "../src/Reflector.sol";
 import {ForkBase} from "./ForkBase.t.sol";
 import {Funder} from "./Funder.sol";
 import {SwapRouter} from "./SwapRouter.sol";
@@ -49,26 +49,26 @@ interface IV4Quoter {
 
 /**
  * @notice Fork test against `forknet` state. Deploys a fresh Fountain and a
- *         fresh Notable prototype against the real PoolManagerLookup
+ *         fresh Reflector prototype against the real PoolManagerLookup
  *         and Coinage factory, then exercises the two-level factory:
  *         per-(original, symbol) clones and per-name issues minted from
  *         each clone. Fee take runs through {Fountain.take} directly —
- *         Notable clones only mint the issue and seat its position;
+ *         Reflector clones only mint the issue and seat its position;
  *         everything post-launch lives on the Fountain and PoolManager.
  *
  *         Tests use the convention `name == symbol` for the single
  *         in-test mint per clone.
  *
  *         Run with:
- *           forge test --match-contract NotableForkTest -f forknet -vv
+ *           forge test --match-contract ReflectorForkTest -f forknet -vv
  *         or pin a block for reproducibility:
- *           FORK_BLOCK=458766451 forge test --match-contract NotableForkTest -f forknet -vv
+ *           FORK_BLOCK=458766451 forge test --match-contract ReflectorForkTest -f forknet -vv
  */
-contract NotableForkTest is ForkBase {
+contract ReflectorForkTest is ForkBase {
     using StateLibrary for IPoolManager;
 
     Fountain internal fountain;
-    Notable internal notable;
+    Reflector internal reflector;
     SwapRouter internal router;
     Funder internal bot;
 
@@ -79,7 +79,7 @@ contract NotableForkTest is ForkBase {
         Fountain proto = new Fountain(address(this), IAddressLookup(PoolManagerLookup));
         bot.makeFountain(proto);
         fountain = bot.fountain();
-        notable = new Notable(fountain, Coinage(ICoinage), new NativeSymbolStub());
+        reflector = new Reflector(fountain, Coinage(ICoinage), new NativeSymbolStub());
         router = new SwapRouter(IPoolManager(fountain.poolManager()));
     }
 
@@ -87,25 +87,25 @@ contract NotableForkTest is ForkBase {
         address original = USDC;
         string memory symbol = "USDCx1";
 
-        (bool cloneExistsBefore, address predictedClone,) = notable.made(original, symbol);
-        (bool issueExistsBefore, address predictedIssue) = notable.issued(original, symbol, symbol);
-        assertFalse(cloneExistsBefore, "fresh Notable cannot have pre-existing clones");
-        assertFalse(issueExistsBefore, "fresh Notable cannot have pre-existing issues");
+        (bool cloneExistsBefore, address predictedClone,) = reflector.made(original, symbol);
+        (bool issueExistsBefore, address predictedIssue) = reflector.issued(original, symbol, symbol);
+        assertFalse(cloneExistsBefore, "fresh Reflector cannot have pre-existing clones");
+        assertFalse(issueExistsBefore, "fresh Reflector cannot have pre-existing issues");
         assertTrue(predictedClone != address(0), "predicted clone is zero");
         assertTrue(predictedIssue != address(0), "predicted issue is zero");
 
-        (Notable clone, IERC20Metadata issue) = _makeAndIssue(original, symbol);
+        (Reflector clone, IERC20Metadata issue) = _makeAndIssue(original, symbol);
         assertEq(address(clone), predictedClone, "deployed clone differs from prediction");
         assertEq(address(issue), predictedIssue, "minted issue differs from prediction");
 
-        (bool cloneExistsAfter,,) = notable.made(original, symbol);
-        (bool issueExistsAfter,) = notable.issued(original, symbol, symbol);
+        (bool cloneExistsAfter,,) = reflector.made(original, symbol);
+        (bool issueExistsAfter,) = reflector.issued(original, symbol, symbol);
         assertTrue(cloneExistsAfter, "clone not registered as existing after make");
         assertTrue(issueExistsAfter, "issue not registered as existing after issue()");
     }
 
     function test_MakeUSDC() public {
-        (Notable clone, IERC20Metadata issue) = _makeAndIssue(USDC, "USDCx1");
+        (Reflector clone, IERC20Metadata issue) = _makeAndIssue(USDC, "USDCx1");
 
         assertEq(issue.decimals(), IERC20Metadata(USDC).decimals(), "decimals must match original");
         assertEq(issue.symbol(), "USDCx1", "symbol must round-trip through issue");
@@ -120,7 +120,7 @@ contract NotableForkTest is ForkBase {
 
         // Entire supply is seated in the position — neither the clone nor the prototype holds any.
         assertEq(issue.balanceOf(address(clone)), 0, "supply should be in V4, not in clone");
-        assertEq(issue.balanceOf(address(notable)), 0, "supply should be in V4, not in prototype");
+        assertEq(issue.balanceOf(address(reflector)), 0, "supply should be in V4, not in prototype");
     }
 
     /**
@@ -132,42 +132,42 @@ contract NotableForkTest is ForkBase {
      *         salt.
      */
     function test_ProtoIsETHFactory() public {
-        assertEq(notable.symbol(), "1xETH", "proto symbol");
-        assertEq(notable.original(), address(0), "proto original is native ETH");
+        assertEq(reflector.symbol(), "1xETH", "proto symbol");
+        assertEq(reflector.original(), address(0), "proto original is native ETH");
 
         address native = address(0);
-        (bool cloneExists, address cloneHome, bytes32 salt) = notable.made(native, "1xETH");
+        (bool cloneExists, address cloneHome, bytes32 salt) = reflector.made(native, "1xETH");
         assertTrue(cloneExists, "proto pair must report exists=true");
-        assertEq(cloneHome, address(notable), "proto pair must map to proto address");
+        assertEq(cloneHome, address(reflector), "proto pair must map to proto address");
         assertEq(salt, bytes32(0), "proto pair must report zero salt");
 
-        Notable self = Notable(notable.make(native, "1xETH"));
-        assertEq(address(self), address(notable), "make on proto pair must return proto");
+        Reflector self = Reflector(reflector.make(native, "1xETH"));
+        assertEq(address(self), address(reflector), "make on proto pair must return proto");
 
-        (bool issueExistsBefore, address predictedIssue) = notable.issued(native, "1xETH", "alpha");
+        (bool issueExistsBefore, address predictedIssue) = reflector.issued(native, "1xETH", "alpha");
         assertFalse(issueExistsBefore, "fresh proto cannot have pre-existing issues");
 
-        IERC20Metadata token = notable.issue("alpha");
+        IERC20Metadata token = reflector.issue("alpha");
         assertEq(address(token), predictedIssue, "minted issue differs from prediction");
         assertEq(token.symbol(), "1xETH", "minted symbol must round-trip");
         assertEq(token.decimals(), uint8(18), "native issue must have 18 decimals");
 
         // Pool initialized at tick 0 with the entire supply seated single-sided.
-        PoolKey memory key = _poolKeyOf(notable, token);
+        PoolKey memory key = _poolKeyOf(reflector, token);
         (uint160 sqrtPriceX96, int24 tick,,) = IPoolManager(fountain.poolManager()).getSlot0(key.toId());
         assertEq(tick, int24(0), "pool must initialize at tick 0");
         assertGt(sqrtPriceX96, 0, "pool not initialized");
-        assertEq(token.balanceOf(address(notable)), 0, "supply should be in V4, not in proto");
+        assertEq(token.balanceOf(address(reflector)), 0, "supply should be in V4, not in proto");
     }
 
     /**
-     * @notice Native ETH as the original: Notable falls back to 18
+     * @notice Native ETH as the original: Reflector falls back to 18
      *         decimals (no on-chain metadata to read), records the original
      *         on the clone, and seats the issue in a Fountain position
      *         whose `currency0` is `address(0)`.
      */
     function test_MakeNativeETH() public {
-        (Notable clone, IERC20Metadata issue) = _makeAndIssue(address(0), "ETHx1");
+        (Reflector clone, IERC20Metadata issue) = _makeAndIssue(address(0), "ETHx1");
 
         assertEq(issue.decimals(), uint8(18), "native issue must have 18 decimals");
         assertEq(issue.symbol(), "ETHx1", "native issue symbol must round-trip");
@@ -198,17 +198,17 @@ contract NotableForkTest is ForkBase {
         address native = address(0);
         string memory symbol = "ETHx1";
 
-        (bool existsBefore, address predictedClone,) = notable.made(native, symbol);
+        (bool existsBefore, address predictedClone,) = reflector.made(native, symbol);
         assertFalse(existsBefore, "fresh non-proto clone cannot pre-exist");
         assertTrue(predictedClone != address(0), "predicted clone is zero");
 
-        (Notable clone, IERC20Metadata token) = _makeAndIssue(native, symbol);
+        (Reflector clone, IERC20Metadata token) = _makeAndIssue(native, symbol);
         assertEq(address(clone), predictedClone, "deployed clone differs from prediction");
         assertEq(clone.original(), address(0), "clone.original is native ETH");
         assertEq(clone.symbol(), symbol, "clone.symbol must round-trip");
         assertEq(token.symbol(), symbol, "minted issue carries clone symbol");
 
-        (bool existsAfter,,) = notable.made(native, symbol);
+        (bool existsAfter,,) = reflector.made(native, symbol);
         assertTrue(existsAfter, "clone must register as existing after make");
     }
 
@@ -223,8 +223,8 @@ contract NotableForkTest is ForkBase {
         require(ffffff.code.length > 0, "ffffff lepton missing at forked block");
         require(zeros.code.length > 0, "zeros lepton missing at forked block");
 
-        (Notable hiClone, IERC20Metadata hiIssue) = _makeAndIssue(ffffff, "FFx1");
-        (Notable loClone, IERC20Metadata loIssue) = _makeAndIssue(zeros, "ZZx1");
+        (Reflector hiClone, IERC20Metadata hiIssue) = _makeAndIssue(ffffff, "FFx1");
+        (Reflector loClone, IERC20Metadata loIssue) = _makeAndIssue(zeros, "ZZx1");
 
         assertLt(uint160(address(hiIssue)), uint160(ffffff), "issue of high lepton must sort below (token0)");
         assertGt(uint160(address(loIssue)), uint160(zeros), "issue of low lepton must sort above (token1)");
@@ -249,8 +249,8 @@ contract NotableForkTest is ForkBase {
      *         should match to sub-bp precision.
      */
     function test_QuotedOutputsMatchAcrossOrdering() public {
-        (Notable hiClone, IERC20Metadata hiIssue) = _makeAndIssue(ffffff, "FFx1");
-        (Notable loClone, IERC20Metadata loIssue) = _makeAndIssue(zeros, "ZZx1");
+        (Reflector hiClone, IERC20Metadata hiIssue) = _makeAndIssue(ffffff, "FFx1");
+        (Reflector loClone, IERC20Metadata loIssue) = _makeAndIssue(zeros, "ZZx1");
 
         PoolKey memory hiKey = _poolKeyOf(hiClone, hiIssue);
         PoolKey memory loKey = _poolKeyOf(loClone, loIssue);
@@ -282,8 +282,8 @@ contract NotableForkTest is ForkBase {
      *         stateless, so this executes real swaps via persona traders.
      */
     function test_SequentialBuysMatchAcrossOrdering() public {
-        (Notable hiClone, IERC20Metadata hiIssue) = _makeAndIssue(ffffff, "FFx1");
-        (Notable loClone, IERC20Metadata loIssue) = _makeAndIssue(zeros, "ZZx1");
+        (Reflector hiClone, IERC20Metadata hiIssue) = _makeAndIssue(ffffff, "FFx1");
+        (Reflector loClone, IERC20Metadata loIssue) = _makeAndIssue(zeros, "ZZx1");
 
         PoolKey memory hiKey = _poolKeyOf(hiClone, hiIssue);
         PoolKey memory loKey = _poolKeyOf(loClone, loIssue);
@@ -316,7 +316,7 @@ contract NotableForkTest is ForkBase {
         // issue sorts below ffffff → issue is currency0, ffffff is currency1.
         // A zeroForOne=false swap spends currency1 (ffffff), so fees accrue on currency1.
         uint256 positionId = fountain.positionsCount();
-        (Notable clone, IERC20Metadata issue) = _makeAndIssue(ffffff, "FFx1");
+        (Reflector clone, IERC20Metadata issue) = _makeAndIssue(ffffff, "FFx1");
         PoolKey memory key = _poolKeyOf(clone, issue);
 
         uint128 amountIn = 1e18;
@@ -352,9 +352,9 @@ contract NotableForkTest is ForkBase {
      */
     function test_TakeBatchRoutesFeesToTaker() public {
         uint256 hiId = fountain.positionsCount();
-        (Notable hiClone, IERC20Metadata hiIssue) = _makeAndIssue(ffffff, "FFx1");
+        (Reflector hiClone, IERC20Metadata hiIssue) = _makeAndIssue(ffffff, "FFx1");
         uint256 loId = fountain.positionsCount();
-        (Notable loClone, IERC20Metadata loIssue) = _makeAndIssue(zeros, "ZZx1");
+        (Reflector loClone, IERC20Metadata loIssue) = _makeAndIssue(zeros, "ZZx1");
 
         PoolKey memory hiKey = _poolKeyOf(hiClone, hiIssue);
         PoolKey memory loKey = _poolKeyOf(loClone, loIssue);
@@ -402,19 +402,19 @@ contract NotableForkTest is ForkBase {
     function test_IssueIdempotentAtGenesisPrice() public {
         address original = ffffff;
         string memory symbol = "FFx1";
-        (, address predictedIssue) = notable.issued(original, symbol, symbol);
+        (, address predictedIssue) = reflector.issued(original, symbol, symbol);
         PoolKey memory key = _predictedPoolKey(original, symbol, symbol);
         IPoolManager(fountain.poolManager()).initialize(key, TickMath.getSqrtPriceAtTick(0));
 
         (, IERC20Metadata issue) = _makeAndIssue(original, symbol);
         assertEq(address(issue), predictedIssue, "minted address != predicted");
 
-        (bool exists,,) = notable.made(original, symbol);
+        (bool exists,,) = reflector.made(original, symbol);
         assertTrue(exists, "clone not deployed after make at pre-init genesis");
     }
 
     /**
-     * @notice Notable seats at `ticks[0] = 0`. A pre-init below user
+     * @notice Reflector seats at `ticks[0] = 0`. A pre-init below user
      *         tick 0 is silently absorbed by Fountain — {issue} succeeds,
      *         spot stays at the pre-init price, and the curve activates
      *         when buyers push spot up to 0. (No-flip orientation: issue
@@ -449,7 +449,7 @@ contract NotableForkTest is ForkBase {
         PoolKey memory key = _predictedPoolKey(original, symbol, symbol);
         IPoolManager(fountain.poolManager()).initialize(key, TickMath.getSqrtPriceAtTick(100));
 
-        Notable clone = Notable(notable.make(original, symbol));
+        Reflector clone = Reflector(reflector.make(original, symbol));
         vm.expectRevert(IPoolManager.CurrencyNotSettled.selector);
         clone.issue(symbol);
 
@@ -465,9 +465,9 @@ contract NotableForkTest is ForkBase {
      */
     function _makeAndIssue(address original, string memory symbol)
         internal
-        returns (Notable clone, IERC20Metadata token)
+        returns (Reflector clone, IERC20Metadata token)
     {
-        clone = Notable(notable.make(original, symbol));
+        clone = Reflector(reflector.make(original, symbol));
         token = clone.issue(symbol);
     }
 
@@ -475,7 +475,7 @@ contract NotableForkTest is ForkBase {
      * @dev Rebuild the {PoolKey} for a (clone, token) pair using this
      *      factory's fee/tickSpacing/hooks constants.
      */
-    function _poolKeyOf(Notable clone, IERC20Metadata token) internal view returns (PoolKey memory) {
+    function _poolKeyOf(Reflector clone, IERC20Metadata token) internal view returns (PoolKey memory) {
         return _poolKey(address(token), clone.original());
     }
 
@@ -489,7 +489,7 @@ contract NotableForkTest is ForkBase {
         view
         returns (PoolKey memory)
     {
-        (, address predictedIssue) = notable.issued(original, symbol, name);
+        (, address predictedIssue) = reflector.issued(original, symbol, name);
         return _poolKey(predictedIssue, original);
     }
 

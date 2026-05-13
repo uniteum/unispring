@@ -5,14 +5,14 @@ import {IAddressLookup} from "ilookup/IAddressLookup.sol";
 import {IStringLookup} from "ilookup/IStringLookup.sol";
 import {ICoinage} from "icoinage/ICoinage.sol";
 import {IERC20Metadata} from "ierc20/IERC20Metadata.sol";
-import {INotable} from "iunispring/INotable.sol";
-import {INotableMaker} from "iunispring/INotableMaker.sol";
+import {IReflector} from "iunispring/IReflector.sol";
+import {IReflectorMaker} from "iunispring/IReflectorMaker.sol";
 import {IPlacer} from "iunispring/IPlacer.sol";
 import {IPrototype} from "iproto/IPrototype.sol";
 import {Prototype} from "proto/Prototype.sol";
 
 /**
- * @title Notable
+ * @title Reflector
  * @notice Two-level Bitsy factory. The prototype mints clones keyed by
  *         `(original, symbol)`; each clone is itself a token factory
  *         that issues ERC-20s — one per `name`, all sharing the
@@ -44,7 +44,7 @@ import {Prototype} from "proto/Prototype.sol";
  *         {Fountain.untaken}, {Fountain.owner} — lives on Fountain.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
-contract Notable is Prototype, INotableMaker, INotable {
+contract Reflector is Prototype, IReflectorMaker, IReflector {
     string public constant version = "0.8.0";
 
     /**
@@ -72,14 +72,14 @@ contract Notable is Prototype, INotableMaker, INotable {
     ICoinage public immutable coinage;
 
     /**
-     * @inheritdoc INotable
+     * @inheritdoc IReflector
      * @dev Set on clones by {zzInit}; the prototype's value is the
      *      storage default `address(0)` (native ETH).
      */
     address public original;
 
     /**
-     * @inheritdoc INotable
+     * @inheritdoc IReflector
      * @dev Set on clones by {zzInit}; the prototype's value is
      *      `"1x<native>"`, derived from the chain-local {IStringLookup}
      *      passed at construction.
@@ -94,7 +94,7 @@ contract Notable is Prototype, INotableMaker, INotable {
      *         `string.concat("1x", gasSymbolLookup.value())`
      *         resolved from the chain-local lookup at construction.
      * @param  fountain           The Fountain that will seat every issue
-     *                            position funded through this Notable.
+     *                            position funded through this Reflector.
      * @param  minter             The Coinage prototype used to mint issues.
      * @param  gasSymbolLookup Chain-local {IStringLookup} whose `value()`
      *                            returns the native currency symbol (e.g.
@@ -112,7 +112,7 @@ contract Notable is Prototype, INotableMaker, INotable {
     // ---- Bitsy factory: issues ----
 
     /**
-     * @inheritdoc INotable
+     * @inheritdoc IReflector
      */
     function issued(address original_, string calldata symbol_, string calldata name_)
         public
@@ -125,14 +125,14 @@ contract Notable is Prototype, INotableMaker, INotable {
     }
 
     /**
-     * @inheritdoc INotable
+     * @inheritdoc IReflector
      */
     function issued(string calldata name_) external view override returns (bool exists, address home) {
         return _issued(address(this), original, symbol, name_);
     }
 
     /**
-     * @inheritdoc INotable
+     * @inheritdoc IReflector
      */
     function issue(string calldata name_) external override returns (IERC20Metadata token) {
         (bool exists, address home) = _issued(address(this), original, symbol, name_);
@@ -223,7 +223,7 @@ contract Notable is Prototype, INotableMaker, INotable {
     }
 
     /**
-     * @inheritdoc INotableMaker
+     * @inheritdoc IReflectorMaker
      */
     function made(address original_, string calldata symbol_)
         public
@@ -238,7 +238,7 @@ contract Notable is Prototype, INotableMaker, INotable {
     }
 
     /**
-     * @inheritdoc INotableMaker
+     * @inheritdoc IReflectorMaker
      */
     function make(address original_, string calldata symbol_) external override returns (address clone) {
         address resolved = _resolve(original_);
@@ -274,6 +274,6 @@ contract Notable is Prototype, INotableMaker, INotable {
      *      prototype itself is the factory.
      */
     function _isProtoPair(address original_, string memory symbol_) private view returns (bool) {
-        return original_ == address(0) && keccak256(bytes(symbol_)) == keccak256(bytes(Notable(proto).symbol()));
+        return original_ == address(0) && keccak256(bytes(symbol_)) == keccak256(bytes(Reflector(proto).symbol()));
     }
 }
