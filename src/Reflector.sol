@@ -45,15 +45,9 @@ contract Reflector is Prototype, IReflectorMaker, IReflector {
     string public constant version = "0.8.0";
 
     /**
-     * @notice Raw supply minted for an issue with 18 or more decimals.
-     *         Issues with fewer decimals reduce this by a factor of 10
-     *         per decimal below 18, keeping the human-unit supply
-     *         roughly constant across pegs. Sized to stay well
-     *         below the `maxLiquidityPerTick` cap at `tickSpacing = 1`
-     *         for any reasonable decimals, so a single-tick position
-     *         seating the full issue supply cannot overflow V4's
-     *         per-tick liquidity limit. Native ETH issues use 18
-     *         decimals and this value directly.
+     * @notice Supply for an 18-decimal issue.
+     * @dev    Supply scales down with fewer decimals to keep the displayed supply roughly constant.
+     * @dev    Supply must be less than `maxLiquidityPerTick` at `tickSpacing = 1`.
      */
     uint128 public constant maxSupply = 10 ** 27;
 
@@ -63,7 +57,7 @@ contract Reflector is Prototype, IReflectorMaker, IReflector {
     IPlacer public immutable placer;
 
     /**
-     * @notice The Coinage factory used to mint each clone's issue ERC-20s.
+     * @notice The token factory used to issue mirror tokens.
      */
     ICoinage public immutable coinage;
 
