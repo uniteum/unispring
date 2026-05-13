@@ -2,3 +2,4 @@
 - [V4 protocol fee currently zero, capped at 0.1%](canon_v4_protocol_fee.md) — V4 charges no protocol fee today; controller can set up to 1000 pips (0.1%) per swap direction
 - [Don't reference sibling contracts](feedback_no_sibling_references.md) — NatSpec shouldn't name other contracts unless this one imports/depends on them; lower-level pieces especially shouldn't name their callers
 - [Don't stage files](feedback_no_staging.md) — never `git add`/`git mv`/`git rm`; use plain `mv`/`rm` so the user can commit everything together
+- [Don't bundle reorders with edits](feedback_no_reorder_bundle.md) — keep function reordering / structural rearrangement in a separate diff from substantive changes

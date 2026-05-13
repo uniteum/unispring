@@ -124,13 +124,15 @@ contract Reflector is Prototype, IReflectorMaker, IReflector {
      * @inheritdoc IReflector
      */
     function issue(string calldata name_) external override returns (address token) {
-        (bool exists, address home) = _issued(address(this), peg, symbol, name_);
+        address peg_ = peg;
+        (bool exists, address home) = _issued(address(this), peg_, symbol, name_);
         if (exists) return home;
 
-        (uint8 decimals, uint256 supply) = _issueMetadata(peg);
+        (uint8 decimals, uint256 supply) = _issueMetadata(peg_);
         IERC20Metadata issued_ = coinage.make(name_, symbol, decimals, supply, 0);
         token = address(issued_);
 
+        // coinage mints the uniteum ERC-20 port, whose approve cannot fail or return false.
         // forge-lint: disable-next-line(erc20-unchecked-transfer)
         issued_.approve(address(placer), supply);
 
@@ -140,7 +142,7 @@ contract Reflector is Prototype, IReflectorMaker, IReflector {
         uint256[] memory amounts = new uint256[](1);
         amounts[0] = supply;
 
-        placer.offer(token, peg, ticks, amounts);
+        placer.offer(token, peg_, ticks, amounts);
 
         emit Issue(address(this), token, name_);
     }
@@ -215,12 +217,7 @@ contract Reflector is Prototype, IReflectorMaker, IReflector {
     /**
      * @inheritdoc IReflectorMaker
      */
-    function made(address peg_, string calldata symbol_)
-        public
-        view
-        override
-        returns (bool exists, address home, bytes32 salt)
-    {
+    function made(address peg_, string calldata symbol_) public view returns (bool exists, address home, bytes32 salt) {
         if (_isProtoPair(_resolve(peg_), symbol_)) {
             return (true, proto, bytes32(0));
         }
@@ -230,7 +227,7 @@ contract Reflector is Prototype, IReflectorMaker, IReflector {
     /**
      * @inheritdoc IReflectorMaker
      */
-    function make(address peg_, string calldata symbol_) external override returns (address clone) {
+    function make(address peg_, string calldata symbol_) external returns (address clone) {
         address resolved = _resolve(peg_);
         if (_isProtoPair(resolved, symbol_)) {
             clone = proto;
