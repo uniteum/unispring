@@ -64,8 +64,15 @@ contract NeutrinoSource is Prototype {
 
     /**
      * @notice Emitted when a spoke token is launched via {launch}.
+     * @param launcher  The address that called {launch}.
+     * @param token     The newly minted spoke token.
+     * @param supply    The fixed supply seated as permanent liquidity.
+     * @param tickLower V4-native lower tick of the funded position.
+     * @param tickUpper V4-native upper tick of the funded position.
      */
-    event Launch(IERC20Metadata indexed token, uint256 supply, int24 tickLower, int24 tickUpper);
+    event Launch(
+        address indexed launcher, IERC20Metadata indexed token, uint256 supply, int24 tickLower, int24 tickUpper
+    );
 
     /**
      * @notice Construct the prototype.
@@ -107,7 +114,7 @@ contract NeutrinoSource is Prototype {
         token = channel.mint(coinage, name, symbol, decimals, supply, salt);
         token.approve(address(spring), supply);
         spring.offer(Currency.wrap(address(token)), supply, tickLower, tickUpper);
-        emit Launch(token, supply, tickLower, tickUpper);
+        emit Launch(msg.sender, token, supply, tickLower, tickUpper);
     }
 
     // ---- Bitsy factory ----
