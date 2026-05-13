@@ -183,12 +183,6 @@ contract Reflector is Prototype, IReflectorMaker, IReflector {
 
     /**
      * @notice ABI-encode the per-clone init args.
-     * @dev    The returned bytes are the canonical args passed to
-     *         {Prototype.make} and {zzInit}. The clone's address is keyed
-     *         by `(peg, symbol)` so the typed wrappers always use the
-     *         default variant `0`; bytes-form callers passing a non-zero
-     *         variant would land on a separate clone whose {zzInit} reverts
-     *         on the proto-pair check, but is otherwise valid.
      */
     function encode(address peg_, string memory symbol_) public pure returns (bytes memory args) {
         args = abi.encode(peg_, symbol_);
