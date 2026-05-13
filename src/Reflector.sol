@@ -78,8 +78,8 @@ contract Reflector is Prototype, IReflectorMaker, IReflector {
      *         the storage-default native ETH and its `symbol` is
      *         `string.concat("1x", gasSymbolLookup.value())`
      *         resolved from the chain-local lookup at construction.
-     * @param  placer_            The placer that will seat every issue
-     *                            position funded through this Reflector.
+     * @param  placer_            Holds the liquidity for each token issued
+     *                            through this Reflector.
      * @param  minter             The Coinage prototype used to mint issues.
      * @param  gasSymbolLookup Chain-local {IStringLookup} whose `value()`
      *                            returns the native currency symbol (e.g.

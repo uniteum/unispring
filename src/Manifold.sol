@@ -46,9 +46,9 @@ contract Manifold {
     Manifold public immutable proto;
 
     /**
-     * @notice The Fountain that seats and owns every position funded through
-     *         this Manifold. Positions inherit {Fountain.poolManager} and
-     *         {Fountain.fee}; accrued fees flow to `placer.owner()`.
+     * @notice Holds the liquidity for each pool funded through this Manifold.
+     *         Pools inherit {Fountain.poolManager} and {Fountain.fee};
+     *         accrued fees flow to `placer.owner()`.
      */
     IPlacer public immutable placer;
 
@@ -98,8 +98,8 @@ contract Manifold {
 
     /**
      * @notice Construct the prototype. Clones are created via {make}.
-     * @param  fountain The Fountain that will seat every position funded
-     *                  through this Manifold.
+     * @param  fountain Holds the liquidity for each pool funded through
+     *                  this Manifold.
      */
     constructor(IPlacer fountain) {
         proto = this;

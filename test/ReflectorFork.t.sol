@@ -454,7 +454,7 @@ contract ReflectorForkTest is ForkBase {
     }
 
     /**
-     * @notice Batch take sweeps several issue positions in one unlock. Two
+     * @notice Batch take sweeps several positions in one unlock. Two
      *         issues accrue fees on opposite currencies (ffffff as currency1
      *         vs zeros as currency0); a single {Fountain.take} pushes both
      *         forecasts to the taker.
