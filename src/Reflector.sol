@@ -73,16 +73,11 @@ contract Reflector is Prototype, IReflectorMaker, IReflector {
 
     /**
      * @inheritdoc IReflector
-     * @dev Set on clones by {zzInit}; the prototype's value is the
-     *      storage default `address(0)` (native ETH).
      */
     address public peg;
 
     /**
      * @inheritdoc IReflector
-     * @dev Set on clones by {zzInit}; the prototype's value is
-     *      `"1x<native>"`, derived from the chain-local {IStringLookup}
-     *      passed at construction.
      */
     string public symbol;
 
@@ -108,8 +103,6 @@ contract Reflector is Prototype, IReflectorMaker, IReflector {
         symbol = string.concat("1x", gasSymbolLookup.value());
         emit Make(address(this), address(0), symbol);
     }
-
-    // ---- Bitsy factory: issues ----
 
     /**
      * @inheritdoc IReflector
