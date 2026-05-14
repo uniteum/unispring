@@ -81,20 +81,20 @@ contract Reflector is IReflectorMaker, IReflector, Prototype {
     /**
      * @inheritdoc IReflector
      */
-    function issued(string calldata name_) external view returns (bool exists, address home) {
-        return _issued(peg, symbol, name_);
+    function issued(string calldata name_, uint256 variant) external view returns (bool exists, address home) {
+        return _issued(peg, symbol, name_, variant);
     }
 
     /**
      * @inheritdoc IReflector
      */
-    function issue(string calldata name_) external returns (address token) {
+    function issue(string calldata name_, uint256 variant) external returns (address token) {
         address peg_ = peg;
-        (bool exists, address home) = _issued(peg_, symbol, name_);
+        (bool exists, address home) = _issued(peg_, symbol, name_, variant);
         if (exists) return home;
 
         (uint8 decimals, uint256 supply) = _issueMetadata(peg_);
-        IERC20Metadata issued_ = coinage.make(name_, symbol, decimals, supply, 0);
+        IERC20Metadata issued_ = coinage.make(name_, symbol, decimals, supply, variant);
         token = address(issued_);
 
         // coinage mints the uniteum ERC-20 port, whose approve cannot fail or return false.
@@ -115,7 +115,7 @@ contract Reflector is IReflectorMaker, IReflector, Prototype {
     /**
      * @inheritdoc IReflectorMaker
      */
-    function made(address peg_, string calldata symbol_)
+    function made(address peg_, string calldata symbol_, uint256 variant)
         external
         view
         returns (bool exists, address home, bytes32 salt)
@@ -123,18 +123,18 @@ contract Reflector is IReflectorMaker, IReflector, Prototype {
         if (_isProtoPair(_resolve(peg_), symbol_)) {
             return (true, proto, bytes32(0));
         }
-        (exists, home, salt) = this.made(encode(peg_, symbol_), 0);
+        (exists, home, salt) = this.made(encode(peg_, symbol_), variant);
     }
 
     /**
      * @inheritdoc IReflectorMaker
      */
-    function make(address peg_, string calldata symbol_) external returns (address clone) {
+    function make(address peg_, string calldata symbol_, uint256 variant) external returns (address clone) {
         address resolved = _resolve(peg_);
         if (_isProtoPair(resolved, symbol_)) {
             clone = proto;
         } else {
-            (bool exists, address home,) = this.make(encode(peg_, symbol_), 0);
+            (bool exists, address home,) = this.make(encode(peg_, symbol_), variant);
             clone = home;
             if (!exists) emit Make(home, resolved, symbol_);
         }
@@ -165,16 +165,16 @@ contract Reflector is IReflectorMaker, IReflector, Prototype {
 
     /**
      * @dev Ask {coinage} for the deterministic issue address this
-     *      instance would produce for `(name_, symbol_)` with metadata
-     *      derived from `peg_`.
+     *      instance would produce for `(name_, symbol_, variant)` with
+     *      metadata derived from `peg_`.
      */
-    function _issued(address peg_, string memory symbol_, string memory name_)
+    function _issued(address peg_, string memory symbol_, string memory name_, uint256 variant)
         private
         view
         returns (bool exists, address home)
     {
         (uint8 decimals, uint256 supply) = _issueMetadata(peg_);
-        (exists, home,) = coinage.made(address(this), name_, symbol_, decimals, supply, 0);
+        (exists, home,) = coinage.made(address(this), name_, symbol_, decimals, supply, variant);
     }
 
     /**

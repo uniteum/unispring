@@ -104,22 +104,22 @@ contract ReflectorForkTest is ForkBase {
         address peg = USDC;
         string memory symbol = "USDCx1";
 
-        (bool cloneExistsBefore, address predictedClone,) = reflector.made(peg, symbol);
+        (bool cloneExistsBefore, address predictedClone,) = reflector.made(peg, symbol, 0);
         assertFalse(cloneExistsBefore, "fresh Reflector cannot have pre-existing clones");
         assertTrue(predictedClone != address(0), "predicted clone is zero");
 
-        Reflector clone = Reflector(reflector.make(peg, symbol));
+        Reflector clone = Reflector(reflector.make(peg, symbol, 0));
         assertEq(address(clone), predictedClone, "deployed clone differs from prediction");
 
-        (bool issueExistsBefore, address predictedIssue) = clone.issued(symbol);
+        (bool issueExistsBefore, address predictedIssue) = clone.issued(symbol, 0);
         assertFalse(issueExistsBefore, "fresh clone cannot have pre-existing issues");
         assertTrue(predictedIssue != address(0), "predicted issue is zero");
 
-        IERC20Metadata issue = IERC20Metadata(clone.issue(symbol));
+        IERC20Metadata issue = IERC20Metadata(clone.issue(symbol, 0));
         assertEq(address(issue), predictedIssue, "minted issue differs from prediction");
 
-        (bool cloneExistsAfter,,) = reflector.made(peg, symbol);
-        (bool issueExistsAfter,) = clone.issued(symbol);
+        (bool cloneExistsAfter,,) = reflector.made(peg, symbol, 0);
+        (bool issueExistsAfter,) = clone.issued(symbol, 0);
         assertTrue(cloneExistsAfter, "clone not registered as existing after make");
         assertTrue(issueExistsAfter, "issue not registered as existing after issue()");
     }
@@ -137,14 +137,14 @@ contract ReflectorForkTest is ForkBase {
         AddressLookupStub lookup = new AddressLookupStub(USDC);
         string memory symbol = "USDCx1";
 
-        (bool cloneExistsBefore, address predictedClone,) = reflector.made(address(lookup), symbol);
+        (bool cloneExistsBefore, address predictedClone,) = reflector.made(address(lookup), symbol, 0);
         assertFalse(cloneExistsBefore, "fresh Reflector cannot have a pre-existing lookup-peg clone");
         assertTrue(predictedClone != address(0), "predicted clone is zero");
 
-        Reflector clone = Reflector(reflector.make(address(lookup), symbol));
+        Reflector clone = Reflector(reflector.make(address(lookup), symbol, 0));
         assertEq(address(clone), predictedClone, "deployed clone differs from made() prediction");
 
-        (bool cloneExistsAfter, address homeAfter,) = reflector.made(address(lookup), symbol);
+        (bool cloneExistsAfter, address homeAfter,) = reflector.made(address(lookup), symbol, 0);
         assertTrue(cloneExistsAfter, "made() must see the clone after make()");
         assertEq(homeAfter, address(clone), "made() post-deploy must report the deployed home");
 
@@ -166,8 +166,8 @@ contract ReflectorForkTest is ForkBase {
         AddressLookupStub lookup = new AddressLookupStub(USDC);
         string memory symbol = "USDCx1";
 
-        address viaLookup = reflector.make(address(lookup), symbol);
-        address viaDirect = reflector.make(USDC, symbol);
+        address viaLookup = reflector.make(address(lookup), symbol, 0);
+        address viaDirect = reflector.make(USDC, symbol, 0);
 
         assertTrue(viaLookup != viaDirect, "lookup-peg and direct-peg must produce distinct clones");
         assertEq(Reflector(viaLookup).peg(), USDC, "lookup-clone stored peg must be resolved USDC");
@@ -184,7 +184,7 @@ contract ReflectorForkTest is ForkBase {
     function test_UnmappedLookupRevertsMake() public {
         AddressLookupStub lookup = new AddressLookupStub(address(0));
         vm.expectRevert();
-        reflector.make(address(lookup), "USDCx1");
+        reflector.make(address(lookup), "USDCx1", 0);
     }
 
     /**
@@ -196,7 +196,7 @@ contract ReflectorForkTest is ForkBase {
     function test_UnmappedLookupRevertsMade() public {
         AddressLookupStub lookup = new AddressLookupStub(address(0));
         vm.expectRevert();
-        reflector.made(address(lookup), "USDCx1");
+        reflector.made(address(lookup), "USDCx1", 0);
     }
 
     /**
@@ -209,7 +209,7 @@ contract ReflectorForkTest is ForkBase {
     function test_UnmappedLookupRevertsForProtoSymbol() public {
         AddressLookupStub lookup = new AddressLookupStub(address(0));
         vm.expectRevert();
-        reflector.make(address(lookup), "1xETH");
+        reflector.make(address(lookup), "1xETH", 0);
     }
 
     function test_MakeUSDC() public {
@@ -244,18 +244,18 @@ contract ReflectorForkTest is ForkBase {
         assertEq(reflector.peg(), address(0), "proto peg is native ETH");
 
         address native = address(0);
-        (bool cloneExists, address cloneHome, bytes32 salt) = reflector.made(native, "1xETH");
+        (bool cloneExists, address cloneHome, bytes32 salt) = reflector.made(native, "1xETH", 0);
         assertTrue(cloneExists, "proto pair must report exists=true");
         assertEq(cloneHome, address(reflector), "proto pair must map to proto address");
         assertEq(salt, bytes32(0), "proto pair must report zero salt");
 
-        Reflector self = Reflector(reflector.make(native, "1xETH"));
+        Reflector self = Reflector(reflector.make(native, "1xETH", 0));
         assertEq(address(self), address(reflector), "make on proto pair must return proto");
 
-        (bool issueExistsBefore, address predictedIssue) = reflector.issued("alpha");
+        (bool issueExistsBefore, address predictedIssue) = reflector.issued("alpha", 0);
         assertFalse(issueExistsBefore, "fresh proto cannot have pre-existing issues");
 
-        IERC20Metadata token = IERC20Metadata(reflector.issue("alpha"));
+        IERC20Metadata token = IERC20Metadata(reflector.issue("alpha", 0));
         assertEq(address(token), predictedIssue, "minted issue differs from prediction");
         assertEq(token.symbol(), "1xETH", "minted symbol must round-trip");
         assertEq(token.decimals(), uint8(18), "native issue must have 18 decimals");
@@ -306,7 +306,7 @@ contract ReflectorForkTest is ForkBase {
         address native = address(0);
         string memory symbol = "ETHx1";
 
-        (bool existsBefore, address predictedClone,) = reflector.made(native, symbol);
+        (bool existsBefore, address predictedClone,) = reflector.made(native, symbol, 0);
         assertFalse(existsBefore, "fresh non-proto clone cannot pre-exist");
         assertTrue(predictedClone != address(0), "predicted clone is zero");
 
@@ -316,7 +316,7 @@ contract ReflectorForkTest is ForkBase {
         assertEq(clone.symbol(), symbol, "clone.symbol must round-trip");
         assertEq(token.symbol(), symbol, "minted issue carries clone symbol");
 
-        (bool existsAfter,,) = reflector.made(native, symbol);
+        (bool existsAfter,,) = reflector.made(native, symbol, 0);
         assertTrue(existsAfter, "clone must register as existing after make");
     }
 
@@ -511,15 +511,15 @@ contract ReflectorForkTest is ForkBase {
         address peg = ffffff;
         string memory symbol = "FFx1";
 
-        Reflector clone = Reflector(reflector.make(peg, symbol));
-        (, address predictedIssue) = clone.issued(symbol);
+        Reflector clone = Reflector(reflector.make(peg, symbol, 0));
+        (, address predictedIssue) = clone.issued(symbol, 0);
         PoolKey memory key = _poolKey(predictedIssue, peg);
         IPoolManager(fountain.poolManager()).initialize(key, TickMath.getSqrtPriceAtTick(0));
 
-        IERC20Metadata issue = IERC20Metadata(clone.issue(symbol));
+        IERC20Metadata issue = IERC20Metadata(clone.issue(symbol, 0));
         assertEq(address(issue), predictedIssue, "minted address != predicted");
 
-        (bool exists,,) = reflector.made(peg, symbol);
+        (bool exists,,) = reflector.made(peg, symbol, 0);
         assertTrue(exists, "clone not deployed after make at pre-init genesis");
     }
 
@@ -535,13 +535,13 @@ contract ReflectorForkTest is ForkBase {
         address peg = ffffff;
         string memory symbol = "FFx1";
 
-        Reflector clone = Reflector(reflector.make(peg, symbol));
-        (, address predictedIssue) = clone.issued(symbol);
+        Reflector clone = Reflector(reflector.make(peg, symbol, 0));
+        (, address predictedIssue) = clone.issued(symbol, 0);
         PoolKey memory key = _poolKey(predictedIssue, peg);
         uint160 preInitSqrt = TickMath.getSqrtPriceAtTick(-100);
         IPoolManager(fountain.poolManager()).initialize(key, preInitSqrt);
 
-        IERC20Metadata issue = IERC20Metadata(clone.issue(symbol));
+        IERC20Metadata issue = IERC20Metadata(clone.issue(symbol, 0));
         assertTrue(address(issue) != address(0), "issue not minted after below-tick pre-init");
 
         (uint160 sqrt,,,) = IPoolManager(fountain.poolManager()).getSlot0(key.toId());
@@ -560,16 +560,16 @@ contract ReflectorForkTest is ForkBase {
         address peg = ffffff;
         string memory symbol = "FFx1";
 
-        Reflector clone = Reflector(reflector.make(peg, symbol));
-        (, address predictedIssue) = clone.issued(symbol);
+        Reflector clone = Reflector(reflector.make(peg, symbol, 0));
+        (, address predictedIssue) = clone.issued(symbol, 0);
         PoolKey memory key = _poolKey(predictedIssue, peg);
         IPoolManager(fountain.poolManager()).initialize(key, TickMath.getSqrtPriceAtTick(100));
 
         vm.expectRevert(IPoolManager.CurrencyNotSettled.selector);
-        clone.issue(symbol);
+        clone.issue(symbol, 0);
 
         // Re-mint under a different name yields a different issue and PoolKey, succeeds.
-        IERC20Metadata escapedIssue = IERC20Metadata(clone.issue("FFx1-escape"));
+        IERC20Metadata escapedIssue = IERC20Metadata(clone.issue("FFx1-escape", 0));
         assertTrue(address(escapedIssue) != address(0), "rescue issue under new name failed");
     }
 
@@ -579,8 +579,8 @@ contract ReflectorForkTest is ForkBase {
      *      token) pair tests need to recover the PoolKey.
      */
     function _makeAndIssue(address peg, string memory symbol) internal returns (Reflector clone, IERC20Metadata token) {
-        clone = Reflector(reflector.make(peg, symbol));
-        token = IERC20Metadata(clone.issue(symbol));
+        clone = Reflector(reflector.make(peg, symbol, 0));
+        token = IERC20Metadata(clone.issue(symbol, 0));
     }
 
     /**
