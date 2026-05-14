@@ -70,11 +70,11 @@ Reflector"
   orientation, DESIGN for architecture, per-topic docs for the deep
   dive. Detail belongs where a reader needs it, not in every doc.
 
-V4 tick math, sort-order quirks, flipped-currency genesis bootstraps,
+Edge-case math, argument ordering quirks, bootstrap special cases,
 and other caller-relevant nuance belong on the function that consumes
 them — not on the contract header. A header that requires absorbing
-V4 mechanics before the reader learns what the contract is for has
-failed at orientation.
+implementation mechanics before the reader learns what the contract
+is for has failed at orientation.
 
 ## Don't restate docs that live elsewhere
 
@@ -86,5 +86,6 @@ boundaries inline. Restated content drifts; cross-references stay
 correct.
 
 The same rule applies between contract- and function-level natspec:
-don't describe `offer`'s tick translation in both the contract header
-and the function header. Pick the level where a reader needs it.
+don't describe a function's argument handling in both the contract
+header and the function header. Pick the level where a reader needs
+it.
