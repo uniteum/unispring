@@ -25,10 +25,11 @@ FILES=(
     .vscode/settings.json
     .claude/settings.json
     .claude/rules/always.md
-    .claude/rules/lint.md
-    .claude/rules/solidity.md
+    .claude/rules/comments.md
     .claude/rules/crucible-tests.md
     .claude/rules/deployment.md
+    .claude/rules/lint.md
+    .claude/rules/solidity.md
     .claude/rules/submodule.md
     .claude/skills/bitsify/SKILL.md
     .claude/skills/predict/SKILL.md

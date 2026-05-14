@@ -109,18 +109,16 @@ The mechanical migration steps:
 
    ```solidity
    function zzInit(bytes calldata args, uint256 variant)
-       public override
+       external override onlyProto
    {
-       super.zzInit(args, variant);
        (Type1 p1, Type2 p2, ...) = abi.decode(args, (Type1, Type2, ...));
        // existing init body, unchanged
    }
    ```
 
-   Call `super.zzInit(args, variant)` at the top of the override —
-   the base's `onlyProto` modifier runs through `super`, so you get
-   the access-control guard without having to repeat the modifier or
-   restate the `msg.sender != proto` check.
+   The base `Prototype.zzInit` is pure virtual (no body) and carries
+   no modifier — apply `onlyProto` on the override yourself in place
+   of the old hand-rolled `msg.sender != proto` check.
 
 5. **Rewrite `make`/`made` as thin typed wrappers over the inherited
    bytes overloads** (see [Step 3](#step-3-optional-typed-makemade-wrappers)).
@@ -207,8 +205,8 @@ You get for free:
 - `made(bytes32 argshash, uint256 variant)` — predict from a precomputed argshash.
 - `made(bytes calldata args, uint256 variant)` — predict from raw args (hashes for you).
 - `make(bytes calldata args, uint256 variant)` — deploys a clone if needed; when called on a clone, forwards to the prototype.
-- `zzInit(bytes calldata args, uint256 variant)` — virtual hook (no-op by default) that derived contracts override.
-- `onlyProto` modifier and `Unauthorized` error.
+- `zzInit(bytes calldata args, uint256 variant)` — pure virtual hook (no body) that derived contracts must implement.
+- `onlyProto` modifier and `Unauthorized` error — apply the modifier yourself on `zzInit` and any other clone-only entry points; the base does not carry it.
 
 All three external entry points return `(bool exists, address home, bytes32 salt)`, so callers can tell whether a `make()` actually deployed something new.
 
@@ -236,9 +234,9 @@ constructor() ERC20("", "") {}
 
 ### 2b: Override `zzInit`
 
-The base `Prototype.zzInit` takes `(bytes args, uint256 variant)`,
-already guarded by `onlyProto`. Override it, call `super.zzInit` to
-inherit the guard, and decode your typed parameters:
+The base `Prototype.zzInit` is pure virtual: declared `external
+virtual` with no body and no modifier. The override supplies the
+init body and the access-control guard:
 
 ```solidity
 /**
@@ -246,21 +244,21 @@ inherit the guard, and decode your typed parameters:
  * @dev Decodes `(p1, p2, ...)` and applies them to clone storage.
  */
 function zzInit(bytes calldata args, uint256 variant)
-    public
+    external
     override
+    onlyProto
 {
-    super.zzInit(args, variant);
     (Type1 p1, Type2 p2, ...) = abi.decode(args, (Type1, Type2, ...));
     // ... initialization logic from the old constructor ...
 }
 ```
 
-Calling `super.zzInit(args, variant)` is how the base's `onlyProto`
-modifier reaches the override — it runs the access-control guard
-without the override having to repeat the modifier or restate the
-`msg.sender != proto` check. If your init needs to distinguish
-vanity-mined clones from each other, read `variant` in the body;
-otherwise it's just being forwarded to `super`.
+Apply `onlyProto` on the override — the base does not carry it, and
+`zzInit` is `external`, so there is no `super.zzInit` to chain through
+(and nothing to chain to: the base body is empty). If your init needs
+to distinguish vanity-mined clones from each other, read `variant` in
+the body; otherwise the parameter is unused (the unnamed `uint256`
+form silences the warning, as in `Reflector` and `Fountain`).
 
 ### 2c: Handle ERC-20 metadata
 
