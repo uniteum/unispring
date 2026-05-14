@@ -27,7 +27,7 @@ import {Prototype} from "proto/Prototype.sol";
  *         ("1xETH" on mainnet, "1xMATIC" on Polygon).
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
-contract Reflector is Prototype, IReflectorMaker, IReflector {
+contract Reflector is IReflectorMaker, IReflector, Prototype {
     string public constant version = "0.9.0";
 
     /**
@@ -113,6 +113,57 @@ contract Reflector is Prototype, IReflectorMaker, IReflector {
     }
 
     /**
+     * @inheritdoc IReflectorMaker
+     */
+    function made(address peg_, string calldata symbol_)
+        external
+        view
+        returns (bool exists, address home, bytes32 salt)
+    {
+        if (_isProtoPair(_resolve(peg_), symbol_)) {
+            return (true, proto, bytes32(0));
+        }
+        (exists, home, salt) = this.made(encode(peg_, symbol_), 0);
+    }
+
+    /**
+     * @inheritdoc IReflectorMaker
+     */
+    function make(address peg_, string calldata symbol_) external returns (address clone) {
+        address resolved = _resolve(peg_);
+        if (_isProtoPair(resolved, symbol_)) {
+            clone = proto;
+        } else {
+            (bool exists, address home,) = this.make(encode(peg_, symbol_), 0);
+            clone = home;
+            if (!exists) emit Make(home, resolved, symbol_);
+        }
+    }
+
+    /**
+     * @inheritdoc IPrototype
+     * @dev Decodes `(peg_, symbol_)`, resolves any {IAddressLookup} to
+     *      its underlying address, and records the pair on the clone.
+     *      Reverts if the args encode the proto pair so the prototype
+     *      remains the sole canonical factory for `(native ETH, proto.symbol())`
+     *      even when callers bypass the typed wrappers.
+     */
+    function zzInit(bytes calldata args, uint256) external override onlyProto {
+        (address peg_, string memory symbol_) = abi.decode(args, (address, string));
+        peg_ = _resolve(peg_);
+        if (_isProtoPair(peg_, symbol_)) revert ProtoPairReserved();
+        peg = peg_;
+        symbol = symbol_;
+    }
+
+    /**
+     * @notice ABI-encode the per-clone init args.
+     */
+    function encode(address peg_, string memory symbol_) public pure returns (bytes memory args) {
+        args = abi.encode(peg_, symbol_);
+    }
+
+    /**
      * @dev Ask {coinage} for the deterministic issue address this
      *      instance would produce for `(name_, symbol_)` with metadata
      *      derived from `peg_`.
@@ -156,59 +207,6 @@ contract Reflector is Prototype, IReflectorMaker, IReflector {
         decimals = IERC20Metadata(peg_).decimals();
         supply = uint256(maxSupply);
         if (decimals < 18) supply /= 10 ** uint256(18 - decimals);
-    }
-
-    // ---- Bitsy factory: clones ----
-
-    /**
-     * @notice ABI-encode the per-clone init args.
-     */
-    function encode(address peg_, string memory symbol_) public pure returns (bytes memory args) {
-        args = abi.encode(peg_, symbol_);
-    }
-
-    /**
-     * @inheritdoc IReflectorMaker
-     */
-    function made(address peg_, string calldata symbol_)
-        external
-        view
-        returns (bool exists, address home, bytes32 salt)
-    {
-        if (_isProtoPair(_resolve(peg_), symbol_)) {
-            return (true, proto, bytes32(0));
-        }
-        (exists, home, salt) = this.made(encode(peg_, symbol_), 0);
-    }
-
-    /**
-     * @inheritdoc IReflectorMaker
-     */
-    function make(address peg_, string calldata symbol_) external returns (address clone) {
-        address resolved = _resolve(peg_);
-        if (_isProtoPair(resolved, symbol_)) {
-            clone = proto;
-        } else {
-            (bool exists, address home,) = this.make(encode(peg_, symbol_), 0);
-            clone = home;
-            if (!exists) emit Make(home, resolved, symbol_);
-        }
-    }
-
-    /**
-     * @inheritdoc IPrototype
-     * @dev Decodes `(peg_, symbol_)`, resolves any {IAddressLookup} to
-     *      its underlying address, and records the pair on the clone.
-     *      Reverts if the args encode the proto pair so the prototype
-     *      remains the sole canonical factory for `(native ETH, proto.symbol())`
-     *      even when callers bypass the typed wrappers.
-     */
-    function zzInit(bytes calldata args, uint256) external override onlyProto {
-        (address peg_, string memory symbol_) = abi.decode(args, (address, string));
-        peg_ = _resolve(peg_);
-        if (_isProtoPair(peg_, symbol_)) revert ProtoPairReserved();
-        peg = peg_;
-        symbol = symbol_;
     }
 
     /**
