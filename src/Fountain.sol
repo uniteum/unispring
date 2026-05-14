@@ -28,12 +28,12 @@ import {ModifyLiquidityParams} from "v4-core/types/PoolOperation.sol";
 /**
  * @title Fountain
  * @notice A permanent liquidity vault on Uniswap V4. Callers hand
- * Fountain a token plus a price curve carved into one-tick
+ * Fountain a token plus a price curve split into one-tick
  * segments; Fountain opens one V4 position per segment and
  * locks them forever. Only swap fees can be claimed —
  * Fountain forwards them to a designated taker on request.
  * The underlying liquidity is never withdrawn.
- * @dev Entry points: {IPlacer.offer} to seed liquidity,
+ * @dev Entry points: {IPlacer.offer} to add liquidity,
  * {IFeeTaker} to read positions and accrued fees, and
  * {IWithdrawer} to forward fees to {owner}.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
@@ -402,8 +402,8 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IWithdrawer, IUnlockCallba
 
     /**
      * @inheritdoc IWithdrawer
-     * @dev Lets {owner} reclaim fees collected by {take} and any prefund
-     * the deployer dropped in to seed flipped-case bootstraps.
+     * @dev Lets {owner} reclaim fees collected by {take} and any starter
+     * funds the deployer sent in to cover flipped-case bootstraps.
      * Native-ETH transfer failure bubbles the owner's revert data;
      * ERC-20 transfer failure reverts via {SafeERC20} (bubbling the
      * token's own revert, or {SafeERC20.SafeERC20FailedOperation} for
