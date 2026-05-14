@@ -63,7 +63,7 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
     address public immutable poolManager;
 
     /**
-     * @notice All positions seated by this contract, in creation order.
+     * @notice All positions opened by this contract, in creation order.
      *         Auto-generated getter returns a single element by index; use
      *         {positionsCount} and {positionsSlice} for bulk reads.
      */
@@ -133,9 +133,9 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
 
     /**
      * @dev Derive the {PoolKey}, initialize the pool if it does not yet
-     *      exist, and seat every segment of the caller-described curve in
+     *      exist, and open every segment of the caller-described curve in
      *      one unlock. User segment [ticks[i], ticks[i+1]) with amounts[i]
-     *      seats a V4 position at [ticks[i], ticks[i+1]) when the token is
+     *      opens a V4 position at [ticks[i], ticks[i+1]) when the token is
      *      currency0 (identity mapping), or at [-ticks[i+1], -ticks[i])
      *      when the token is currency1 (flipping under V4's price
      *      inversion). Per-position deltas are accumulated and settled as
@@ -327,7 +327,7 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
 
     /**
      * @dev Rebuild the {PoolKey} for a {Position}. Hooks are always zero
-     *      since Fountain only seats hookless pools.
+     *      since Fountain only opens hookless pools.
      */
     function _keyOf(Position memory p) private pure returns (PoolKey memory) {
         return PoolKey({
@@ -386,7 +386,7 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
     /**
      * @inheritdoc IUnlockCallback
      * @dev Selector-dispatches on the original entrypoint's calldata:
-     *      {IPlacer.offer} seats a batch of positions;
+     *      {IPlacer.offer} opens a batch of positions;
      *      {IFeeTaker.take} iterates a batch of ids for fee take.
      */
     function unlockCallback(bytes calldata data) external returns (bytes memory) {
