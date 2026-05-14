@@ -8,15 +8,15 @@
 set -euo pipefail
 source "$(git rev-parse --show-toplevel)/lib/crucible/script/proto.sh"
 
-Fountain=0xf006F226d2be726A2Ad2B011719BdeFDDa1EE090
+Fountain=0xF00c0C30CE13f01c77C1F8d60Fc1146014B4E090
 ICoinage=0x1Eb8dF6040A67025C2aF9a82aB966CCd7bF1e300
-GasNameLookup=0x6A59a7229Bb59Ae5e474854382C90d891972E300
+GasNameLookup=0x6A56341F0f08351E7C4eB97540Fb3a848953e300
 
 # Vanity-mining inputs. The `e080` suffix rhymes with Fountain1's
 # address. Re-mine with the initcodehash that proto_predict prints.
 mask=0xffff00000000000000000000000000000000ffff
 target=0xbdbd00000000000000000000000000000000e090
 
-proto_predict Reflector 0x000000000000000000000000000000000000000000000000000000004528aa2a \
+proto_predict Reflector 0x00000000000000000000000000000000000000000000000000000000c7637079 \
     "constructor(address,address,address)" \
     "$Fountain" "$ICoinage" "$GasNameLookup"
