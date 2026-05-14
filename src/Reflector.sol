@@ -13,15 +13,15 @@ import {Prototype} from "proto/Prototype.sol";
 
 /**
  * @title Reflector
- * @notice Factory for pegged ERC-20s. Each issued token is backed
- *         1:1 by a reference asset (native ETH or any ERC-20) — the
- *         full supply is locked into a tiny single-tick V4 pool at
- *         price 1, so a buyer pays one peg unit to mint one issued
- *         unit and a seller does the reverse. Reflector is what
- *         mints "1xETH"-style wrappers.
+ * @notice Mints 1:1 mirror ERC-20s for any reference asset (native
+ *         ETH or any ERC-20). A buyer pays one unit of the reference
+ *         to mint one unit of the mirror, and a seller does the
+ *         reverse. Used to create "1xETH"-style wrappers.
  * @dev    Two-level factory. The prototype mints clones keyed by
  *         `(peg, symbol)`; each clone mints ERC-20s keyed by `name`.
- *         The prototype itself doubles as the clone for the
+ *         The full mirror supply is locked into a single-tick V4
+ *         pool at price 1, so the pool itself is the mint/burn
+ *         mechanism. The prototype doubles as the clone for the
  *         native-ETH pair — its symbol is `"1x<native>"` resolved
  *         at construction from a chain-local symbol lookup
  *         ("1xETH" on mainnet, "1xMATIC" on Polygon).
@@ -38,7 +38,7 @@ contract Reflector is Prototype, IReflectorMaker, IReflector {
     uint128 public constant maxSupply = 10 ** 27;
 
     /**
-     * @notice Places each issue's supply in a pool for sale at a single price.
+     * @notice Holds the liquidity for each token issued through this Reflector.
      */
     IPlacer public immutable placer;
 
@@ -58,20 +58,18 @@ contract Reflector is Prototype, IReflectorMaker, IReflector {
     string public symbol;
 
     /**
-     * @notice Construct the prototype. Clones are created via {make}.
-     *         The prototype itself acts as the
-     *         `(native ETH, "1x<native>")` factory: its `peg` is
-     *         the storage-default native ETH and its `symbol` is
-     *         `string.concat("1x", gasSymbolLookup.value())`
-     *         resolved from the chain-local lookup at construction.
-     * @param  placer_            Holds the liquidity for each token issued
-     *                            through this Reflector.
-     * @param  minter             The Coinage prototype used to mint issues.
+     * @notice Deploy the prototype, which doubles as the factory for
+     *         the native-ETH pair. Its symbol is `"1x<native>"`,
+     *         resolved from {gasSymbolLookup} at construction. Clones
+     *         for other peg/symbol pairs are created via {make}.
+     * @param  placer_         Holds the liquidity for each token issued
+     *                         through this Reflector.
+     * @param  minter          The Coinage prototype used to mint issues.
      * @param  gasSymbolLookup Chain-local {IStringLookup} whose `value()`
-     *                            returns the native currency symbol (e.g.
-     *                            "ETH" on mainnet, "MATIC" on Polygon); used
-     *                            as the suffix for the prototype's issue
-     *                            symbol `"1x<native>"`.
+     *                         returns the native currency symbol (e.g.
+     *                         "ETH" on mainnet, "MATIC" on Polygon); used
+     *                         as the suffix for the prototype's issue
+     *                         symbol `"1x<native>"`.
      */
     constructor(IPlacer placer_, ICoinage minter, IStringLookup gasSymbolLookup) {
         placer = placer_;
