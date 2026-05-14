@@ -28,7 +28,7 @@ import {Prototype} from "proto/Prototype.sol";
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
 contract Reflector is Prototype, IReflectorMaker, IReflector {
-    string public constant version = "0.8.0";
+    string public constant version = "0.9.0";
 
     /**
      * @notice Supply for an 18-decimal issue.
