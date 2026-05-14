@@ -14,17 +14,17 @@ import {Prototype} from "proto/Prototype.sol";
 /**
  * @title Reflector
  * @notice Mints 1:1 mirror ERC-20s for any reference asset (native
- *         ETH or any ERC-20). A buyer pays one unit of the reference
- *         to mint one unit of the mirror, and a seller does the
- *         reverse. Used to create "1xETH"-style wrappers.
- * @dev    Two-level factory. The prototype mints clones keyed by
- *         `(peg, symbol)`; each clone mints ERC-20s keyed by `name`.
- *         The full mirror supply is locked into a single-tick V4
- *         pool at price 1, so the pool itself is the mint/burn
- *         mechanism. The prototype doubles as the clone for the
- *         native-ETH pair — its symbol is `"1x<native>"` resolved
- *         at construction from a chain-local symbol lookup
- *         ("1xETH" on mainnet, "1xMATIC" on Polygon).
+ * ETH or any ERC-20). A buyer pays one unit of the reference
+ * to mint one unit of the mirror, and a seller does the
+ * reverse. Used to create "1xETH"-style wrappers.
+ * @dev Two-level factory. The prototype mints clones keyed by
+ * `(peg, symbol)`; each clone mints ERC-20s keyed by `name`.
+ * The full mirror supply is locked into a single-tick V4
+ * pool at price 1, so the pool itself is the mint/burn
+ * mechanism. The prototype doubles as the clone for the
+ * native-ETH pair — its symbol is `"1x<native>"` resolved
+ * at construction from a chain-local symbol lookup
+ * ("1xETH" on mainnet, "1xMATIC" on Polygon).
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
 contract Reflector is IReflectorMaker, IReflector, Prototype {
@@ -32,8 +32,9 @@ contract Reflector is IReflectorMaker, IReflector, Prototype {
 
     /**
      * @notice Supply for an 18-decimal issue.
-     * @dev    Supply scales down with fewer decimals to keep the displayed supply roughly constant.
-     * @dev    Supply must be less than `maxLiquidityPerTick` at `tickSpacing = 1`.
+     * @dev Supply scales down with fewer decimals to keep the displayed supply roughly constant.
+     *
+     * Supply must be less than `maxLiquidityPerTick` at `tickSpacing = 1`.
      */
     uint128 public constant maxSupply = 10 ** 27;
 
@@ -59,17 +60,16 @@ contract Reflector is IReflectorMaker, IReflector, Prototype {
 
     /**
      * @notice Deploy the prototype, which doubles as the factory for
-     *         the native-ETH pair. Its symbol is `"1x<native>"`,
-     *         resolved from {gasSymbolLookup} at construction. Clones
-     *         for other peg/symbol pairs are created via {make}.
-     * @param  placer_         Holds the liquidity for each token issued
-     *                         through this Reflector.
-     * @param  minter          The Coinage prototype used to mint issues.
-     * @param  gasSymbolLookup Chain-local {IStringLookup} whose `value()`
-     *                         returns the native currency symbol (e.g.
-     *                         "ETH" on mainnet, "MATIC" on Polygon); used
-     *                         as the suffix for the prototype's issue
-     *                         symbol `"1x<native>"`.
+     * the native-ETH pair. Its symbol is `"1x<native>"`,
+     * resolved from {gasSymbolLookup} at construction. Clones
+     * for other peg/symbol pairs are created via {make}.
+     * @param placer_ Holds the liquidity for each token issued
+     * through this Reflector.
+     * @param minter The Coinage prototype used to mint issues.
+     * @param gasSymbolLookup Chain-local {IStringLookup} whose `value()`
+     * returns the native currency symbol (e.g. "ETH" on mainnet,
+     * "MATIC" on Polygon); used as the suffix for the prototype's
+     * issue symbol `"1x<native>"`.
      */
     constructor(IPlacer placer_, ICoinage minter, IStringLookup gasSymbolLookup) {
         placer = placer_;
@@ -143,10 +143,10 @@ contract Reflector is IReflectorMaker, IReflector, Prototype {
     /**
      * @inheritdoc IPrototype
      * @dev Decodes `(peg_, symbol_)`, resolves any {IAddressLookup} to
-     *      its underlying address, and records the pair on the clone.
-     *      Reverts if the args encode the proto pair so the prototype
-     *      remains the sole canonical factory for `(native ETH, proto.symbol())`
-     *      even when callers bypass the typed wrappers.
+     * its underlying address, and records the pair on the clone.
+     * Reverts if the args encode the proto pair so the prototype
+     * remains the sole canonical factory for `(native ETH, proto.symbol())`
+     * even when callers bypass the typed wrappers.
      */
     function zzInit(bytes calldata args, uint256) external override onlyProto {
         (address peg_, string memory symbol_) = abi.decode(args, (address, string));
@@ -165,8 +165,8 @@ contract Reflector is IReflectorMaker, IReflector, Prototype {
 
     /**
      * @dev Ask {coinage} for the deterministic issue address this
-     *      instance would produce for `(name_, symbol_, variant)` with
-     *      metadata derived from `peg_`.
+     * instance would produce for `(name_, symbol_, variant)` with
+     * metadata derived from `peg_`.
      */
     function _issued(address peg_, string memory symbol_, string memory name_, uint256 variant)
         private
@@ -179,11 +179,11 @@ contract Reflector is IReflectorMaker, IReflector, Prototype {
 
     /**
      * @dev Resolve `peg_` into the underlying token address.
-     *      `address(0)` is native ETH; an {IAddressLookup} resolves to
-     *      its `value()`; any other address is treated as the token
-     *      itself. Reverts with {UnmappedLookup} when an
-     *      {IAddressLookup}'s `value()` returns `address(0)`, i.e. the
-     *      underlying token is not deployed on the current chain.
+     * `address(0)` is native ETH; an {IAddressLookup} resolves to
+     * its `value()`; any other address is treated as the token
+     * itself. Reverts with {UnmappedLookup} when an
+     * {IAddressLookup}'s `value()` returns `address(0)`, i.e. the
+     * underlying token is not deployed on the current chain.
      */
     function _resolve(address peg_) private view returns (address) {
         if (peg_ == address(0)) return address(0);
@@ -198,9 +198,9 @@ contract Reflector is IReflectorMaker, IReflector, Prototype {
 
     /**
      * @dev Decimals and supply to mint against `peg_`. Native ETH: 18
-     *      and {maxSupply}. ERC-20: peg's decimals, and {maxSupply}
-     *      scaled down by 10 per decimal under 18 — kept below
-     *      `maxLiquidityPerTick` for a single-sided one-tick seat.
+     * and {maxSupply}. ERC-20: peg's decimals, and {maxSupply}
+     * scaled down by 10 per decimal under 18 — kept below
+     * `maxLiquidityPerTick` for a single-sided one-tick seat.
      */
     function _issueMetadata(address peg_) private view returns (uint8 decimals, uint256 supply) {
         if (peg_ == address(0)) return (18, maxSupply);
@@ -211,8 +211,8 @@ contract Reflector is IReflectorMaker, IReflector, Prototype {
 
     /**
      * @dev True when `(peg_, symbol_)` is the prototype's own pair
-     *      `(native ETH, proto.symbol())`, i.e. the pair for which the
-     *      prototype itself is the factory.
+     * `(native ETH, proto.symbol())`, i.e. the pair for which the
+     * prototype itself is the factory.
      */
     function _isProtoPair(address peg_, string memory symbol_) private view returns (bool) {
         return peg_ == address(0) && keccak256(bytes(symbol_)) == keccak256(bytes(Reflector(proto).symbol()));
