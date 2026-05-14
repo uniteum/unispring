@@ -54,9 +54,8 @@ contract FountainForkTest is ForkBase {
         super.setUp();
 
         bot = new Funder("bot");
-        Fountain proto = new Fountain(address(this), IAddressLookup(PoolManagerLookup));
-        bot.makeFountain(proto);
-        fountain = bot.fountain();
+        fountain = new Fountain(address(bot), IAddressLookup(PoolManagerLookup));
+        bot.setFountain(fountain);
         router = new SwapRouter(IPoolManager(fountain.poolManager()));
         token = _makeToken("MockToken", "MOCK", 18);
 
@@ -69,7 +68,7 @@ contract FountainForkTest is ForkBase {
     // ----------------------------------------------------------------------
 
     function test_ConstructorRegistersImmutables() public view {
-        assertEq(fountain.owner(), address(bot), "owner set at make");
+        assertEq(fountain.owner(), address(bot), "owner set at construction");
         assertGt(fountain.poolManager().code.length, 0, "poolManager resolves to live code");
         assertEq(fountain.fee(), uint24(100), "fee constant");
     }

@@ -43,9 +43,8 @@ contract ManifoldForkTest is ForkBase {
         super.setUp();
 
         bot = new Funder("bot");
-        Fountain fountainProto = new Fountain(address(this), IAddressLookup(PoolManagerLookup));
-        bot.makeFountain(fountainProto);
-        fountain = bot.fountain();
+        fountain = new Fountain(address(bot), IAddressLookup(PoolManagerLookup));
+        bot.setFountain(fountain);
         proto = new Manifold(fountain);
 
         require(ffffff.code.length > 0, "ffffff lepton missing at forked block");

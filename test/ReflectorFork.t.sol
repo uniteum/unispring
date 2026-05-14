@@ -94,9 +94,8 @@ contract ReflectorForkTest is ForkBase {
         super.setUp();
 
         bot = new Funder("bot");
-        Fountain proto = new Fountain(address(this), IAddressLookup(PoolManagerLookup));
-        bot.makeFountain(proto);
-        fountain = bot.fountain();
+        fountain = new Fountain(address(bot), IAddressLookup(PoolManagerLookup));
+        bot.setFountain(fountain);
         reflector = new Reflector(fountain, Coinage(ICoinage), new NativeSymbolStub());
         router = new SwapRouter(IPoolManager(fountain.poolManager()));
     }

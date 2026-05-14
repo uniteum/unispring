@@ -7,12 +7,12 @@ import {console} from "forge-std/console.sol";
 
 /**
  * @title Funder
- * @notice Test persona that is both the {Fountain.owner} of its own clone
- *         (fee recipient) and the party that pokes {Fountain.offer} and
- *         {Fountain.take}. Offer is permissionless so these roles do
- *         not have to coincide, but fusing them here keeps the flow
- *         simple: `bot.offer(...)` approves + offers, and fees land on
- *         `bot`'s balance on `bot.take(...)`.
+ * @notice Test persona that is both the {Fountain.owner} (fee recipient)
+ *         and the party that pokes {Fountain.offer} and {Fountain.take}.
+ *         Offer is permissionless so these roles do not have to coincide,
+ *         but fusing them here keeps the flow simple: `bot.offer(...)`
+ *         approves + offers, and fees land on `bot`'s balance on
+ *         `bot.take(...)`.
  */
 contract Funder {
     string public name;
@@ -24,12 +24,11 @@ contract Funder {
     }
 
     /**
-     * @notice Deploy this Funder's Fountain clone via the prototype. The
-     *         clone's {Fountain.owner} is set to this contract. Called
-     *         once from test `setUp`.
+     * @notice Bind this Funder to a Fountain whose owner is already this
+     *         contract. Called once from test `setUp`.
      */
-    function makeFountain(Fountain proto) external {
-        fountain = Fountain(payable(proto.make(address(this), 0)));
+    function setFountain(Fountain f) external {
+        fountain = f;
     }
 
     /**
@@ -77,16 +76,16 @@ contract Funder {
      * @notice Withdraw `amount` of `currency` from Fountain to this Funder.
      *         Thin pass-through for tests that drive withdraw directly.
      *         Fountain routes the transfer to its current {owner}, so this
-     *         only lands here while this Funder still owns the clone.
+     *         only lands here while this Funder still owns the Fountain.
      */
     function withdraw(address currency, uint256 amount) external {
         fountain.withdraw(currency, amount);
     }
 
     /**
-     * @notice Hand off ownership of this Funder's Fountain clone. Thin
-     *         pass-through for tests that need a non-Funder owner (e.g.
-     *         a rejecting recipient).
+     * @notice Hand off ownership of the Fountain. Thin pass-through for
+     *         tests that need a non-Funder owner (e.g. a rejecting
+     *         recipient).
      */
     function transferFountainOwnership(address newOwner) external {
         fountain.transferOwnership(newOwner);

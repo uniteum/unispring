@@ -4,14 +4,11 @@ pragma solidity ^0.8.34;
 import {SafeERC20} from "erc20/SafeERC20.sol";
 import {IAddressLookup} from "ilookup/IAddressLookup.sol";
 import {IERC20} from "ierc20/IERC20.sol";
-import {IPrototype} from "iproto/IPrototype.sol";
 import {IPlacer} from "iunispring/IPlacer.sol";
 import {IPoolConfig} from "iunispring/IPoolConfig.sol";
 import {IFeeTaker, Position} from "iunispring/IFeeTaker.sol";
-import {IOwnableMaker} from "iunispring/IOwnableMaker.sol";
 import {IWithdrawer} from "iunispring/IWithdrawer.sol";
 import {Ownable} from "ownable/Ownable.sol";
-import {Prototype} from "proto/Prototype.sol";
 import {IExtsload} from "v4-core/interfaces/IExtsload.sol";
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
@@ -37,12 +34,11 @@ import {ModifyLiquidityParams} from "v4-core/types/PoolOperation.sol";
  *         Fountain forwards them to a designated taker on request.
  *         The underlying liquidity is never withdrawn.
  * @dev    Entry points: {IPlacer.offer} to seed liquidity,
- *         {IFeeTaker} to read positions and accrued fees,
- *         {IWithdrawer} to forward fees to `taker`, and
- *         {IOwnableMaker} for the clone factory.
+ *         {IFeeTaker} to read positions and accrued fees, and
+ *         {IWithdrawer} to forward fees to {owner}.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
-contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer, IUnlockCallback, Ownable, Prototype {
+contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IWithdrawer, IUnlockCallback, Ownable {
     string public constant version = "0.9.0";
 
     /**
@@ -80,12 +76,11 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
     error UnknownSelector(bytes4 selector);
 
     /**
-     * @notice Construct the Fountain prototype. The owner is supplied
-     *         explicitly so anyone may deploy on behalf of a third party
-     *         (e.g. via Nick's CREATE2 factory, where `msg.sender` is the
-     *         factory rather than the intended owner). Clones receive
-     *         their own owner via {zzInit} at {make} time.
-     * @param  owner Address that will own the prototype.
+     * @notice Construct the Fountain. The owner is supplied explicitly so
+     *         anyone may deploy on behalf of a third party (e.g. via Nick's
+     *         CREATE2 factory, where `msg.sender` is the factory rather
+     *         than the intended owner).
+     * @param  owner Address that will own this Fountain.
      * @param  poolManagerLookup Lookup for the chain-local Uniswap V4 PoolManager.
      */
     constructor(address owner, IAddressLookup poolManagerLookup) Ownable(owner) {
@@ -460,47 +455,5 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
         // safe: bounds checked on the line above.
         // forge-lint: disable-next-line(unsafe-typecast)
         return uint128(x);
-    }
-
-    // ---- Bitsy factory ----
-
-    /**
-     * @notice ABI-encode the per-clone init args.
-     * @dev    The returned bytes are the canonical args passed to
-     *         {Prototype.make} and {zzInit}. The clone's address is keyed
-     *         by `owner`, so each owner gets a distinct clone per variant.
-     */
-    function encode(address owner) public pure returns (bytes memory args) {
-        args = abi.encode(owner);
-    }
-
-    /**
-     * @inheritdoc IOwnableMaker
-     */
-    function made(address owner, uint256 variant) external view returns (bool exists, address home, bytes32 salt) {
-        (exists, home, salt) = this.made(encode(owner), variant);
-    }
-
-    /**
-     * @inheritdoc IOwnableMaker
-     * @dev Idempotent. The clone's owner is `owner`, not `msg.sender` —
-     *      anyone may seed a Fountain on behalf of a third party. When
-     *      called on a clone, the inherited {Prototype.make} forwards
-     *      back to the prototype.
-     */
-    function make(address owner, uint256 variant) external returns (address instance) {
-        bytes memory args = encode(owner);
-        (bool exists, address home,) = this.make(args, variant);
-        instance = home;
-        if (!exists) emit Made(owner, variant, home);
-    }
-
-    /**
-     * @inheritdoc IPrototype
-     * @dev Decodes `(owner)` and assigns it as the clone's {Ownable} owner.
-     */
-    function zzInit(bytes calldata args, uint256) external override onlyProto {
-        (address owner) = abi.decode(args, (address));
-        _transferOwnership(owner);
     }
 }
