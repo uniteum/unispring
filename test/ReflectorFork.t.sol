@@ -212,6 +212,31 @@ contract ReflectorForkTest is ForkBase {
         reflector.make(address(lookup), "1xETH", 0);
     }
 
+    /**
+     * @notice A peg with no code at all (an {IAddressLookup} not yet
+     *         deployed on this chain, or a stray EOA) must revert
+     *         rather than being silently stored as the peg —
+     *         otherwise the clone would point at an address that
+     *         either never resolves or resolves later to something
+     *         the caller never authorized.
+     */
+    function test_UndeployedPegRevertsMake() public {
+        address ghost = makeAddr("undeployed");
+        vm.expectRevert();
+        reflector.make(ghost, "GHOSTx1", 0);
+    }
+
+    /**
+     * @notice {made} must revert symmetrically with {make} on a peg
+     *         that has no code, so the read view can't hand out a
+     *         prediction for a clone the write path would refuse.
+     */
+    function test_UndeployedPegRevertsMade() public {
+        address ghost = makeAddr("undeployed");
+        vm.expectRevert();
+        reflector.made(ghost, "GHOSTx1", 0);
+    }
+
     function test_MakeUSDC() public {
         (Reflector clone, IERC20Metadata issue) = _makeAndIssue(USDC, "USDCx1");
 

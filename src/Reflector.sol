@@ -180,14 +180,15 @@ contract Reflector is IReflectorMaker, IReflector, Prototype {
     /**
      * @dev Resolve `peg_` into the underlying token address.
      * `address(0)` is native ETH; an {IAddressLookup} resolves to
-     * its `value()`; any other address is treated as the token
-     * itself. Reverts with {UnmappedLookup} when an
-     * {IAddressLookup}'s `value()` returns `address(0)`, i.e. the
-     * underlying token is not deployed on the current chain.
+     * its `value()`; any other deployed address is treated as the
+     * token itself. Reverts with {UnmappedLookup} when `peg_` has
+     * no code (an undeployed lookup or stray EOA would otherwise
+     * be silently stored as the peg), or when an
+     * {IAddressLookup}'s `value()` returns `address(0)`.
      */
     function _resolve(address peg_) private view returns (address) {
         if (peg_ == address(0)) return address(0);
-        if (peg_.code.length == 0) return peg_;
+        if (peg_.code.length == 0) revert UnmappedLookup(peg_);
         try IAddressLookup(peg_).value() returns (address resolved) {
             if (resolved == address(0)) revert UnmappedLookup(peg_);
             return resolved;
