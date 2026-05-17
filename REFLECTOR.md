@@ -22,9 +22,9 @@ all the logic; clones hold only their own configuration.
 Reflector stacks two of these levels:
 
 1. **Clones, one per `(original, symbol)` pair.**
-   `reflector.make(USDC, "USDCx1")` deploys (or returns) the clone that
-   acts as the `USDCx1` factory. Every issue minted by this clone
-   carries the symbol `USDCx1` and is pegged against USDC.
+   `reflector.make(USDC, "1xUSDC")` deploys (or returns) the clone that
+   acts as the `1xUSDC` factory. Every issue minted by this clone
+   carries the symbol `1xUSDC` and is pegged against USDC.
 2. **Issues, one per `name` within a clone.**
    `clone.issue("alpha")` mints a fresh ERC-20 — itself a
    deterministically-addressed CREATE2 deploy via the
@@ -102,7 +102,7 @@ or modify the pool.
 
 ## What it's for
 
-- **Permissionless stablecoin mirror.** Issue `USDCx1` alongside USDC
+- **Permissionless stablecoin mirror.** Issue `1xUSDC` alongside USDC
   — its own address, integrations, and reputation — collateralized
   1:1 by real USDC in the pool, with no unwind path for anyone.
 - **Free-floating distribution.** Airdrop or distribute an issue
