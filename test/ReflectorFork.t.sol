@@ -102,7 +102,7 @@ contract ReflectorForkTest is ForkBase {
 
     function test_MadeMatchesMake() public {
         address peg = USDC;
-        string memory symbol = "USDCx1";
+        string memory symbol = "1xUSDC";
 
         (bool cloneExistsBefore, address predictedClone,) = reflector.made(peg, symbol, 0);
         assertFalse(cloneExistsBefore, "fresh Reflector cannot have pre-existing clones");
@@ -135,7 +135,7 @@ contract ReflectorForkTest is ForkBase {
      */
     function test_MadeMatchesMakeWithLookupPeg() public {
         AddressLookupStub lookup = new AddressLookupStub(USDC);
-        string memory symbol = "USDCx1";
+        string memory symbol = "1xUSDC";
 
         (bool cloneExistsBefore, address predictedClone,) = reflector.made(address(lookup), symbol, 0);
         assertFalse(cloneExistsBefore, "fresh Reflector cannot have a pre-existing lookup-peg clone");
@@ -164,7 +164,7 @@ contract ReflectorForkTest is ForkBase {
      */
     function test_LookupAndDirectYieldDistinctClones() public {
         AddressLookupStub lookup = new AddressLookupStub(USDC);
-        string memory symbol = "USDCx1";
+        string memory symbol = "1xUSDC";
 
         address viaLookup = reflector.make(address(lookup), symbol, 0);
         address viaDirect = reflector.make(USDC, symbol, 0);
@@ -184,7 +184,7 @@ contract ReflectorForkTest is ForkBase {
     function test_UnmappedLookupRevertsMake() public {
         AddressLookupStub lookup = new AddressLookupStub(address(0));
         vm.expectRevert();
-        reflector.make(address(lookup), "USDCx1", 0);
+        reflector.make(address(lookup), "1xUSDC", 0);
     }
 
     /**
@@ -196,7 +196,7 @@ contract ReflectorForkTest is ForkBase {
     function test_UnmappedLookupRevertsMade() public {
         AddressLookupStub lookup = new AddressLookupStub(address(0));
         vm.expectRevert();
-        reflector.made(address(lookup), "USDCx1", 0);
+        reflector.made(address(lookup), "1xUSDC", 0);
     }
 
     /**
@@ -223,7 +223,7 @@ contract ReflectorForkTest is ForkBase {
     function test_UndeployedPegRevertsMake() public {
         address ghost = makeAddr("undeployed");
         vm.expectRevert();
-        reflector.make(ghost, "GHOSTx1", 0);
+        reflector.make(ghost, "1xGHOST", 0);
     }
 
     /**
@@ -234,16 +234,16 @@ contract ReflectorForkTest is ForkBase {
     function test_UndeployedPegRevertsMade() public {
         address ghost = makeAddr("undeployed");
         vm.expectRevert();
-        reflector.made(ghost, "GHOSTx1", 0);
+        reflector.made(ghost, "1xGHOST", 0);
     }
 
     function test_MakeUSDC() public {
-        (Reflector clone, IERC20Metadata issue) = _makeAndIssue(USDC, "USDCx1");
+        (Reflector clone, IERC20Metadata issue) = _makeAndIssue(USDC, "1xUSDC");
 
         assertEq(issue.decimals(), IERC20Metadata(USDC).decimals(), "decimals must match peg");
-        assertEq(issue.symbol(), "USDCx1", "symbol must round-trip through issue");
+        assertEq(issue.symbol(), "1xUSDC", "symbol must round-trip through issue");
         assertEq(clone.peg(), USDC, "clone.peg must point at USDC");
-        assertEq(clone.symbol(), "USDCx1", "clone.symbol must round-trip");
+        assertEq(clone.symbol(), "1xUSDC", "clone.symbol must round-trip");
 
         // Pool is initialized at tick 0 (sqrtPriceX96 for tick 0 = 2**96).
         PoolId id = _poolKeyOf(clone, issue).toId();
@@ -356,8 +356,8 @@ contract ReflectorForkTest is ForkBase {
         require(ffffff.code.length > 0, "ffffff lepton missing at forked block");
         require(zeros.code.length > 0, "zeros lepton missing at forked block");
 
-        (Reflector hiClone, IERC20Metadata hiIssue) = _makeAndIssue(ffffff, "FFx1");
-        (Reflector loClone, IERC20Metadata loIssue) = _makeAndIssue(zeros, "ZZx1");
+        (Reflector hiClone, IERC20Metadata hiIssue) = _makeAndIssue(ffffff, "1xFF");
+        (Reflector loClone, IERC20Metadata loIssue) = _makeAndIssue(zeros, "1xZZ");
 
         assertLt(uint160(address(hiIssue)), uint160(ffffff), "issue of high lepton must sort below (token0)");
         assertGt(uint160(address(loIssue)), uint160(zeros), "issue of low lepton must sort above (token1)");
@@ -382,8 +382,8 @@ contract ReflectorForkTest is ForkBase {
      *         should match to sub-bp precision.
      */
     function test_QuotedOutputsMatchAcrossOrdering() public {
-        (Reflector hiClone, IERC20Metadata hiIssue) = _makeAndIssue(ffffff, "FFx1");
-        (Reflector loClone, IERC20Metadata loIssue) = _makeAndIssue(zeros, "ZZx1");
+        (Reflector hiClone, IERC20Metadata hiIssue) = _makeAndIssue(ffffff, "1xFF");
+        (Reflector loClone, IERC20Metadata loIssue) = _makeAndIssue(zeros, "1xZZ");
 
         PoolKey memory hiKey = _poolKeyOf(hiClone, hiIssue);
         PoolKey memory loKey = _poolKeyOf(loClone, loIssue);
@@ -415,8 +415,8 @@ contract ReflectorForkTest is ForkBase {
      *         stateless, so this executes real swaps via persona traders.
      */
     function test_SequentialBuysMatchAcrossOrdering() public {
-        (Reflector hiClone, IERC20Metadata hiIssue) = _makeAndIssue(ffffff, "FFx1");
-        (Reflector loClone, IERC20Metadata loIssue) = _makeAndIssue(zeros, "ZZx1");
+        (Reflector hiClone, IERC20Metadata hiIssue) = _makeAndIssue(ffffff, "1xFF");
+        (Reflector loClone, IERC20Metadata loIssue) = _makeAndIssue(zeros, "1xZZ");
 
         PoolKey memory hiKey = _poolKeyOf(hiClone, hiIssue);
         PoolKey memory loKey = _poolKeyOf(loClone, loIssue);
@@ -449,7 +449,7 @@ contract ReflectorForkTest is ForkBase {
         // issue sorts below ffffff → issue is currency0, ffffff is currency1.
         // A zeroForOne=false swap spends currency1 (ffffff), so fees accrue on currency1.
         uint256 positionId = fountain.positionsCount();
-        (Reflector clone, IERC20Metadata issue) = _makeAndIssue(ffffff, "FFx1");
+        (Reflector clone, IERC20Metadata issue) = _makeAndIssue(ffffff, "1xFF");
         PoolKey memory key = _poolKeyOf(clone, issue);
 
         uint128 amountIn = 1e18;
@@ -485,9 +485,9 @@ contract ReflectorForkTest is ForkBase {
      */
     function test_TakeBatchRoutesFeesToTaker() public {
         uint256 hiId = fountain.positionsCount();
-        (Reflector hiClone, IERC20Metadata hiIssue) = _makeAndIssue(ffffff, "FFx1");
+        (Reflector hiClone, IERC20Metadata hiIssue) = _makeAndIssue(ffffff, "1xFF");
         uint256 loId = fountain.positionsCount();
-        (Reflector loClone, IERC20Metadata loIssue) = _makeAndIssue(zeros, "ZZx1");
+        (Reflector loClone, IERC20Metadata loIssue) = _makeAndIssue(zeros, "1xZZ");
 
         PoolKey memory hiKey = _poolKeyOf(hiClone, hiIssue);
         PoolKey memory loKey = _poolKeyOf(loClone, loIssue);
@@ -534,7 +534,7 @@ contract ReflectorForkTest is ForkBase {
      */
     function test_IssueIdempotentAtGenesisPrice() public {
         address peg = ffffff;
-        string memory symbol = "FFx1";
+        string memory symbol = "1xFF";
 
         Reflector clone = Reflector(reflector.make(peg, symbol, 0));
         (, address predictedIssue) = clone.issued(symbol, 0);
@@ -558,7 +558,7 @@ contract ReflectorForkTest is ForkBase {
      */
     function test_IssueAbsorbsPreInitBelowTicksZero() public {
         address peg = ffffff;
-        string memory symbol = "FFx1";
+        string memory symbol = "1xFF";
 
         Reflector clone = Reflector(reflector.make(peg, symbol, 0));
         (, address predictedIssue) = clone.issued(symbol, 0);
@@ -583,7 +583,7 @@ contract ReflectorForkTest is ForkBase {
      */
     function test_IssueRevertsOnPreInitAboveTicksZero() public {
         address peg = ffffff;
-        string memory symbol = "FFx1";
+        string memory symbol = "1xFF";
 
         Reflector clone = Reflector(reflector.make(peg, symbol, 0));
         (, address predictedIssue) = clone.issued(symbol, 0);
@@ -594,7 +594,7 @@ contract ReflectorForkTest is ForkBase {
         clone.issue(symbol, 0);
 
         // Re-mint under a different name yields a different issue and PoolKey, succeeds.
-        IERC20Metadata escapedIssue = IERC20Metadata(clone.issue("FFx1-escape", 0));
+        IERC20Metadata escapedIssue = IERC20Metadata(clone.issue("1xFF-escape", 0));
         assertTrue(address(escapedIssue) != address(0), "rescue issue under new name failed");
     }
 
