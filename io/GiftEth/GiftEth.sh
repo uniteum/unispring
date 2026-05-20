@@ -14,7 +14,7 @@ symbol=1xETH                # ETHReflector.symbol()
 decimals=18                 # ETH peg decimals
 # Reflector._issueMetadata for a 18-decimal peg: maxSupply (1e27) scaled
 # down by 10**(18-18) → 1e27.
-supply=1000000000000000000
+supply=1000000000000000000000000000
 
 # Vanity-mining inputs — TODO: re-mine. The variant below is stale;
 # changing name/supply changes argshash, so it must be re-mined anyway.
@@ -23,4 +23,4 @@ target=0x61f7000000000000000000000000000000000e74
 
 clone_predict GiftEth "$deployer" \
     "address,string,string,uint8,uint256" "$maker" "$name" "$symbol" "$decimals" "$supply" \
-    0x000000000000000000000000000000000000000000000000000000000398e637
+    0x0000000000000000000000000000000000000000000000000000000030367e60
