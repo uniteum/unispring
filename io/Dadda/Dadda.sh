@@ -12,4 +12,4 @@ target=0xdadda000000000000000000000000000000dadda
 
 variant=0x0000000000000000000000000000000000000000000000000000001f961515f9
 
-source "$(git rev-parse --show-toplevel)/io/predictReflection.sh"
+source "$(dirname "${BASH_SOURCE}")/../predictReflection.sh"

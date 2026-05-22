@@ -5,7 +5,7 @@
 # (clone, deployer, maker, name, symbol, decimals, supply, variant, plus the
 # optional mask/target vanity inputs) and then sources this file.
 set -euo pipefail
-source "$(git rev-parse --show-toplevel)/lib/crucible/script/clone.sh"
+source "$(dirname ${BASH_SOURCE})/../lib/crucible/script/clone.sh"
 
 clone_predict "$clone" "$deployer" \
     "address,string,string,uint8,uint256" "$maker" "$name" "$symbol" "$decimals" "$supply" \
