@@ -5,9 +5,7 @@
 # (the Lepton prototype), so this is a Lepton clone whose maker is the
 # USDCReflector clone and whose symbol/decimals/supply are fixed by
 # Reflector for a USDC peg. The same prediction holds on every chain.
-set -euo pipefail
-source "$(git rev-parse --show-toplevel)/lib/crucible/script/clone.sh"
-
+clone=Momma
 # Lepton prototype — Reflector.coinage, the ICoinage that issue() calls.
 deployer=0x1Eb8dF6040A67025C2aF9a82aB966CCd7bF1e300
 
@@ -26,6 +24,6 @@ supply=1000000000000000
 mask=0xfffff000000000000000000000000000000fffff
 target=0x3033a0000000000000000000000000000003033a
 
-clone_predict Momma "$deployer" \
-    "address,string,string,uint8,uint256" "$maker" "$name" "$symbol" "$decimals" "$supply" \
-    0x00000000000000000000000000000000000000000000000000000316fb1bcb64
+variant=0x00000000000000000000000000000000000000000000000000000316fb1bcb64
+
+source "$(git rev-parse --show-toplevel)/io/predictReflection.sh"

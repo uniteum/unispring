@@ -6,9 +6,7 @@
 # maker is the Reflector prototype and whose symbol/decimals/supply
 # are fixed by Reflector for the ETH peg. The same prediction holds
 # on every chain.
-set -euo pipefail
-source "$(git rev-parse --show-toplevel)/lib/crucible/script/clone.sh"
-
+clone=UniteumDollar
 # Lepton prototype — Reflector.coinage, the ICoinage that issue() calls.
 deployer=0x1Eb8dF6040A67025C2aF9a82aB966CCd7bF1e300
 
@@ -23,6 +21,6 @@ supply=1000000000000000     # 1e15
 mask=0xfffff0000000000000000000000000000000ffff
 target=0x1111100000000000000000000000000000001C5D
 
-clone_predict UniteumDollar "$deployer" \
-    "address,string,string,uint8,uint256" "$maker" "$name" "$symbol" "$decimals" "$supply" \
-    0x000000000000000000000000000000000000000000000000000000021e195e32
+variant=0x000000000000000000000000000000000000000000000000000000021e195e32
+
+source "$(git rev-parse --show-toplevel)/io/predictReflection.sh"
