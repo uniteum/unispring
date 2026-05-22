@@ -1,17 +1,10 @@
 #!/usr/bin/env bash
-# Cafe — a Reflector issue: the ERC-20 named "Cafe" minted by
-# USDCReflector.issue("Cafe", variant). USDCReflector is the Reflector
-# clone pegged to chain-local Circle USDC; it issues through its coinage
-# (the Lepton prototype), so this is a Lepton clone whose maker is the
-# USDCReflector clone and whose symbol/decimals/supply are fixed by
-# Reflector for a USDC peg. The same prediction holds on every chain.
 clone=CafeUSDC
 deployer=0x1Eb8dF6040A67025C2aF9a82aB966CCd7bF1e300 # Lepton
-
 maker=0x05dD50aD3A40629E62635Ea67Dd17C6a0a3cb388 # USDCReflector
-name=Cafe               # issue name
-symbol=1xUSDC           # USDCReflector.symbol()
-decimals=6              # USDC peg decimals
+name=Cafe
+symbol=1xUSDC
+decimals=6
 supply=1000000000000000 # 1e15
 
 mask=0xffff00000000000000000000000000000000ffff
