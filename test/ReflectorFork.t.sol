@@ -11,9 +11,12 @@ import {IAddressLookup} from "ilookup/IAddressLookup.sol";
 import {IStringLookup} from "ilookup/IStringLookup.sol";
 import {ICoinage as Coinage} from "icoinage/ICoinage.sol";
 import {IERC20Metadata} from "ierc20/IERC20Metadata.sol";
+import {IReflector} from "iunispring/IReflector.sol";
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 import {FixedPoint96} from "v4-core/libraries/FixedPoint96.sol";
+import {FullMath} from "v4-core/libraries/FullMath.sol";
+import {Pool} from "v4-core/libraries/Pool.sol";
 import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
 import {TickMath} from "v4-core/libraries/TickMath.sol";
 import {Currency} from "v4-core/types/Currency.sol";
@@ -85,6 +88,13 @@ interface IV4Quoter {
 contract ReflectorForkTest is ForkBase {
     using StateLibrary for IPoolManager;
 
+    /**
+     * @dev Reflector cap for the shared `reflector` instance — comfortably
+     *      below the V4 liquidity ceiling derived in {test_MaxSupplyAtV4Cap}
+     *      so existing per-test issues never trip the cap.
+     */
+    uint128 internal constant MAX_SUPPLY = 10 ** 27;
+
     Fountain internal fountain;
     Reflector internal reflector;
     SwapRouter internal router;
@@ -96,13 +106,14 @@ contract ReflectorForkTest is ForkBase {
         bot = new Funder("bot");
         fountain = new Fountain(address(bot), IAddressLookup(PoolManagerLookup));
         bot.setFountain(fountain);
-        reflector = new Reflector(fountain, Coinage(ICoinage), new NativeSymbolStub());
+        reflector = new Reflector(fountain, Coinage(ICoinage), new NativeSymbolStub(), MAX_SUPPLY);
         router = new SwapRouter(IPoolManager(fountain.poolManager()));
     }
 
     function test_MadeMatchesMake() public {
         address peg = USDC;
         string memory symbol = "1xUSDC";
+        uint256 supply = _defaultSupplyFor(peg);
 
         (bool cloneExistsBefore, address predictedClone,) = reflector.made(peg, symbol, 0);
         assertFalse(cloneExistsBefore, "fresh Reflector cannot have pre-existing clones");
@@ -111,15 +122,15 @@ contract ReflectorForkTest is ForkBase {
         Reflector clone = Reflector(reflector.make(peg, symbol, 0));
         assertEq(address(clone), predictedClone, "deployed clone differs from prediction");
 
-        (bool issueExistsBefore, address predictedIssue) = clone.issued(symbol, 0);
+        (bool issueExistsBefore, address predictedIssue) = clone.issued(symbol, 0, supply);
         assertFalse(issueExistsBefore, "fresh clone cannot have pre-existing issues");
         assertTrue(predictedIssue != address(0), "predicted issue is zero");
 
-        IERC20Metadata issue = IERC20Metadata(clone.issue(symbol, 0));
+        IERC20Metadata issue = IERC20Metadata(clone.issue(symbol, 0, supply));
         assertEq(address(issue), predictedIssue, "minted issue differs from prediction");
 
         (bool cloneExistsAfter,,) = reflector.made(peg, symbol, 0);
-        (bool issueExistsAfter,) = clone.issued(symbol, 0);
+        (bool issueExistsAfter,) = clone.issued(symbol, 0, supply);
         assertTrue(cloneExistsAfter, "clone not registered as existing after make");
         assertTrue(issueExistsAfter, "issue not registered as existing after issue()");
     }
@@ -277,10 +288,11 @@ contract ReflectorForkTest is ForkBase {
         Reflector self = Reflector(reflector.make(native, "1xETH", 0));
         assertEq(address(self), address(reflector), "make on proto pair must return proto");
 
-        (bool issueExistsBefore, address predictedIssue) = reflector.issued("alpha", 0);
+        uint256 supply = _defaultSupplyFor(address(0));
+        (bool issueExistsBefore, address predictedIssue) = reflector.issued("alpha", 0, supply);
         assertFalse(issueExistsBefore, "fresh proto cannot have pre-existing issues");
 
-        IERC20Metadata token = IERC20Metadata(reflector.issue("alpha", 0));
+        IERC20Metadata token = IERC20Metadata(reflector.issue("alpha", 0, supply));
         assertEq(address(token), predictedIssue, "minted issue differs from prediction");
         assertEq(token.symbol(), "1xETH", "minted symbol must round-trip");
         assertEq(token.decimals(), uint8(18), "native issue must have 18 decimals");
@@ -535,13 +547,14 @@ contract ReflectorForkTest is ForkBase {
     function test_IssueIdempotentAtGenesisPrice() public {
         address peg = ffffff;
         string memory symbol = "1xFF";
+        uint256 supply = _defaultSupplyFor(peg);
 
         Reflector clone = Reflector(reflector.make(peg, symbol, 0));
-        (, address predictedIssue) = clone.issued(symbol, 0);
+        (, address predictedIssue) = clone.issued(symbol, 0, supply);
         PoolKey memory key = _poolKey(predictedIssue, peg);
         IPoolManager(fountain.poolManager()).initialize(key, TickMath.getSqrtPriceAtTick(0));
 
-        IERC20Metadata issue = IERC20Metadata(clone.issue(symbol, 0));
+        IERC20Metadata issue = IERC20Metadata(clone.issue(symbol, 0, supply));
         assertEq(address(issue), predictedIssue, "minted address != predicted");
 
         (bool exists,,) = reflector.made(peg, symbol, 0);
@@ -559,14 +572,15 @@ contract ReflectorForkTest is ForkBase {
     function test_IssueAbsorbsPreInitBelowTicksZero() public {
         address peg = ffffff;
         string memory symbol = "1xFF";
+        uint256 supply = _defaultSupplyFor(peg);
 
         Reflector clone = Reflector(reflector.make(peg, symbol, 0));
-        (, address predictedIssue) = clone.issued(symbol, 0);
+        (, address predictedIssue) = clone.issued(symbol, 0, supply);
         PoolKey memory key = _poolKey(predictedIssue, peg);
         uint160 preInitSqrt = TickMath.getSqrtPriceAtTick(-100);
         IPoolManager(fountain.poolManager()).initialize(key, preInitSqrt);
 
-        IERC20Metadata issue = IERC20Metadata(clone.issue(symbol, 0));
+        IERC20Metadata issue = IERC20Metadata(clone.issue(symbol, 0, supply));
         assertTrue(address(issue) != address(0), "issue not minted after below-tick pre-init");
 
         (uint160 sqrt,,,) = IPoolManager(fountain.poolManager()).getSlot0(key.toId());
@@ -584,17 +598,18 @@ contract ReflectorForkTest is ForkBase {
     function test_IssueRevertsOnPreInitAboveTicksZero() public {
         address peg = ffffff;
         string memory symbol = "1xFF";
+        uint256 supply = _defaultSupplyFor(peg);
 
         Reflector clone = Reflector(reflector.make(peg, symbol, 0));
-        (, address predictedIssue) = clone.issued(symbol, 0);
+        (, address predictedIssue) = clone.issued(symbol, 0, supply);
         PoolKey memory key = _poolKey(predictedIssue, peg);
         IPoolManager(fountain.poolManager()).initialize(key, TickMath.getSqrtPriceAtTick(100));
 
         vm.expectRevert(IPoolManager.CurrencyNotSettled.selector);
-        clone.issue(symbol, 0);
+        clone.issue(symbol, 0, supply);
 
         // Re-mint under a different name yields a different issue and PoolKey, succeeds.
-        IERC20Metadata escapedIssue = IERC20Metadata(clone.issue("1xFF-escape", 0));
+        IERC20Metadata escapedIssue = IERC20Metadata(clone.issue("1xFF-escape", 0, supply));
         assertTrue(address(escapedIssue) != address(0), "rescue issue under new name failed");
     }
 
@@ -605,7 +620,20 @@ contract ReflectorForkTest is ForkBase {
      */
     function _makeAndIssue(address peg, string memory symbol) internal returns (Reflector clone, IERC20Metadata token) {
         clone = Reflector(reflector.make(peg, symbol, 0));
-        token = IERC20Metadata(clone.issue(symbol, 0));
+        token = IERC20Metadata(clone.issue(symbol, 0, _defaultSupplyFor(peg)));
+    }
+
+    /**
+     * @dev Per-peg default supply used by existing tests. Mirrors the
+     *      pre-parameterization behavior: native ETH / 18-decimal pegs
+     *      use the full {MAX_SUPPLY}, lower-decimal pegs scale down by
+     *      10 per decimal so the displayed supply lines up.
+     */
+    function _defaultSupplyFor(address peg) internal view returns (uint256) {
+        if (peg == address(0)) return MAX_SUPPLY;
+        uint8 decimals = IERC20Metadata(peg).decimals();
+        if (decimals >= 18) return MAX_SUPPLY;
+        return uint256(MAX_SUPPLY) / 10 ** uint256(18 - decimals);
     }
 
     /**
@@ -625,5 +653,99 @@ contract ReflectorForkTest is ForkBase {
             tickSpacing: fountain.tickSpacing(),
             hooks: IHooks(address(0))
         });
+    }
+
+    // -------------------------------------------------------------------
+    // maxSupply / V4 liquidity-per-tick boundary
+    // -------------------------------------------------------------------
+
+    /**
+     * @notice Computes the largest per-issue supply that fits V4's
+     *         `maxLiquidityPerTick` at `tickSpacing = 1` for the seats
+     *         Reflector opens (ticks `[0, 1]` for currency0,
+     *         `[-1, 0]` for currency1), and proves a freshly-built
+     *         Reflector configured with that exact value mints
+     *         successfully on both orientations. The logged value is
+     *         the recommended ceiling for the constructor `maxSupply_`
+     *         argument.
+     */
+    function test_MaxSupplyAtV4Cap() public {
+        uint128 cap = _maxSupplyAtV4Cap();
+        emit log_named_uint("V4 maxSupply cap (min of currency0/currency1 sides)", cap);
+
+        Reflector capped = new Reflector(fountain, Coinage(ICoinage), new NativeSymbolStub(), cap);
+
+        // currency0 side: issue sorts below ffffff → seats at ticks [0, 1].
+        Reflector hiClone = Reflector(capped.make(ffffff, "1xFF-cap", 0));
+        IERC20Metadata hi = IERC20Metadata(hiClone.issue("1xFF-cap", 0, cap));
+        assertEq(hi.totalSupply(), cap, "currency0 side: minted supply must equal the V4 cap");
+
+        // currency1 side: issue sorts above zeros → seats at ticks [-1, 0].
+        Reflector loClone = Reflector(capped.make(zeros, "1xZZ-cap", 0));
+        IERC20Metadata lo = IERC20Metadata(loClone.issue("1xZZ-cap", 0, cap));
+        assertEq(lo.totalSupply(), cap, "currency1 side: minted supply must equal the V4 cap");
+    }
+
+    /**
+     * @notice One wei above the V4 ceiling must overflow V4's
+     *         `maxLiquidityPerTick` check on at least one side —
+     *         proving {test_MaxSupplyAtV4Cap}'s value really is the
+     *         boundary. Tested on the currency1 side (peg = `zeros`),
+     *         which matches the closed-form derivation in
+     *         {_maxSupplyAtV4Cap}. The Reflector cap itself is set
+     *         wide so the revert comes from V4, not from
+     *         {SupplyExceedsMaxSupply}.
+     */
+    function test_OneAboveV4CapOverflowsTickLiquidity() public {
+        uint128 cap = _maxSupplyAtV4Cap();
+        uint128 wide = type(uint128).max;
+
+        Reflector wider = new Reflector(fountain, Coinage(ICoinage), new NativeSymbolStub(), wide);
+        Reflector clone = Reflector(wider.make(zeros, "1xZZ-over", 0));
+
+        vm.expectRevert();
+        clone.issue("1xZZ-over", 0, uint256(cap) + 1);
+    }
+
+    /**
+     * @notice {issue} reverts with {SupplyExceedsMaxSupply} when the
+     *         caller asks for more than the prototype's configured
+     *         cap — guarding against accidental V4 overflows long
+     *         before V4 itself sees the request.
+     */
+    function test_IssueRevertsAboveMaxSupply() public {
+        uint256 over = uint256(reflector.maxSupply()) + 1;
+        vm.expectRevert(abi.encodeWithSelector(IReflector.SupplyExceedsMaxSupply.selector, over, reflector.maxSupply()));
+        reflector.issue("over", 0, over);
+    }
+
+    /**
+     * @dev Compute the largest amount that fits V4's per-tick liquidity
+     *      ceiling for the seats Reflector opens. The contract always
+     *      seats at `[ticks[0]=0, ticks[1]=1]`; Fountain flips this to
+     *      `[0, 1]` when the token is currency0 (`L = amount * sqrtU
+     *      * sqrtL / Q96 / (sqrtU - sqrtL)`) and `[-1, 0]` when the
+     *      token is currency1 (`L = amount * Q96 / (sqrtU - sqrtL)`).
+     *      The closed-form maxima are equal to the wei modulo integer
+     *      rounding; this returns the smaller so the cap is safe on
+     *      both orientations.
+     */
+    function _maxSupplyAtV4Cap() internal pure returns (uint128) {
+        uint128 maxLiq = Pool.tickSpacingToMaxLiquidityPerTick(1);
+
+        // currency1 side: amount1 * Q96 / (sqrtU - sqrtL) <= maxLiq
+        uint160 sqrtNeg1 = TickMath.getSqrtPriceAtTick(-1);
+        uint160 sqrt0 = TickMath.getSqrtPriceAtTick(0);
+        uint256 cap1 = FullMath.mulDiv(uint256(maxLiq), uint256(sqrt0 - sqrtNeg1), FixedPoint96.Q96);
+
+        // currency0 side: amount0 * (sqrtL * sqrtU / Q96) / (sqrtU - sqrtL) <= maxLiq
+        uint160 sqrt1 = TickMath.getSqrtPriceAtTick(1);
+        uint256 intermediate = FullMath.mulDiv(uint256(sqrt0), uint256(sqrt1), FixedPoint96.Q96);
+        uint256 cap0 = FullMath.mulDiv(uint256(maxLiq), uint256(sqrt1 - sqrt0), intermediate);
+
+        uint256 cap = cap0 < cap1 ? cap0 : cap1;
+        require(cap <= type(uint128).max, "cap overflows uint128");
+        // forge-lint: disable-next-line(unsafe-typecast)
+        return uint128(cap);
     }
 }

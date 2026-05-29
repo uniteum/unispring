@@ -31,12 +31,15 @@ contract Reflector is IReflectorMaker, IReflector, Prototype {
     string public constant version = "0.9.0";
 
     /**
-     * @notice Supply for an 18-decimal issue.
-     * @dev Supply scales down with fewer decimals to keep the displayed supply roughly constant.
-     *
-     * Supply must be less than `maxLiquidityPerTick` at `tickSpacing = 1`.
+     * @notice Hard cap on the supply a caller may mint through {issue}.
+     * @dev Bounded by V4's `maxLiquidityPerTick` at `tickSpacing = 1`: the
+     * full supply seats single-sided in a one-tick position, so an
+     * amount above this cap would overflow the per-tick liquidity
+     * limit. Set in the constructor so the cap can be tuned per
+     * deployment without recompiling; see ReflectorForkTest's
+     * `test_MaxSupplyAtV4Cap*` for how the value is derived.
      */
-    uint128 public constant maxSupply = 10 ** 27;
+    uint128 public immutable maxSupply;
 
     /**
      * @notice Holds the liquidity for each token issued through this Reflector.
@@ -70,10 +73,15 @@ contract Reflector is IReflectorMaker, IReflector, Prototype {
      * returns the native currency symbol (e.g. "ETH" on mainnet,
      * "MATIC" on Polygon); used as the suffix for the prototype's
      * issue symbol `"1x<native>"`.
+     * @param maxSupply_ Hard cap on per-issue supply, in raw token units.
+     * Must not exceed the largest amount that fits V4's
+     * `maxLiquidityPerTick` for a single-tick seat at
+     * `tickSpacing = 1`.
      */
-    constructor(IPlacer placer_, ICoinage minter, IStringLookup gasSymbolLookup) {
+    constructor(IPlacer placer_, ICoinage minter, IStringLookup gasSymbolLookup, uint128 maxSupply_) {
         placer = placer_;
         coinage = minter;
+        maxSupply = maxSupply_;
         symbol = string.concat("1x", gasSymbolLookup.value());
         emit Make(address(this), address(0), symbol);
     }
@@ -81,19 +89,25 @@ contract Reflector is IReflectorMaker, IReflector, Prototype {
     /**
      * @inheritdoc IReflector
      */
-    function issued(string calldata name_, uint256 variant) external view returns (bool exists, address home) {
-        return _issued(peg, symbol, name_, variant);
+    function issued(string calldata name_, uint256 variant, uint256 supply)
+        external
+        view
+        returns (bool exists, address home)
+    {
+        return _issued(peg, symbol, name_, variant, supply);
     }
 
     /**
      * @inheritdoc IReflector
      */
-    function issue(string calldata name_, uint256 variant) external returns (address token) {
+    function issue(string calldata name_, uint256 variant, uint256 supply) external returns (address token) {
+        if (supply > maxSupply) revert SupplyExceedsMaxSupply(supply, maxSupply);
+
         address peg_ = peg;
-        (bool exists, address home) = _issued(peg_, symbol, name_, variant);
+        (bool exists, address home) = _issued(peg_, symbol, name_, variant, supply);
         if (exists) return home;
 
-        (uint8 decimals, uint256 supply) = _issueMetadata(peg_);
+        uint8 decimals = _issueDecimals(peg_);
         IERC20Metadata issued_ = coinage.make(name_, symbol, decimals, supply, variant);
         token = address(issued_);
 
@@ -165,15 +179,15 @@ contract Reflector is IReflectorMaker, IReflector, Prototype {
 
     /**
      * @dev Ask {coinage} for the deterministic issue address this
-     * instance would produce for `(name_, symbol_, variant)` with
-     * metadata derived from `peg_`.
+     * instance would produce for `(name_, symbol_, variant, supply)`
+     * with decimals derived from `peg_`.
      */
-    function _issued(address peg_, string memory symbol_, string memory name_, uint256 variant)
+    function _issued(address peg_, string memory symbol_, string memory name_, uint256 variant, uint256 supply)
         private
         view
         returns (bool exists, address home)
     {
-        (uint8 decimals, uint256 supply) = _issueMetadata(peg_);
+        uint8 decimals = _issueDecimals(peg_);
         (exists, home,) = coinage.made(address(this), name_, symbol_, decimals, supply, variant);
     }
 
@@ -198,16 +212,14 @@ contract Reflector is IReflectorMaker, IReflector, Prototype {
     }
 
     /**
-     * @dev Decimals and supply to mint against `peg_`. Native ETH: 18
-     * and {maxSupply}. ERC-20: peg's decimals, and {maxSupply}
-     * scaled down by 10 per decimal under 18 — kept below
-     * `maxLiquidityPerTick` for a single-sided one-tick seat.
+     * @dev Decimals an issue minted against `peg_` will carry. Native ETH
+     * falls back to 18 (no on-chain metadata to read); any ERC-20 peg
+     * inherits the peg's own decimals so display values line up
+     * across the pair.
      */
-    function _issueMetadata(address peg_) private view returns (uint8 decimals, uint256 supply) {
-        if (peg_ == address(0)) return (18, maxSupply);
-        decimals = IERC20Metadata(peg_).decimals();
-        supply = uint256(maxSupply);
-        if (decimals < 18) supply /= 10 ** uint256(18 - decimals);
+    function _issueDecimals(address peg_) private view returns (uint8) {
+        if (peg_ == address(0)) return 18;
+        return IERC20Metadata(peg_).decimals();
     }
 
     /**
