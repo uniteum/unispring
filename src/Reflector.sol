@@ -89,22 +89,22 @@ contract Reflector is IReflectorMaker, IReflector, Prototype {
     /**
      * @inheritdoc IReflector
      */
-    function issued(string calldata name_, uint256 variant, uint256 supply)
+    function issued(string calldata name_, uint256 supply, uint256 variant)
         external
         view
         returns (bool exists, address home)
     {
-        return _issued(peg, symbol, name_, variant, supply);
+        return _issued(peg, symbol, name_, supply, variant);
     }
 
     /**
      * @inheritdoc IReflector
      */
-    function issue(string calldata name_, uint256 variant, uint256 supply) external returns (address token) {
+    function issue(string calldata name_, uint256 supply, uint256 variant) external returns (address token) {
         if (supply > maxSupply) revert SupplyExceedsMaxSupply(supply, maxSupply);
 
         address peg_ = peg;
-        (bool exists, address home) = _issued(peg_, symbol, name_, variant, supply);
+        (bool exists, address home) = _issued(peg_, symbol, name_, supply, variant);
         if (exists) return home;
 
         uint8 decimals = _issueDecimals(peg_);
@@ -179,10 +179,10 @@ contract Reflector is IReflectorMaker, IReflector, Prototype {
 
     /**
      * @dev Ask {coinage} for the deterministic issue address this
-     * instance would produce for `(name_, symbol_, variant, supply)`
+     * instance would produce for `(name_, symbol_, supply, variant)`
      * with decimals derived from `peg_`.
      */
-    function _issued(address peg_, string memory symbol_, string memory name_, uint256 variant, uint256 supply)
+    function _issued(address peg_, string memory symbol_, string memory name_, uint256 supply, uint256 variant)
         private
         view
         returns (bool exists, address home)

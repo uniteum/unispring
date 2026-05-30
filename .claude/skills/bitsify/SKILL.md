@@ -395,6 +395,16 @@ Notes:
 
 ### The variant parameter
 
+**`variant` is always the trailing parameter.** Every maker
+entrypoint — the inherited `make(bytes,uint256)` / `made(...)` /
+`zzInit(bytes,uint256)`, the typed `make`/`made` wrappers above, and
+any custom two-level factory function that mints a clone (e.g. an
+`issue(name, supply, variant)`) — takes `variant` last, after all the
+address-determining args. Tooling (`clone_predict`, `saltminer`)
+assumes this position, and a uniform signature shape lets a reader
+spot the mining nonce at a glance. Never wedge `variant` into the
+middle of the argument list.
+
 Even with the inherited factory, `variant` is what makes clones
 compatible with GPU-based vanity-address mining. Internally
 `Prototype.made` computes `salt = keccak256(abi.encode(args)) ^ variant`,

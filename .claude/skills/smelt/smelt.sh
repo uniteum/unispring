@@ -26,6 +26,7 @@ FILES=(
     .claude/settings.json
     .claude/rules/always.md
     .claude/rules/comments.md
+    .claude/rules/crucible-managed.md
     .claude/rules/crucible-tests.md
     .claude/rules/deployment.md
     .claude/rules/lint.md

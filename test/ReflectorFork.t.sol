@@ -122,15 +122,15 @@ contract ReflectorForkTest is ForkBase {
         Reflector clone = Reflector(reflector.make(peg, symbol, 0));
         assertEq(address(clone), predictedClone, "deployed clone differs from prediction");
 
-        (bool issueExistsBefore, address predictedIssue) = clone.issued(symbol, 0, supply);
+        (bool issueExistsBefore, address predictedIssue) = clone.issued(symbol, supply, 0);
         assertFalse(issueExistsBefore, "fresh clone cannot have pre-existing issues");
         assertTrue(predictedIssue != address(0), "predicted issue is zero");
 
-        IERC20Metadata issue = IERC20Metadata(clone.issue(symbol, 0, supply));
+        IERC20Metadata issue = IERC20Metadata(clone.issue(symbol, supply, 0));
         assertEq(address(issue), predictedIssue, "minted issue differs from prediction");
 
         (bool cloneExistsAfter,,) = reflector.made(peg, symbol, 0);
-        (bool issueExistsAfter,) = clone.issued(symbol, 0, supply);
+        (bool issueExistsAfter,) = clone.issued(symbol, supply, 0);
         assertTrue(cloneExistsAfter, "clone not registered as existing after make");
         assertTrue(issueExistsAfter, "issue not registered as existing after issue()");
     }
@@ -289,10 +289,10 @@ contract ReflectorForkTest is ForkBase {
         assertEq(address(self), address(reflector), "make on proto pair must return proto");
 
         uint256 supply = _defaultSupplyFor(address(0));
-        (bool issueExistsBefore, address predictedIssue) = reflector.issued("alpha", 0, supply);
+        (bool issueExistsBefore, address predictedIssue) = reflector.issued("alpha", supply, 0);
         assertFalse(issueExistsBefore, "fresh proto cannot have pre-existing issues");
 
-        IERC20Metadata token = IERC20Metadata(reflector.issue("alpha", 0, supply));
+        IERC20Metadata token = IERC20Metadata(reflector.issue("alpha", supply, 0));
         assertEq(address(token), predictedIssue, "minted issue differs from prediction");
         assertEq(token.symbol(), "1xETH", "minted symbol must round-trip");
         assertEq(token.decimals(), uint8(18), "native issue must have 18 decimals");
@@ -550,11 +550,11 @@ contract ReflectorForkTest is ForkBase {
         uint256 supply = _defaultSupplyFor(peg);
 
         Reflector clone = Reflector(reflector.make(peg, symbol, 0));
-        (, address predictedIssue) = clone.issued(symbol, 0, supply);
+        (, address predictedIssue) = clone.issued(symbol, supply, 0);
         PoolKey memory key = _poolKey(predictedIssue, peg);
         IPoolManager(fountain.poolManager()).initialize(key, TickMath.getSqrtPriceAtTick(0));
 
-        IERC20Metadata issue = IERC20Metadata(clone.issue(symbol, 0, supply));
+        IERC20Metadata issue = IERC20Metadata(clone.issue(symbol, supply, 0));
         assertEq(address(issue), predictedIssue, "minted address != predicted");
 
         (bool exists,,) = reflector.made(peg, symbol, 0);
@@ -575,12 +575,12 @@ contract ReflectorForkTest is ForkBase {
         uint256 supply = _defaultSupplyFor(peg);
 
         Reflector clone = Reflector(reflector.make(peg, symbol, 0));
-        (, address predictedIssue) = clone.issued(symbol, 0, supply);
+        (, address predictedIssue) = clone.issued(symbol, supply, 0);
         PoolKey memory key = _poolKey(predictedIssue, peg);
         uint160 preInitSqrt = TickMath.getSqrtPriceAtTick(-100);
         IPoolManager(fountain.poolManager()).initialize(key, preInitSqrt);
 
-        IERC20Metadata issue = IERC20Metadata(clone.issue(symbol, 0, supply));
+        IERC20Metadata issue = IERC20Metadata(clone.issue(symbol, supply, 0));
         assertTrue(address(issue) != address(0), "issue not minted after below-tick pre-init");
 
         (uint160 sqrt,,,) = IPoolManager(fountain.poolManager()).getSlot0(key.toId());
@@ -601,15 +601,15 @@ contract ReflectorForkTest is ForkBase {
         uint256 supply = _defaultSupplyFor(peg);
 
         Reflector clone = Reflector(reflector.make(peg, symbol, 0));
-        (, address predictedIssue) = clone.issued(symbol, 0, supply);
+        (, address predictedIssue) = clone.issued(symbol, supply, 0);
         PoolKey memory key = _poolKey(predictedIssue, peg);
         IPoolManager(fountain.poolManager()).initialize(key, TickMath.getSqrtPriceAtTick(100));
 
         vm.expectRevert(IPoolManager.CurrencyNotSettled.selector);
-        clone.issue(symbol, 0, supply);
+        clone.issue(symbol, supply, 0);
 
         // Re-mint under a different name yields a different issue and PoolKey, succeeds.
-        IERC20Metadata escapedIssue = IERC20Metadata(clone.issue("1xFF-escape", 0, supply));
+        IERC20Metadata escapedIssue = IERC20Metadata(clone.issue("1xFF-escape", supply, 0));
         assertTrue(address(escapedIssue) != address(0), "rescue issue under new name failed");
     }
 
@@ -620,7 +620,7 @@ contract ReflectorForkTest is ForkBase {
      */
     function _makeAndIssue(address peg, string memory symbol) internal returns (Reflector clone, IERC20Metadata token) {
         clone = Reflector(reflector.make(peg, symbol, 0));
-        token = IERC20Metadata(clone.issue(symbol, 0, _defaultSupplyFor(peg)));
+        token = IERC20Metadata(clone.issue(symbol, _defaultSupplyFor(peg), 0));
     }
 
     /**
@@ -677,12 +677,12 @@ contract ReflectorForkTest is ForkBase {
 
         // currency0 side: issue sorts below ffffff → seats at ticks [0, 1].
         Reflector hiClone = Reflector(capped.make(ffffff, "1xFF-cap", 0));
-        IERC20Metadata hi = IERC20Metadata(hiClone.issue("1xFF-cap", 0, cap));
+        IERC20Metadata hi = IERC20Metadata(hiClone.issue("1xFF-cap", cap, 0));
         assertEq(hi.totalSupply(), cap, "currency0 side: minted supply must equal the V4 cap");
 
         // currency1 side: issue sorts above zeros → seats at ticks [-1, 0].
         Reflector loClone = Reflector(capped.make(zeros, "1xZZ-cap", 0));
-        IERC20Metadata lo = IERC20Metadata(loClone.issue("1xZZ-cap", 0, cap));
+        IERC20Metadata lo = IERC20Metadata(loClone.issue("1xZZ-cap", cap, 0));
         assertEq(lo.totalSupply(), cap, "currency1 side: minted supply must equal the V4 cap");
     }
 
@@ -704,7 +704,7 @@ contract ReflectorForkTest is ForkBase {
         Reflector clone = Reflector(wider.make(zeros, "1xZZ-over", 0));
 
         vm.expectRevert();
-        clone.issue("1xZZ-over", 0, uint256(cap) + 1);
+        clone.issue("1xZZ-over", uint256(cap) + 1, 0);
     }
 
     /**
@@ -716,7 +716,7 @@ contract ReflectorForkTest is ForkBase {
     function test_IssueRevertsAboveMaxSupply() public {
         uint256 over = uint256(reflector.maxSupply()) + 1;
         vm.expectRevert(abi.encodeWithSelector(IReflector.SupplyExceedsMaxSupply.selector, over, reflector.maxSupply()));
-        reflector.issue("over", 0, over);
+        reflector.issue("over", over, 0);
     }
 
     /**
