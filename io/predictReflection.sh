@@ -7,6 +7,10 @@
 set -euo pipefail
 source "$(dirname ${BASH_SOURCE})/../lib/crucible/script/clone.sh"
 
+# The address is a Lepton coinage clone keyed by (maker, name, symbol,
+# decimals, supply); on-chain it is created by maker.issue(name, variant,
+# supply), so the .txt encodes that call and the yml `via` points at the maker.
 clone_predict "$clone" "$deployer" \
     "address,string,string,uint8,uint256" "$maker" "$name" "$symbol" "$decimals" "$supply" \
-    "$variant"
+    "$variant" \
+    -- "$maker" "issue(string,uint256,uint256)" "$name" "$variant" "$supply"
