@@ -21,8 +21,8 @@ MaxSupply=9000000000000000000000000000
 # Vanity-mining inputs. The `e080` suffix rhymes with Fountain1's
 # address. Re-mine with the initcodehash that proto_predict prints.
 mask=0xffff00000000000000000000000000000000ffff
-target=0xbdbd00000000000000000000000000000000e090
+target=0xbdbd00000000000000000000000000000000e091
 
-proto_predict Reflector 0x000000000000000000000000000000000000000000000000000000001c19640e \
+proto_predict Reflector 0x00000000000000000000000000000000000000000000000000000002d2e55125 \
     "constructor(address,address,address,uint128)" \
     "$Fountain" "$ICoinage" "$GasNameLookup" "$MaxSupply"
