@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 clone=Momma
 deployer=0x1Eb8dF6040A67025C2aF9a82aB966CCd7bF1e300 # Lepton
-maker=0x05dD50aD3A40629E62635Ea67Dd17C6a0a3cb388 # USDCReflector
+maker=0x05dd500b6f582Db818Dd0B44F4345963f4a0d13D # USDCReflector
 name=Momma
 symbol=1xUSDC
 decimals=6

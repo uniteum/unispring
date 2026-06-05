@@ -41,7 +41,8 @@ pegged against ETH.
 
 Each `issue(name)` call is a one-shot:
 
-1. Mints a fixed-supply ERC-20 carrying the original's decimals.
+1. Mints an ERC-20 with a caller-chosen supply, carrying the
+   original's decimals.
 2. Initializes a Uniswap V4 pool pairing the new token against the
    original (or native ETH).
 3. Deposits 100% of the supply into a single concentrated-liquidity
@@ -86,12 +87,13 @@ wall isn't a soft target enforced by an oracle or a hook — it's a
 hard wall arising from V4's swap math, which can't cross an empty
 tick range.
 
-The supply seeded into each position is sized to the original's
-decimals — `10²⁷` raw units when the original has 18 decimals or
-more, scaled down by a factor of 10 per decimal below 18 — so every
-issue has roughly the same human-unit supply (about a billion tokens)
-regardless of its original. For any plausible original this means
-the pool cannot be drained by a real-world quantity of buyers.
+The supply seeded into each position is caller-chosen at `issue`
+time, capped at `maxSupply` — the largest amount that fits V4's
+`maxLiquidityPerTick` for a single-tick seat at `tickSpacing = 1`
+(`9×10²⁷` raw, about 9 billion tokens at 18 decimals). However large
+the supply, all of it seats on the bid side of the one tick, so for
+any plausible original the pool cannot be drained by a real-world
+quantity of buyers.
 
 Because the position is permanent and cannot be reduced, the backing
 is as durable as the pool itself. The only stream of value that flows
