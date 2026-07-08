@@ -5,6 +5,13 @@ paths:
 
 # General Rules
 
+## Dependency Direction
+
+A lower layer must never name or link to the higher layers that depend
+on it — in docs, code, comments, examples, and rules alike. Use
+generic placeholders. Which components depend on a layer is knowledge
+that lives with those components, not with the layer.
+
 ## Bash Tool Usage
 
 - Avoid compound statements (`; && |`). Use separate, parallel Bash tool calls instead so each command can be individually matched by permission rules.

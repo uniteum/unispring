@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {IPoolConfig} from "../src/IPoolConfig.sol";
+import {IPoolConfig} from "iunispring/IPoolConfig.sol";
 import {Manifold} from "../src/Manifold.sol";
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {Currency} from "v4-core/types/Currency.sol";

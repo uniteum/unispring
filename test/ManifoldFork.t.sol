@@ -2,7 +2,7 @@
 pragma solidity ^0.8.30;
 
 import {Fountain} from "../src/Fountain.sol";
-import {Position} from "../src/IFeeTaker.sol";
+import {Position} from "iunispring/IFeeTaker.sol";
 import {Manifold} from "../src/Manifold.sol";
 import {ForkBase} from "./ForkBase.t.sol";
 import {Funder} from "./Funder.sol";
@@ -13,18 +13,20 @@ import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
 import {TickMath} from "v4-core/libraries/TickMath.sol";
 import {Currency} from "v4-core/types/Currency.sol";
+import {IHooks} from "v4-core/interfaces/IHooks.sol";
+import {PoolKey} from "v4-core/types/PoolKey.sol";
 
 /**
- * @notice Fork test against mainnet state. Deploys a fresh Fountain and a
+ * @notice Fork test against `forknet` state. Deploys a fresh Fountain and a
  *         fresh Manifold prototype against the real PoolManager, then
  *         exercises the clone-per-hub factory: hub pool seated by {zzInit}
  *         (ETH/hub, hub above ETH → flip case in Fountain), spoke pools
  *         seated by {offer} (spoke/hub, spoke below hub → identity).
  *
  *         Run with:
- *           forge test --match-contract ManifoldForkTest -f mainnet -vv
+ *           forge test --match-contract ManifoldForkTest -f forknet -vv
  *         or pin a block:
- *           FORK_BLOCK=24923365 forge test --match-contract ManifoldForkTest -f mainnet -vv
+ *           FORK_BLOCK=458766451 forge test --match-contract ManifoldForkTest -f forknet -vv
  */
 contract ManifoldForkTest is ForkBase {
     using StateLibrary for IPoolManager;
@@ -41,9 +43,8 @@ contract ManifoldForkTest is ForkBase {
         super.setUp();
 
         bot = new Funder("bot");
-        Fountain fountainProto = new Fountain(IAddressLookup(PoolManagerLookup));
-        bot.makeFountain(fountainProto);
-        fountain = bot.fountain();
+        fountain = new Fountain(address(bot), IAddressLookup(PoolManagerLookup));
+        bot.setFountain(fountain);
         proto = new Manifold(fountain);
 
         require(ffffff.code.length > 0, "ffffff lepton missing at forked block");
@@ -70,17 +71,17 @@ contract ManifoldForkTest is ForkBase {
         assertEq(fountain.positionsCount(), 1, "one position seated by zzInit");
 
         Position memory p = _positionAt(0);
-        assertEq(Currency.unwrap(p.key.currency0), address(0), "currency0 = ETH");
-        assertEq(Currency.unwrap(p.key.currency1), ffffff, "currency1 = hub");
+        assertEq(p.currency0, address(0), "currency0 = ETH");
+        assertEq(p.currency1, ffffff, "currency1 = hub");
         assertEq(p.tickLower, HUB_TICK_LOWER, "V4 tickLower preserved through flip");
         assertEq(p.tickUpper, HUB_TICK_UPPER, "V4 tickUpper preserved through flip");
 
         // Pool sits at the upper edge — single-sided in hub, inactive at spot.
-        (uint160 sqrtPriceX96,,,) = fountain.poolManager().getSlot0(p.key.toId());
+        (uint160 sqrtPriceX96,,,) = IPoolManager(fountain.poolManager()).getSlot0(_keyOf(p).toId());
         assertEq(sqrtPriceX96, TickMath.getSqrtPriceAtTick(HUB_TICK_UPPER), "pool starts at V4 upper tick");
 
         // Hub supply landed in the PoolManager (modulo dust in Fountain).
-        uint256 inPoolManager = IERC20(ffffff).balanceOf(address(fountain.poolManager()));
+        uint256 inPoolManager = IERC20(ffffff).balanceOf(fountain.poolManager());
         uint256 inFountain = IERC20(ffffff).balanceOf(address(fountain));
         uint256 inClone = IERC20(ffffff).balanceOf(address(clone));
         assertEq(inPoolManager + inFountain + inClone, HUB_SUPPLY, "hub supply conserved");
@@ -119,17 +120,17 @@ contract ManifoldForkTest is ForkBase {
         assertEq(fountain.positionsCount(), 2, "hub + spoke");
 
         Position memory p = _positionAt(1);
-        assertEq(Currency.unwrap(p.key.currency0), address(spoke), "spoke is currency0");
-        assertEq(Currency.unwrap(p.key.currency1), ffffff, "hub is currency1");
+        assertEq(p.currency0, address(spoke), "spoke is currency0");
+        assertEq(p.currency1, ffffff, "hub is currency1");
         assertEq(p.tickLower, tickLower, "V4 tickLower = user tickLower (no flip)");
         assertEq(p.tickUpper, tickUpper, "V4 tickUpper = user tickUpper (no flip)");
 
         // Pool sits at the lower edge — single-sided in spoke, inactive at spot.
-        (uint160 sqrtPriceX96,,,) = fountain.poolManager().getSlot0(p.key.toId());
+        (uint160 sqrtPriceX96,,,) = IPoolManager(fountain.poolManager()).getSlot0(_keyOf(p).toId());
         assertEq(sqrtPriceX96, TickMath.getSqrtPriceAtTick(tickLower), "pool starts at V4 lower tick");
 
         // Caller's spoke supply ended up in PoolManager.
-        assertGt(IERC20(address(spoke)).balanceOf(address(fountain.poolManager())), 0, "spoke in PoolManager");
+        assertGt(IERC20(address(spoke)).balanceOf(fountain.poolManager()), 0, "spoke in PoolManager");
         assertEq(IERC20(address(spoke)).balanceOf(address(this)), 0, "caller debited fully");
     }
 
@@ -186,5 +187,15 @@ contract ManifoldForkTest is ForkBase {
     function _positionAt(uint256 i) internal view returns (Position memory) {
         Position[] memory slice = fountain.positionsSlice(i, 1);
         return slice[0];
+    }
+
+    function _keyOf(Position memory p) internal pure returns (PoolKey memory) {
+        return PoolKey({
+            currency0: Currency.wrap(p.currency0),
+            currency1: Currency.wrap(p.currency1),
+            fee: p.fee,
+            tickSpacing: p.tickSpacing,
+            hooks: IHooks(address(0))
+        });
     }
 }

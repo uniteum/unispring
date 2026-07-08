@@ -34,7 +34,7 @@ channel=$(cast call "$NeutrinoChannelProto" \
 
 # Ask Lepton for the hub address this salt would produce.
 result=$(cast call "$ICoinage" \
-  "made(address,string,string,uint8,uint256,bytes32)(bool,address,bytes32)" \
+  "made(address,string,string,uint8,uint256,uint256)(bool,address,bytes32)" \
   "$channel" "$name" "$symbol" "$HubDecimals" "$HubSupply" "$HubSalt" \
   --rpc-url "$chain")
 

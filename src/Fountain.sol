@@ -1,16 +1,15 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.30;
+pragma solidity ^0.8.34;
 
-import {Clones} from "clones/Clones.sol";
 import {SafeERC20} from "erc20/SafeERC20.sol";
 import {IAddressLookup} from "ilookup/IAddressLookup.sol";
 import {IERC20} from "ierc20/IERC20.sol";
-import {IPlacer} from "./IPlacer.sol";
-import {IPoolConfig} from "./IPoolConfig.sol";
-import {IFeeTaker, Position} from "./IFeeTaker.sol";
-import {IOwnableMaker} from "./IOwnableMaker.sol";
-import {IWithdrawer} from "./IWithdrawer.sol";
+import {IPlacer} from "iunispring/IPlacer.sol";
+import {IPoolConfig} from "iunispring/IPoolConfig.sol";
+import {IFeeTaker, Position} from "iunispring/IFeeTaker.sol";
+import {IWithdrawer} from "iunispring/IWithdrawer.sol";
 import {Ownable} from "ownable/Ownable.sol";
+import {IExtsload} from "v4-core/interfaces/IExtsload.sol";
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 import {IUnlockCallback} from "v4-core/interfaces/callback/IUnlockCallback.sol";
@@ -28,46 +27,19 @@ import {ModifyLiquidityParams} from "v4-core/types/PoolOperation.sol";
 
 /**
  * @title Fountain
- * @notice Shapes a bonding curve for an externally-supplied token (ERC-20
- *         or native ETH) by seating multiple permanent, single-sided V4
- *         positions against a quote currency (ERC-20 or native ETH).
- *         Callers partition a price range with an ascending array of
- *         V4-native ticks and assign a token amount to each segment;
- *         Fountain flips and negates into V4-native tick ranges when
- *         the token sorts above the quote (forcing it into `currency1`),
- *         then seats every segment in a single unlock.
- * @dev    Bitsy factory: the prototype is permissionless and governance-free;
- *         clones are deployed per-caller via {make} and carry their own
- *         {owner} in storage. Each clone's owner is the `msg.sender` that
- *         called {make}; one clone exists per `(owner, variant)` pair.
- * @dev    Positions are permanent — no function on this contract decreases
- *         or unwinds liquidity. {take} pulls accrued swap fees from the
- *         PoolManager into Fountain's own balance; the {owner} reclaims
- *         them via {withdraw}. Holding fees in Fountain lets {offer} use
- *         a few hundred wei of dust to nudge the starting price one
- *         sqrt-wei interior to the first segment in the flipped (token =
- *         currency1) case, so position 0 has nonzero active liquidity at
- *         genesis instead of sitting at the upper-boundary L=0 dead zone.
- *         When Fountain doesn't have enough of the quote on hand the
- *         start falls back to the boundary.
- * @dev    Fixed pool parameters: {fee} = 100 (0.01%),
- *         {tickSpacing} = 1, no hooks. Spacing 1 gives exact tick
- *         precision for position bounds and the initial price; the
- *         extra bitmap-iteration cost on large swaps is negligible
- *         for Fountain's single-position usage pattern.
- * @dev    Tick convention: callers pass ticks in V4-native semantics
- *         (`log_1.0001(currency1/currency0)` = `log_1.0001(quote/token)`
- *         when the token is `currency0`). When the token sorts below the
- *         quote it becomes `currency0` and the mapping is the identity:
- *         user segment `[T[i], T[i+1])` is seated at V4 `[T[i], T[i+1])`.
- *         When the token sorts above the quote it becomes `currency1`,
- *         V4's internal price becomes the reciprocal, and Fountain maps
- *         `[T[i], T[i+1])` to V4 `[-T[i+1], -T[i])` so the user's intent
- *         is preserved.
+ * @notice A permanent liquidity vault on Uniswap V4. Callers hand
+ * Fountain a token plus a price curve split into one-tick
+ * segments; Fountain opens one V4 position per segment and
+ * locks them forever. Only swap fees can be claimed —
+ * Fountain forwards them to a designated taker on request.
+ * The underlying liquidity is never withdrawn.
+ * @dev Entry points: {IPlacer.offer} to add liquidity,
+ * {IFeeTaker} to read positions and accrued fees, and
+ * {IWithdrawer} to forward fees to {owner}.
  * @author Paul Reinholdtsen (reinholdtsen.eth)
  */
-contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer, IUnlockCallback, Ownable {
-    string public constant version = "0.7.0";
+contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IWithdrawer, IUnlockCallback, Ownable {
+    string public constant version = "0.9.0";
 
     /**
      * @inheritdoc IPoolConfig
@@ -82,19 +54,14 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
     int24 public constant tickSpacing = 1;
 
     /**
-     * @notice The prototype instance; on clones, points to the original.
-     */
-    Fountain public immutable proto = this;
-
-    /**
      * @inheritdoc IPoolConfig
      */
-    IPoolManager public immutable poolManager;
+    address public immutable poolManager;
 
     /**
-     * @notice All positions seated by this contract, in creation order.
-     *         Auto-generated getter returns a single element by index; use
-     *         {positionsCount} and {positionsSlice} for bulk reads.
+     * @notice All positions opened by this contract, in creation order.
+     * Auto-generated getter returns a single element by index; use
+     * {positionsCount} and {positionsSlice} for bulk reads.
      */
     Position[] public positions;
 
@@ -109,13 +76,17 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
     error UnknownSelector(bytes4 selector);
 
     /**
-     * @notice Construct the Fountain prototype. The deployer becomes the
-     *         prototype's owner; clones receive their own owner via
-     *         {zzInit} at {make} time.
-     * @param  poolManagerLookup Lookup for the chain-local Uniswap V4 PoolManager.
+     * @notice Construct the Fountain. The owner is supplied explicitly so
+     * anyone may deploy on behalf of a third party (e.g. via Nick's
+     * CREATE2 factory, where `msg.sender` is the factory rather
+     * than the intended owner).
+     * @param owner Address that will own this Fountain.
+     * @param poolManagerLookup Lookup for the chain-local Uniswap V4 PoolManager.
      */
-    constructor(IAddressLookup poolManagerLookup) Ownable(msg.sender) {
-        poolManager = IPoolManager(poolManagerLookup.value());
+    constructor(address owner, IAddressLookup poolManagerLookup) Ownable(owner) {
+        poolManager = poolManagerLookup.value();
+        // Sanity-check the lookup: reverts if the resolved address isn't a PoolManager.
+        IExtsload(poolManager).extsload(bytes32(0));
     }
 
     using StateLibrary for IPoolManager;
@@ -124,17 +95,21 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
     /**
      * @inheritdoc IPlacer
      */
-    function offer(Currency token, Currency quote, int24[] calldata ticks, uint256[] calldata amounts) external {
-        if (token.isAddressZero()) revert TokenIsNative();
+    function offer(address token, address quote, int24[] calldata ticks, uint256[] calldata amounts) external {
+        if (token == address(0)) revert TokenIsNative();
 
         uint256 n = amounts.length;
         if (n == 0) revert NoPositions();
-        if (ticks.length != n + 1) revert TickAmountLengthMismatch(ticks.length, n);
+        if (ticks.length != n + 1) {
+            revert TickAmountLengthMismatch(ticks.length, n);
+        }
 
         if (ticks[0] < TickMath.MIN_TICK) revert TickOutOfRange(ticks[0]);
         if (ticks[n] > TickMath.MAX_TICK) revert TickOutOfRange(ticks[n]);
         for (uint256 i = 1; i < ticks.length; i++) {
-            if (ticks[i] <= ticks[i - 1]) revert TicksNotAscending(i, ticks[i - 1], ticks[i]);
+            if (ticks[i] <= ticks[i - 1]) {
+                revert TicksNotAscending(i, ticks[i - 1], ticks[i]);
+            }
         }
 
         uint256 total;
@@ -143,27 +118,27 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
             total += amounts[i];
         }
 
-        IERC20(Currency.unwrap(token)).safeTransferFrom(msg.sender, address(this), total);
+        IERC20(token).safeTransferFrom(msg.sender, address(this), total);
 
         uint256 firstPositionId = positions.length;
-        poolManager.unlock(msg.data);
+        IPoolManager(poolManager).unlock(msg.data);
 
         emit Offered(msg.sender, token, quote, firstPositionId, n);
     }
 
     /**
      * @dev Derive the {PoolKey}, initialize the pool if it does not yet
-     *      exist, and seat every segment of the caller-described curve in
-     *      one unlock. User segment [ticks[i], ticks[i+1]) with amounts[i]
-     *      seats a V4 position at [ticks[i], ticks[i+1]) when the token is
-     *      currency0 (identity mapping), or at [-ticks[i+1], -ticks[i])
-     *      when the token is currency1 (flipping under V4's price
-     *      inversion). Per-position deltas are accumulated and settled as
-     *      net debits at the end. Out-of-range positions have zero delta
-     *      on one side; an in-range segment has delta on both sides — at
-     *      genesis this is segment 0 via the interior-shift bootstrap.
-     *      Precondition: ticks/amounts validated by {offer}; PoolManager
-     *      unlocked to this contract.
+     * exist, and open every segment of the caller-described curve in
+     * one unlock. User segment [ticks[i], ticks[i+1]) with amounts[i]
+     * opens a V4 position at [ticks[i], ticks[i+1]) when the token is
+     * currency0 (identity mapping), or at [-ticks[i+1], -ticks[i])
+     * when the token is currency1 (flipping under V4's price
+     * inversion). Per-position deltas are accumulated and settled as
+     * net debits at the end. Out-of-range positions have zero delta
+     * on one side; an in-range segment has delta on both sides — at
+     * genesis this is segment 0 via the interior-shift bootstrap.
+     * Precondition: ticks/amounts validated by {offer}; PoolManager
+     * unlocked to this contract.
      */
     function _offerUnlocked(Currency token, Currency quote, int24[] memory ticks, uint256[] memory amounts) private {
         uint256 n = amounts.length;
@@ -181,12 +156,14 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
         int24 startingV4Tick = tokenIsCurrency0 ? ticks[0] : -ticks[0];
         uint160 startingSqrtPriceX96 = TickMath.getSqrtPriceAtTick(startingV4Tick);
 
-        (uint160 existingSqrtPriceX96,,,) = poolManager.getSlot0(poolId);
+        IPoolManager pm = IPoolManager(poolManager);
+
+        (uint160 existingSqrtPriceX96,,,) = pm.getSlot0(poolId);
         if (existingSqrtPriceX96 == 0) {
             if (!tokenIsCurrency0) {
                 startingSqrtPriceX96 = _maybeInteriorSqrt(key.currency0, ticks, amounts[0], startingSqrtPriceX96);
             }
-            poolManager.initialize(key, startingSqrtPriceX96);
+            pm.initialize(key, startingSqrtPriceX96);
         }
 
         int256 totalOwed0;
@@ -208,7 +185,7 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
                 ? _liquidity0(sqrtLower, sqrtUpper, amounts[i])
                 : _liquidity1(sqrtLower, sqrtUpper, amounts[i]);
 
-            (BalanceDelta delta,) = poolManager.modifyLiquidity(
+            (BalanceDelta delta,) = pm.modifyLiquidity(
                 key,
                 ModifyLiquidityParams({
                     tickLower: tickLower,
@@ -222,7 +199,16 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
             totalOwed0 += int256(delta.amount0());
             totalOwed1 += int256(delta.amount1());
 
-            positions.push(Position({key: key, tickLower: tickLower, tickUpper: tickUpper}));
+            positions.push(
+                Position({
+                    currency0: Currency.unwrap(key.currency0),
+                    currency1: Currency.unwrap(key.currency1),
+                    fee: key.fee,
+                    tickSpacing: key.tickSpacing,
+                    tickLower: tickLower,
+                    tickUpper: tickUpper
+                })
+            );
         }
 
         _settleOwedUnlocked(key.currency0, totalOwed0);
@@ -231,36 +217,37 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
 
     /**
      * @dev Settle a non-positive owed amount against the PoolManager. If
-     *      Fountain's balance can't cover it, skip — V4 will revert with
-     *      {IPoolManager.CurrencyNotSettled} at unlock close, preserving
-     *      the original error surface for genuinely-underfunded offers.
-     *      Precondition: PoolManager unlocked to this contract.
+     * Fountain's balance can't cover it, skip — V4 will revert with
+     * {IPoolManager.CurrencyNotSettled} at unlock close, preserving
+     * the original error surface for genuinely-underfunded offers.
+     * Precondition: PoolManager unlocked to this contract.
      */
     function _settleOwedUnlocked(Currency currency, int256 owedSigned) private {
         if (owedSigned >= 0) return;
         // forge-lint: disable-next-line(unsafe-typecast)
         uint256 owed = uint256(-owedSigned);
+        IPoolManager pm = IPoolManager(poolManager);
         if (currency.isAddressZero()) {
             if (address(this).balance < owed) return;
-            poolManager.sync(currency);
-            poolManager.settle{value: owed}();
+            pm.sync(currency);
+            pm.settle{value: owed}();
         } else {
             IERC20 erc = IERC20(Currency.unwrap(currency));
             if (erc.balanceOf(address(this)) < owed) return;
-            poolManager.sync(currency);
+            pm.sync(currency);
             erc.safeTransfer(address(poolManager), owed);
-            poolManager.settle();
+            pm.settle();
         }
     }
 
     /**
      * @dev In the flipped case, the boundary starting tick puts position 0
-     *      at its upper edge — out-of-range, active liquidity zero, quoter
-     *      dead zone. Shifting `startingSqrtPriceX96` down by a single
-     *      sqrt-wei pushes it interior so position 0 contributes its `L`
-     *      to active liquidity at genesis. The shift requires a few hundred
-     *      wei of `quote` (currency0) to settle position 0's mixed deposit;
-     *      use it iff Fountain holds enough, else fall back to the boundary.
+     * at its upper edge — out-of-range, active liquidity zero, quoter
+     * dead zone. Shifting `startingSqrtPriceX96` down by a single
+     * sqrt-wei pushes it interior so position 0 contributes its `L`
+     * to active liquidity at genesis. The shift requires a few hundred
+     * wei of `quote` (currency0) to settle position 0's mixed deposit;
+     * use it iff Fountain holds enough, else fall back to the boundary.
      */
     function _maybeInteriorSqrt(Currency quote, int24[] memory ticks, uint256 firstAmount, uint160 boundarySqrt)
         private
@@ -312,25 +299,21 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
         uint256 length = positions.length;
         for (uint256 i = 0; i < ids.length; i++) {
             if (ids[i] >= length) revert UnknownPosition(ids[i]);
-            Position storage p = positions[ids[i]];
-            (amounts0[i], amounts1[i]) = _untaken(p.key, p.tickLower, p.tickUpper);
+            (amounts0[i], amounts1[i]) = _untaken(positions[ids[i]]);
         }
     }
 
     /**
      * @dev Compute untaken fees for a Fountain-owned position. Mirrors
-     *      Uniswap's feeGrowthInside delta formula and uses unchecked
-     *      subtraction to handle X128 wraparound.
+     * Uniswap's feeGrowthInside delta formula and uses unchecked
+     * subtraction to handle X128 wraparound.
      */
-    function _untaken(PoolKey memory key, int24 tickLower, int24 tickUpper)
-        private
-        view
-        returns (uint256 amount0, uint256 amount1)
-    {
-        PoolId poolId = key.toId();
+    function _untaken(Position memory p) private view returns (uint256 amount0, uint256 amount1) {
+        PoolId poolId = _keyOf(p).toId();
+        IPoolManager pm = IPoolManager(poolManager);
         (uint128 liquidity, uint256 growth0Last, uint256 growth1Last) =
-            poolManager.getPositionInfo(poolId, address(this), tickLower, tickUpper, bytes32(0));
-        (uint256 growth0Now, uint256 growth1Now) = poolManager.getFeeGrowthInside(poolId, tickLower, tickUpper);
+            pm.getPositionInfo(poolId, address(this), p.tickLower, p.tickUpper, bytes32(0));
+        (uint256 growth0Now, uint256 growth1Now) = pm.getFeeGrowthInside(poolId, p.tickLower, p.tickUpper);
         unchecked {
             amount0 = FullMath.mulDiv(growth0Now - growth0Last, liquidity, FixedPoint128.Q128);
             amount1 = FullMath.mulDiv(growth1Now - growth1Last, liquidity, FixedPoint128.Q128);
@@ -338,34 +321,44 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
     }
 
     /**
+     * @dev Rebuild the {PoolKey} for a {Position}. Hooks are always zero
+     * since Fountain only opens hookless pools.
+     */
+    function _keyOf(Position memory p) private pure returns (PoolKey memory) {
+        return PoolKey({
+            currency0: Currency.wrap(p.currency0),
+            currency1: Currency.wrap(p.currency1),
+            fee: p.fee,
+            tickSpacing: p.tickSpacing,
+            hooks: IHooks(address(0))
+        });
+    }
+
+    /**
      * @inheritdoc IFeeTaker
      */
-    function take(uint256[] calldata ids) external {
-        if (ids.length == 0) return;
-        uint256 length = positions.length;
-        for (uint256 i = 0; i < ids.length; i++) {
-            if (ids[i] >= length) revert UnknownPosition(ids[i]);
-        }
-        poolManager.unlock(msg.data);
+    function take(uint256[] calldata) external {
+        IPoolManager(poolManager).unlock(msg.data);
     }
 
     /**
      * @dev Take fees from a batch of Fountain-owned positions via zero-delta
-     *      modifyLiquidity calls and pull them into Fountain's own balance.
-     *      {owner} reclaims accumulated balance via {withdraw}.
-     *      Precondition: PoolManager unlocked to this contract.
+     * modifyLiquidity calls and pull them into Fountain's own balance.
+     * {owner} reclaims accumulated balance via {withdraw}.
+     * Precondition: PoolManager unlocked to this contract.
      */
     function _takeUnlocked(uint256[] memory ids) private {
+        IPoolManager pm = IPoolManager(poolManager);
+        uint256 length = positions.length;
         for (uint256 i = 0; i < ids.length; i++) {
             uint256 id = ids[i];
-            Position storage p = positions[id];
-            PoolKey memory key = p.key;
-            int24 tickLower = p.tickLower;
-            int24 tickUpper = p.tickUpper;
-            (, BalanceDelta feesAccrued) = poolManager.modifyLiquidity(
+            if (id >= length) revert UnknownPosition(id);
+            Position memory p = positions[id];
+            PoolKey memory key = _keyOf(p);
+            (, BalanceDelta feesAccrued) = pm.modifyLiquidity(
                 key,
                 ModifyLiquidityParams({
-                    tickLower: tickLower, tickUpper: tickUpper, liquidityDelta: 0, salt: bytes32(0)
+                    tickLower: p.tickLower, tickUpper: p.tickUpper, liquidityDelta: 0, salt: bytes32(0)
                 }),
                 ""
             );
@@ -375,8 +368,12 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
             uint256 amount0 = fee0 > 0 ? uint256(uint128(fee0)) : 0;
             // forge-lint: disable-next-line(unsafe-typecast)
             uint256 amount1 = fee1 > 0 ? uint256(uint128(fee1)) : 0;
-            if (amount0 > 0) poolManager.take(key.currency0, address(this), amount0);
-            if (amount1 > 0) poolManager.take(key.currency1, address(this), amount1);
+            if (amount0 > 0) {
+                pm.take(key.currency0, address(this), amount0);
+            }
+            if (amount1 > 0) {
+                pm.take(key.currency1, address(this), amount1);
+            }
             emit Taken(id, amount0, amount1);
         }
     }
@@ -384,16 +381,16 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
     /**
      * @inheritdoc IUnlockCallback
      * @dev Selector-dispatches on the original entrypoint's calldata:
-     *      {IPlacer.offer} seats a batch of positions; {IFeeTaker.take}
-     *      iterates a batch of ids for fee take.
+     * {IPlacer.offer} opens a batch of positions;
+     * {IFeeTaker.take} iterates a batch of ids for fee take.
      */
     function unlockCallback(bytes calldata data) external returns (bytes memory) {
         if (msg.sender != address(poolManager)) revert InvalidUnlockCaller();
         bytes4 selector = bytes4(data[:4]);
         if (selector == IPlacer.offer.selector) {
-            (Currency token, Currency quote, int24[] memory ticks, uint256[] memory amounts) =
-                abi.decode(data[4:], (Currency, Currency, int24[], uint256[]));
-            _offerUnlocked(token, quote, ticks, amounts);
+            (address token, address quote, int24[] memory ticks, uint256[] memory amounts) =
+                abi.decode(data[4:], (address, address, int24[], uint256[]));
+            _offerUnlocked(Currency.wrap(token), Currency.wrap(quote), ticks, amounts);
         } else if (selector == IFeeTaker.take.selector) {
             uint256[] memory ids = abi.decode(data[4:], (uint256[]));
             _takeUnlocked(ids);
@@ -405,16 +402,16 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
 
     /**
      * @inheritdoc IWithdrawer
-     * @dev Lets {owner} reclaim fees collected by {take} and any prefund
-     *      the deployer dropped in to seed flipped-case bootstraps.
-     *      Native-ETH transfer failure bubbles the owner's revert data;
-     *      ERC-20 transfer failure reverts via {SafeERC20} (bubbling the
-     *      token's own revert, or {SafeERC20.SafeERC20FailedOperation} for
-     *      tokens that signal failure by returning false).
+     * @dev Lets {owner} reclaim fees collected by {take} and any starter
+     * funds the deployer sent in to cover flipped-case bootstraps.
+     * Native-ETH transfer failure bubbles the owner's revert data;
+     * ERC-20 transfer failure reverts via {SafeERC20} (bubbling the
+     * token's own revert, or {SafeERC20.SafeERC20FailedOperation} for
+     * tokens that signal failure by returning false).
      */
-    function withdraw(Currency currency, uint256 amount) external onlyOwner {
+    function withdraw(address currency, uint256 amount) external onlyOwner {
         address to = owner();
-        if (currency.isAddressZero()) {
+        if (currency == address(0)) {
             (bool ok, bytes memory ret) = to.call{value: amount}("");
             if (!ok) {
                 // Solidity has no `revert(bytes)`; bubble the recipient's revert data verbatim.
@@ -423,22 +420,22 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
                 }
             }
         } else {
-            IERC20(Currency.unwrap(currency)).safeTransfer(to, amount);
+            IERC20(currency).safeTransfer(to, amount);
         }
         emit Withdrawn(currency, amount);
     }
 
     /**
      * @notice Accept native ETH. Required so {take} can route ETH-side fees
-     *         from the PoolManager into Fountain's balance, and so the
-     *         deployer can prefund flipped-case ETH bootstraps with a
-     *         plain transfer.
+     * from the PoolManager into Fountain's balance, and so the
+     * deployer can prefund flipped-case ETH bootstraps with a
+     * plain transfer.
      */
     receive() external payable {}
 
     /**
      * @dev Liquidity for a single-sided position in currency0.
-     *      L = amount0 * (sqrtLower * sqrtUpper / Q96) / (sqrtUpper - sqrtLower)
+     * L = amount0 * (sqrtLower * sqrtUpper / Q96) / (sqrtUpper - sqrtLower)
      */
     function _liquidity0(uint160 sqrtLower, uint160 sqrtUpper, uint256 amount0) private pure returns (uint128) {
         uint256 intermediate = FullMath.mulDiv(uint256(sqrtLower), uint256(sqrtUpper), FixedPoint96.Q96);
@@ -447,7 +444,7 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
 
     /**
      * @dev Liquidity for a single-sided position in currency1.
-     *      L = amount1 * Q96 / (sqrtUpper - sqrtLower)
+     * L = amount1 * Q96 / (sqrtUpper - sqrtLower)
      */
     function _liquidity1(uint160 sqrtLower, uint160 sqrtUpper, uint256 amount1) private pure returns (uint128) {
         return _toUint128(FullMath.mulDiv(amount1, FixedPoint96.Q96, uint256(sqrtUpper - sqrtLower)));
@@ -458,41 +455,5 @@ contract Fountain is IPlacer, IPoolConfig, IFeeTaker, IOwnableMaker, IWithdrawer
         // safe: bounds checked on the line above.
         // forge-lint: disable-next-line(unsafe-typecast)
         return uint128(x);
-    }
-
-    /**
-     * @inheritdoc IOwnableMaker
-     */
-    function made(address owner_, uint256 variant) public view returns (bool exists, address home, bytes32 salt) {
-        salt = keccak256(abi.encode(owner_, variant));
-        home = Clones.predictDeterministicAddress(address(proto), salt, address(proto));
-        exists = home.code.length > 0;
-    }
-
-    /**
-     * @inheritdoc IOwnableMaker
-     * @dev Must be called on the prototype. Calling on a clone reverts
-     *      with {Unauthorized} — `msg.sender` semantics cannot be
-     *      preserved across clone forwarding.
-     */
-    function make(uint256 variant) external returns (address instance) {
-        if (address(this) != address(proto)) revert Unauthorized();
-        (bool exists, address home, bytes32 salt) = made(msg.sender, variant);
-        instance = home;
-        if (!exists) {
-            Clones.cloneDeterministic(address(proto), salt, 0);
-            Fountain(payable(home)).zzInit(msg.sender);
-            emit Made(msg.sender, variant, home);
-        }
-    }
-
-    /**
-     * @notice Initializer called by the prototype on a freshly deployed
-     *         clone. Sets the clone's owner. Reverts with {Unauthorized}
-     *         if called by anyone other than the prototype.
-     */
-    function zzInit(address owner_) public {
-        if (msg.sender != address(proto)) revert Unauthorized();
-        _transferOwnership(owner_);
     }
 }

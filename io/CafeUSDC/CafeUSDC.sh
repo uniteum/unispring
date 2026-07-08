@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+clone=CafeUSDC
+deployer=0x1Eb8dF6040A67025C2aF9a82aB966CCd7bF1e300 # Lepton
+maker=0x05dd500b6f582Db818Dd0B44F4345963f4a0d13D # USDCReflector
+name=Cafe
+symbol=1xUSDC
+decimals=6
+supply=1000000000000000 # 1e15
+
+mask=0xffff00000000000000000000000000000000ffff
+target=0xcafe00000000000000000000000000000000cafe
+
+variant=0x00000000000000000000000000000000000000000000000000000001d4604241
+
+source "$(dirname "${BASH_SOURCE}")/../predictReflection.sh"

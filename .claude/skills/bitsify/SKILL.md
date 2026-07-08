@@ -6,7 +6,7 @@ description: >-
   composable, and math-only. Use when the user wants to make a
   contract Bitsy or asks to apply the Bitsy pattern.
 disable-model-invocation: true
-argument-hint: <path-to-contract>
+argument-hint: "[path-to-contract] (defaults to file open in IDE)"
 allowed-tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 
@@ -14,24 +14,57 @@ allowed-tools: Read, Grep, Glob, Edit, Write, Bash
 
 You are converting a Solidity contract into a **Bitsy** contract.
 
-A **Bitsy contract** is a prototype/factory. The prototype satisfies
-eight properties: immutable, permissionless, governance-free, cloned,
-deterministic, direct, composable, and math-only.
+## What is a Bitsy contract
 
-Clones delegate to the prototype's code via EIP-1167, so they can't
-be upgraded — but they may carry mutable per-instance state, owners
-(mutable or immutable), or even internal governance. The control
-plane has to be baked into the prototype once; users of a clone
-consent to the rules the prototype already encodes.
+A **Bitsy contract** is a prototype/factory. Eight properties apply
+to the **prototype**:
+
+1. **Immutable** — prototype bytecode is frozen at deploy. No upgrade
+   path, no admin key, no `selfdestruct`, no proxy repointing.
+2. **Permissionless** — anyone can call `make()`. No `msg.sender`
+   privilege checks on the factory surface or prototype-scope logic.
+3. **Governance-free** — no voting, no adjustable parameters, no fee
+   switch on the prototype itself.
+4. **Cloned** — clones are EIP-1167 minimal proxies that delegate to
+   the prototype's code.
+5. **Deterministic** — addresses are computed via CREATE2 from a
+   content-derived salt; `made()` predicts what `make()` will produce.
+6. **Direct** — every factory operation is a single function call.
+   No multi-step workflows beyond standard ERC-20 approvals.
+7. **Composable** — exposes standard interfaces (`IPrototype` plus
+   whatever the contract itself declares).
+8. **Math-only** — no oracles or external data feeds in prototype-
+   level logic; pricing comes from on-chain invariants.
+
+These apply to the **prototype**. Clones may carry mutable
+per-instance state, owners (mutable or immutable), or even internal
+governance — the rules just have to be encoded in the prototype's
+code once, not added post-deploy. Users of a clone consent to
+whatever the prototype encodes.
+
+The factory machinery (`proto` immutable, `make()`, `made()`, the
+prototype-forward dance, `Unauthorized` error) is provided by the
+shared `Prototype` base contract in `uniteum/proto`. A Bitsy contract
+inherits it and overrides one virtual hook — `zzInit(bytes, uint256)`.
+That is the entire mechanical change. The rest of this skill is about
+the *non-mechanical* work: stripping things the prototype can't have
+(access control, mutability, oracles, upgrade paths) — or, when the
+input already lacks them, recognizing those steps as no-ops.
+
+## Input
 
 The input is a path to a Solidity contract file: `$ARGUMENTS`
+
+If `$ARGUMENTS` is empty, fall back to the file currently open in the
+IDE (provided via an `ide_opened_file` tag in your context). If
+neither is available, ask the user for a path before proceeding.
 
 ## Step 0: Read and understand
 
 Read the target contract. Before making any changes, identify:
 
-- **Constructor parameters** — these become `make()` / `zzInit()` args
-  and salt inputs.
+- **Constructor parameters** — these become the args decoded inside
+  `zzInit()` and the inputs to whatever typed wrapper you expose.
 - **Access control** — `onlyOwner`, `Ownable`, role checks, `msg.sender`
   guards. Remove from prototype-level behavior. Per-clone access
   control (an owner gating setters on an individual clone) is fine
@@ -57,54 +90,193 @@ into:
 3. **Design changes** (oracle replacement, architecture shifts — flag
    for the user, do not attempt without discussion)
 
+Then classify the contract on the Bitsy spectrum. The classification
+decides which steps below are no-ops and whether to take the fresh
+or the migration path.
+
+| Classification | Markers | Workflow |
+| -------------- | ------- | -------- |
+| **Already-`Prototype`** | imports `Prototype` from `proto/Prototype.sol` and inherits it | Report and exit — nothing to do |
+| **Hand-rolled Bitsy** | one or more of: `address public immutable proto = address(this)` (or a domain alias like `HUB`/`NOTHING`/`MOB`), `make()` with an `address(this) == proto` forward branch, a `made()` view predictor, `zzInit()` with a `msg.sender != proto` check, a locally declared `error Unauthorized()` | [Step 0a](#step-0a-migration-path--hand-rolled-bitsy) migration path; skip Steps 4–7 |
+| **Partial Bitsy** | none of the hand-rolled markers, but already lacks `Ownable`/setters/oracles/upgrade paths | Full conversion (Steps 1–3, 8); skip whichever of 4–7 are no-ops |
+| **Non-Bitsy** | standard Solidity: `Ownable`, mutable params, possibly oracles or upgrade paths | Full conversion: Steps 1–7, then 8 |
+
+A partial-match hand-rolled contract (some markers present, not all)
+still takes the **migration path** — preserve what's there, add
+what's missing. Routing a partial match through fresh conversion
+creates collisions in [Step 1](#step-1-inherit-prototype) (the
+inherited `proto` clashes with the locally declared one) and risks
+re-stripping cleanup that's already been done.
+
+State the classification explicitly to the user before proceeding,
+so they can override it if your read of the markers is wrong.
+
+## Step 0a: Migration path — hand-rolled Bitsy
+
+If the contract is classified as **hand-rolled Bitsy** per the table
+above, this is a **migration**, not a fresh conversion. The
+prototype/access/mutability cleanup (Steps 4–7) was done when the
+contract was first bitsified; only the factory boilerplate changes.
+Partial-match cases (some hand-rolled markers, not all) still come
+here — apply the migration steps below to whichever markers exist,
+and treat any missing pieces as "already done."
+
+The mechanical migration steps:
+
+1. **Inherit `Prototype`.** Add the import and update the contract
+   header. Interfaces come first, then base contracts ordered
+   most-base to most-derived, so `Prototype` sits after any
+   interfaces:
+
+   ```solidity
+   import {Prototype} from "proto/Prototype.sol";
+
+   contract Foo is /* interfaces */, Prototype, /* other base contracts */ { ... }
+   ```
+
+2. **Delete the redeclared `proto` immutable.** It's inherited. If
+   the contract used a domain-named alias (`HUB = this`, etc.), either
+   keep the alias as a thin wrapper view (`function HUB() external view
+   returns (Foo) { return Foo(proto); }`) or do a project-wide rename
+   to `proto`. Pick one and apply consistently.
+
+3. **Delete `error Unauthorized();`.** It's inherited from `IPrototype`.
+   Watch for collisions with other interfaces (e.g. `ICoinage` used
+   to declare its own `Unauthorized` — that has to go too if the
+   contract inherits both).
+
+4. **Rewrite `zzInit` to override the inherited bytes-form.** The
+   typed `zzInit(typed args)` becomes:
+
+   ```solidity
+   function zzInit(bytes calldata args, uint256 variant)
+       external override onlyProto
+   {
+       (Type1 p1, Type2 p2, ...) = abi.decode(args, (Type1, Type2, ...));
+       // existing init body, unchanged
+   }
+   ```
+
+   The base `Prototype.zzInit` is pure virtual (no body) and carries
+   no modifier — apply `onlyProto` on the override yourself in place
+   of the old hand-rolled `msg.sender != proto` check.
+
+5. **Rewrite `make`/`made` as thin typed wrappers over the inherited
+   bytes overloads** (see [Step 3](#step-3-optional-typed-makemade-wrappers)).
+   Move all argument validation into a new `encode()` pure function.
+   Delete the hand-rolled `address(this) == proto` forward — the
+   inherited `Prototype.make` already handles it. If the contract has
+   no typed surface worth preserving, you can drop the wrappers entirely
+   and let callers use the inherited `make(bytes,uint256)` directly.
+
+6. **Update tests.** Any test that called `zzInit(typed_args)` now
+   calls `zzInit(abi.encode(typed_args), variant)`. Any test asserting
+   `Foo.Unauthorized.selector` should switch to
+   `IPrototype.Unauthorized.selector` (same selector value, but the
+   `Foo.Unauthorized` reference no longer compiles).
+
+### Salt-formula change
+
+The legacy hand-rolled `made` computed:
+
+```solidity
+salt = keccak256(abi.encode(typed_args)) ^ bytes32(variant);
+```
+
+The inherited `Prototype.made(bytes,uint256)` computes:
+
+```solidity
+salt = keccak256(abi.encode(args_bytes)) ^ bytes32(variant);
+// where args_bytes = abi.encode(typed_args)
+```
+
+The outer `abi.encode(args_bytes)` is Solidity's natural encoding of
+a `bytes calldata` argument (offset ‖ length ‖ padded data) — so the
+new hash differs from the legacy hash for the same typed inputs.
+
+**Consequences:**
+
+- **The prototype's own address changes** if anything in its bytecode
+  shifts (which it will: new imports, new method table, possibly new
+  compiler version). Existing on-chain prototypes are unaffected; new
+  deployments will use a different address.
+- **Every previously-mined clone variant becomes invalid.** Any
+  `io/*/<addr>.{txt,yml}` artifacts for clones that haven't been
+  broadcast yet need re-mining. Already-broadcast clones are pinned to
+  their existing addresses — they don't move; only future clones
+  computed offline will land somewhere different.
+
+Flag both consequences to the user before proceeding. If there are
+unbroadcast clones, ask whether to re-mine now or migrate later.
+
+After the mechanical migration is done, skip to [Step 8: Verify](#step-8-verify).
+
 ## Layout rule
 
-Place the factory methods (`made`, `make`, `zzInit`) **at the end**
-of the contract, after the original business logic. The PROTO
-immutable goes at the top with other state declarations. This keeps
-the contract's core logic front and center, with the cloning
-machinery grouped together at the bottom — matching the Etherscan
-read experience where users see business functions first.
+Order functions by visibility — `external` → `public` → `internal` →
+`private` — per `solidity.md`. Within each visibility tier, place
+business logic first and the factory-facing methods (`made`, `make`,
+`zzInit`, `encode`, plus any private factory helpers) at the end of
+that tier. The factory's externals (`made`, `make`, `zzInit`) sit at
+the end of the external section; the `encode` helper sits at the end
+of the public section; private factory helpers sit at the end of the
+private section.
 
 ```
-contract Foo {
-    // — immutables (including PROTO) —
-    // — state variables —
+contract Foo is /* interfaces */, Prototype {
+    // — state variables (no `proto` — that's inherited) —
     // — errors, events, modifiers —
-    // — constructor —
-    // — core business logic (unchanged) —
-    // — factory: made(), make(), zzInit() —
+    // — constructor (immutables and parent constructors only) —
+    // — external business logic —
+    // — external factory: made(), make(), zzInit() —
+    // — public business logic —
+    // — public factory: encode() —
+    // — internal/private helpers (business first, factory last) —
 }
 ```
 
-## Step 1: Add the Clones import and self-referential immutable
+Inheritance list order is interfaces first, then base contracts
+ordered most-base to most-derived — `Prototype` (a base contract)
+goes after the interfaces.
 
-Add the Clones library import. Use the version from the Uniteum
-repos if available in the project's dependencies, otherwise use
-OpenZeppelin's `@openzeppelin/contracts/proxy/Clones.sol`.
+## Step 1: Inherit `Prototype`
 
-Add the self-referential immutable. Name it after the contract's
-role. Convention from existing Bitsy contracts:
+Add the import and inheritance. Per `solidity.md`, interfaces come
+first, then base contracts; `Prototype` is a base contract, so it
+sits after any interfaces the contract declares:
 
 ```solidity
-// The prototype instance. On clones, this points back to the
-// original deployment.
-ContractName public immutable PROTO = address(this);
-// or, if the contract has a domain-specific name:
-// ISolid public immutable NOTHING = this;
-// Liquid public immutable HUB = this;
-// IMob public immutable MOB = this;
+import {Prototype} from "proto/Prototype.sol";
+
+contract Foo is /* interfaces */, Prototype, /* other base contracts */ { ... }
 ```
 
-Use the typed self-reference (`ContractName`, not `address`) when
-the contract calls its own functions on the prototype.
+You get for free:
+
+- `address public immutable proto = address(this);` — the prototype reference.
+- `made(bytes32 argshash, uint256 variant)` — predict from a precomputed argshash.
+- `made(bytes calldata args, uint256 variant)` — predict from raw args (hashes for you).
+- `make(bytes calldata args, uint256 variant)` — deploys a clone if needed; when called on a clone, forwards to the prototype.
+- `zzInit(bytes calldata args, uint256 variant)` — pure virtual hook (no body) that derived contracts must implement.
+- `onlyProto` modifier and `Unauthorized` error — apply the modifier yourself on `zzInit` and any other clone-only entry points; the base does not carry it.
+
+All three external entry points return `(bool exists, address home, bytes32 salt)`, so callers can tell whether a `make()` actually deployed something new.
+
+**Do not redeclare** `proto`, `Unauthorized`, or any of the inherited
+factory methods. Don't add your own `address(this) == proto` forward
+in `make()` — `Prototype.make()` already handles the clone→proto
+forward.
+
+If you need to import `IPrototype` (e.g. for a natspec `@inheritdoc`
+or to reference `IPrototype.Unauthorized.selector` in tests), it's at
+`iproto/IPrototype.sol`.
 
 ## Step 2: Convert the constructor to `zzInit()`
 
 ### 2a: Empty the constructor
 
-Move initialization logic out of the constructor. The constructor
-should only:
+The constructor only runs on the prototype itself. It should only:
+
 - Call parent constructors with fixed values
 - Set immutables (these are baked into bytecode and shared by clones)
 
@@ -112,33 +284,33 @@ should only:
 constructor() ERC20("", "") {}
 ```
 
-### 2b: Create `zzInit()`
+### 2b: Override `zzInit`
 
-Create a public initialization function with a prototype guard.
-The naming convention is `zzInit` (two z's) — this sorts last on
-Etherscan's function list, keeping it out of users' way.
+The base `Prototype.zzInit` is pure virtual: declared `external
+virtual` with no body and no modifier. The override supplies the
+init body and the access-control guard:
 
 ```solidity
-/// @notice Initializer called by the prototype on a freshly
-///         deployed clone. Reverts if called by anyone else.
-function zzInit(/* former constructor params */) public {
-    if (msg.sender != PROTO) revert Unauthorized();
+/**
+ * @inheritdoc IPrototype
+ * @dev Decodes `(p1, p2, ...)` and applies them to clone storage.
+ */
+function zzInit(bytes calldata args, uint256 variant)
+    external
+    override
+    onlyProto
+{
+    (Type1 p1, Type2 p2, ...) = abi.decode(args, (Type1, Type2, ...));
     // ... initialization logic from the old constructor ...
 }
 ```
 
-**Guard pattern options** (pick one):
-
-- **`msg.sender` check** (preferred): `if (msg.sender != PROTO) revert Unauthorized();`
-- **State check** (when the prototype can't call directly):
-  `if (bytes(_symbol).length != 0) revert AlreadyInitialized();`
-
-If the contract doesn't already define an `Unauthorized` error,
-add one:
-
-```solidity
-error Unauthorized();
-```
+Apply `onlyProto` on the override — the base does not carry it, and
+`zzInit` is `external`, so there is no `super.zzInit` to chain through
+(and nothing to chain to: the base body is empty). If your init needs
+to distinguish vanity-mined clones from each other, read `variant` in
+the body; otherwise the parameter is unused (the unnamed `uint256`
+form silences the warning, as in `Reflector` and `Fountain`).
 
 ### 2c: Handle ERC-20 metadata
 
@@ -159,78 +331,116 @@ function symbol() public view override returns (string memory) {
 }
 ```
 
-Set `_name` and `_symbol` in `zzInit()`, not in the constructor.
+Set `_name` and `_symbol` inside `zzInit()`, not in the constructor.
 
-## Step 3: Add `made()` — deterministic address prediction
+## Step 3: (Optional) Typed `make`/`made` wrappers
 
-Add a view function that computes the deterministic address for a
-given set of parameters without deploying:
+The inherited `make(bytes,uint256)` is fully functional. Most Bitsy
+contracts also expose a typed surface so callers don't have to
+abi-encode by hand. The pattern:
+
+1. A typed `made(...)` that delegates to `this.made(encode(...), variant)`.
+2. A typed `make(...)` that calls `encode()`, then `this.make(args, variant)`
+   on the inherited bytes overload.
+3. An `encode()` pure function that validates and `abi.encode`s the
+   per-clone init args (everything except `variant`).
+
+Order them external-first per `solidity.md`: `made`, `make`, `zzInit`
+sit in the external section; `encode` is `public` and sits in the
+public section (after any public business logic) so that both wrappers
+and external callers can reach it.
+
+Example (cribbed from `Lepton`):
 
 ```solidity
-function made(/* parameters */)
-    public
-    view
-    returns (bool exists, address home, bytes32 salt)
+function made(/* typed args */, uint256 variant)
+    external view returns (bool exists, address home, bytes32 salt)
 {
-    // Validate inputs
-    // ...
+    (exists, home, salt) = this.made(encode(/* typed args */), variant);
+}
 
-    // Derive salt from ALL parameters that define the instance
-    salt = keccak256(abi.encode(param1, param2, ...));
+function make(/* typed args */, uint256 variant)
+    external returns (TypedReturn token)
+{
+    bytes memory args = encode(msg.sender, /* typed args */);
+    (bool exists, address home,) = this.make(args, variant);
+    token = TypedReturn(home);
+    if (!exists) emit Made(msg.sender, token, /* typed args */);
+}
 
-    // Predict the CREATE2 address
-    home = Clones.predictDeterministicAddress(
-        address(PROTO), salt, address(PROTO)
-    );
-
-    // Check if already deployed
-    exists = home.code.length > 0;
+function encode(address maker, string calldata name, string calldata symbol, uint8 decimals_, uint256 supply)
+    public pure returns (bytes memory args)
+{
+    if (bytes(name).length == 0) revert Nameless();
+    if (bytes(symbol).length == 0) revert Symbolless();
+    if (supply == 0) revert Nothing();
+    args = abi.encode(maker, name, symbol, decimals_, supply);
 }
 ```
 
-**Salt design rules:**
-- Include every parameter that makes this instance distinct.
-- Use `abi.encode` (not `abi.encodePacked`) to avoid collisions.
-- If the creator's identity should differentiate instances (like
-  Lepton), include `msg.sender` / maker address in the salt.
-- If instances should be globally unique by content (like Solid's
-  name+symbol), omit the creator.
+Notes:
 
-## Step 4: Add `make()` — idempotent factory
+- Put validation in `encode()` so both wrappers (and any external
+  caller that wants to pre-encode) benefit. Don't sprinkle the same
+  reverts in `make` and `made`.
+- The typed `make` only uses `(bool exists, address home, ...)` from
+  `this.make` — the third return (`salt`) is ignored by convention,
+  but the trailing comma keeps the destructuring shape obvious.
+- If the maker's identity should be baked into the clone's address
+  (so different makers get different clones for the same inputs),
+  include `msg.sender` in the encoded args. If clones should be
+  globally unique by content, omit the maker.
+- The typed `made` is deletable without touching `make` — `make`
+  doesn't depend on it. That's the test for "thin wrapper".
 
-Add the factory function. It must be idempotent: calling it twice
-with the same parameters returns the same address.
+### The variant parameter
 
-```solidity
-function make(/* parameters */)
-    external
-    returns (IContractName instance)
-{
-    if (this != PROTO) {
-        // Forward to prototype if called on a clone
-        instance = PROTO.make(/* parameters */);
-    } else {
-        (bool exists, address home, bytes32 salt) =
-            made(/* parameters */);
-        instance = IContractName(home);
-        if (!exists) {
-            home = Clones.cloneDeterministic(
-                address(PROTO), salt, 0
-            );
-            ContractName(home).zzInit(/* parameters */);
-        }
-    }
-}
+**`variant` is always the trailing parameter.** Every maker
+entrypoint — the inherited `make(bytes,uint256)` / `made(...)` /
+`zzInit(bytes,uint256)`, the typed `make`/`made` wrappers above, and
+any custom two-level factory function that mints a clone (e.g. an
+`issue(name, supply, variant)`) — takes `variant` last, after all the
+address-determining args. Tooling (`clone_predict`, `saltminer`)
+assumes this position, and a uniform signature shape lets a reader
+spot the mining nonce at a glance. Never wedge `variant` into the
+middle of the argument list.
+
+Even with the inherited factory, `variant` is what makes clones
+compatible with GPU-based vanity-address mining. Internally
+`Prototype.made` computes `salt = keccak256(abi.encode(args)) ^ variant`,
+where `args` is the `bytes` blob passed to `make`. Mining varies
+`variant` and re-derives the address until it matches a target mask.
+
+The standard mining workflow uses `saltminer`:
+
+```bash
+saltminer \
+  --deployer     <prototype address>    # the factory, not Nick
+  --initcodehash <keccak of EIP-1167 stub keyed to prototype>
+  --argshash     <keccak(abi.encode(args_bytes))>   # note: double encoding
+  --mask         0xffff...0000           # bits the address must match
+  --target       0xfeed...0000           # target value under the mask
 ```
 
-**Clone forwarding**: The `if (this != PROTO)` block lets users
-call `make()` on any clone and have it forwarded to the prototype.
-This is convenient but optional.
+The `--argshash` is `keccak256(abi.encode(args_bytes))` where
+`args_bytes` is itself the abi-encoded typed args — a "double
+encoding" relative to the legacy hand-rolled flat hash. Use crucible's
+`clone_predict` (in `lib/crucible/script/clone.sh`) to compute it
+correctly.
 
-## Step 5: Strip prototype-level access control
+For prototype contracts deployed via Nick rather than via a Bitsy
+factory, the caller mines the CREATE2 salt directly — `variant`
+applies only to clones produced through `make()`.
+
+See [crucible/docs/deployment.md](../../../docs/deployment.md) for
+how mined variants are committed alongside the rest of the
+deployment artifacts and how `deploy.sh` consumes them.
+
+## Step 4: Strip prototype-level access control
 
 Access control on the **prototype** must go. Remove anything that
 gates the factory surface or the prototype's own behavior:
+
 - `Ownable`, `AccessControl`, and similar inheritance on the prototype
 - `onlyOwner` / `onlyRole` / `onlyAdmin` modifiers on `make()`,
   `zzInit()`, or prototype-scope business functions
@@ -249,19 +459,22 @@ from calling internal prototype/clone coordination functions. Pattern:
 
 ```solidity
 modifier onlyClone() {
-    if (msg.sender != address(PROTO)) {
-        // Verify caller is a valid clone
-        (, address expected,) = made(/* caller's params */);
-        if (msg.sender != expected) revert Unauthorized();
+    if (msg.sender == proto) {
+        _;
+        return;
     }
+    // Verify caller is a valid clone deployed by this prototype
+    (, address expected,) = this.made(/* caller's args */, /* variant */);
+    if (msg.sender != expected) revert Unauthorized();
     _;
 }
 ```
 
-## Step 6: Strip prototype-level mutability
+## Step 5: Strip prototype-level mutability
 
 Prototype-level behavior must be frozen. Remove anything that mutates
 the prototype itself or rules shared by every clone:
+
 - Setters on prototype-scope state
 - Pause/unpause of the factory (`whenNotPaused` on `make()`, etc.)
 - Emergency functions on the prototype (`emergencyWithdraw`,
@@ -276,13 +489,15 @@ prototype's code. Mob is the canonical example: each mob has its own
 voters, proposals, and quorum; the Mob prototype has none.
 
 For each prototype-level mutable parameter you remove, either:
+
 - **Bake it in as a constant** (ask the user for the value), or
 - **Remove the feature entirely** if it doesn't make sense as a
   fixed value.
 
-## Step 7: Strip upgrade mechanisms
+## Step 6: Strip upgrade mechanisms
 
 Remove:
+
 - UUPS, transparent proxy, beacon proxy patterns
 - `selfdestruct` / `SELFDESTRUCT` opcode usage
 - `delegatecall` to mutable targets
@@ -290,7 +505,7 @@ Remove:
 - Initializable guards from OpenZeppelin's upgradeable contracts
   (replace with the simpler `zzInit` pattern)
 
-## Step 8: Flag oracle dependencies
+## Step 7: Flag oracle dependencies
 
 If the contract uses external data feeds (Chainlink, Uniswap TWAP,
 custom oracles), **do not silently remove them**. Instead:
@@ -304,7 +519,7 @@ custom oracles), **do not silently remove them**. Instead:
    - Removal of the feature that required the oracle
 4. Do not proceed with oracle replacement without explicit guidance.
 
-## Step 9: Verify
+## Step 8: Verify
 
 All eight properties apply to the **prototype**. Clone-level behavior
 is governed by whatever the prototype encodes — if it's there by
@@ -320,14 +535,18 @@ design, it's fine.
    setters are fine. Clone-identity checks are fine.
 3. **Governance-free** (prototype): No voting or adjustable parameters
    on the prototype. Per-clone governance (Mob-style) is fine.
-4. **Cloned**: Uses EIP-1167 minimal proxy via `Clones` library.
-5. **Deterministic**: `make()` uses CREATE2 with content-derived salt.
-   `made()` predicts the address.
+4. **Cloned**: Inherits `Prototype`, which uses EIP-1167 minimal
+   proxies via OpenZeppelin's `Clones`.
+5. **Deterministic**: Inherited `make()` uses CREATE2 with
+   content-derived salt; inherited `made()` predicts the address
+   from the same inputs. They agree on `home` from any caller —
+   `Prototype.make()` forwards from clones back to the prototype.
 6. **Direct**: Every factory operation is a single function call. No
    multi-step workflows on the prototype beyond standard ERC-20
    approvals.
-7. **Composable**: Prototype exposes standard interfaces. Clones
-   present standard interfaces (e.g. ERC-20) where applicable.
+7. **Composable**: Prototype exposes standard interfaces (`IPrototype`
+   plus whatever the contract itself declares). Clones present standard
+   interfaces (e.g. ERC-20) where applicable.
 8. **Math-only** (prototype): No oracles or external data feeds in
    prototype-level logic. Pricing that applies to all clones is
    determined by on-chain invariants. Per-clone oracle use is a
@@ -338,6 +557,7 @@ Report any property that cannot be satisfied and explain why.
 ## Output
 
 Present the transformed contract to the user. Summarize:
+
 - What was changed mechanically
 - What was baked in (and at what values)
 - What was removed

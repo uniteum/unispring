@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+clone=LibertyDollar
+deployer=0x1Eb8dF6040A67025C2aF9a82aB966CCd7bF1e300 # Lepton
+maker=0x1776eFbe669dA18608a8dA4FB53cD26614312026 # USA250Reflector
+name="Liberty Dollar"
+symbol=USA250
+decimals=6
+supply=250000000000 # 250_000_000_000
+
+mask=0xffff00000000000000000000000000000000ffff
+target=0x1776000000000000000000000000000000002026
+
+variant=0x000000000000000000000000000000000000000000000000000000011c69be1c
+
+source "$(dirname "${BASH_SOURCE}")/../predictReflection.sh"

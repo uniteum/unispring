@@ -10,8 +10,40 @@ paths:
 ## Code Style
 
 - NatSpec: always use `/** */` multi-line block notation, never `///`
+- NatSpec continuation lines are flush-left under the `*`, not
+  indented to align with the tag content. Example:
+  ```solidity
+  /**
+   * @notice Wraps an ERC-20 into a liquid version with built-in
+   * AMM liquidity. The deposit mints N to the caller and N to
+   * the pool.
+   * @param token The underlying ERC-20 to wrap.
+   */
+  ```
+  Not:
+  ```solidity
+  /**
+   * @notice Wraps an ERC-20 into a liquid version with built-in
+   *         AMM liquidity. The deposit mints N to the caller and
+   *         N to the pool.
+   * @param  token The underlying ERC-20 to wrap.
+   */
+  ```
+  Rationale: flush-left matches OpenZeppelin, Solmate, Solady, and
+  Foundry's own contracts. It survives tag renames (`@notice` →
+  `@dev`) without a reflow, and `forge fmt` does not enforce
+  alignment either way.
 - Include `@notice` for public descriptions, `@param` and `@return` as needed
+- Use a single `@dev` block with blank-line (`*`) paragraph breaks rather than
+  multiple consecutive `@dev` tags. solc concatenates repeated `@dev` tags
+  losslessly, but the prevailing convention (OpenZeppelin, Uniswap, Solady)
+  is one block with internal paragraphs.
 - Function visibility order: external → public → internal → private
+- Inheritance list order in `contract X is ...`: interfaces first, then
+  base contracts ordered most-base to most-derived. Interfaces contribute
+  no implementation so they sit at the "most base-like" end; the
+  most-base-to-most-derived ordering on base contracts is also required
+  for C3 linearization to compile. Matches OpenZeppelin, Solady, Uniswap.
 - Imports: one per line, sorted alphabetically
 - Max line length: 120 characters
 - Indentation: 4 spaces
@@ -26,6 +58,22 @@ paths:
       // body
   }
   ```
+
+## Data Locations
+
+- Prefer `calldata` over `memory` for reference-type parameters
+  (arrays, structs, `bytes`, `string`) on `external` and `public`
+  functions that do not mutate the argument. `calldata` skips the
+  calldata→memory copy and is materially cheaper for non-trivial
+  inputs.
+- An overriding function may tighten an interface's `memory`
+  parameter to `calldata` — the ABI is identical and Solidity
+  permits the narrower location on the implementation.
+- Use `memory` when the function mutates the argument locally,
+  passes it to a callee that requires `memory`, or receives it from
+  `abi.decode` (which returns `memory`).
+- Internal/private helpers default to `memory`; `calldata` only
+  flows in from an external entry point.
 
 ## Compiler & EVM
 

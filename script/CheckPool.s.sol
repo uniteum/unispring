@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {IPoolConfig} from "../src/IPoolConfig.sol";
+import {IPoolConfig} from "iunispring/IPoolConfig.sol";
 import {Manifold} from "../src/Manifold.sol";
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
@@ -34,7 +34,7 @@ contract CheckPool is Script {
         });
         PoolId id = key.toId();
 
-        IPoolManager pm = fountain.poolManager();
+        IPoolManager pm = IPoolManager(fountain.poolManager());
         (uint160 sqrtPriceX96, int24 tick, uint24 protocolFee, uint24 lpFee) = pm.getSlot0(id);
         uint128 liquidity = pm.getLiquidity(id);
 

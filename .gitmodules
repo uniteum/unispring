@@ -1,12 +1,10 @@
 [submodule "lib/crucible"]
 	path = lib/crucible
 	url = git@github.com:uniteum/crucible.git
+	branch = main
 [submodule "lib/forge-std"]
 	path = lib/forge-std
 	url = https://github.com/foundry-rs/forge-std
-[submodule "lib/iuniswap"]
-	path = lib/iuniswap
-	url = git@github.com:uniteum/iuniswap.git
 [submodule "lib/ilookup"]
 	path = lib/ilookup
 	url = git@github.com:uniteum/ilookup.git
@@ -28,3 +26,15 @@
 [submodule "lib/erc20"]
 	path = lib/erc20
 	url = git@github.com:uniteum/erc20.git
+[submodule "lib/icoinage"]
+	path = lib/icoinage
+	url = git@github.com:uniteum/icoinage.git
+[submodule "lib/iunispring"]
+	path = lib/iunispring
+	url = git@github.com:uniteum/iunispring.git
+[submodule "lib/iproto"]
+	path = lib/iproto
+	url = https://github.com/uniteum/iproto
+[submodule "lib/proto"]
+	path = lib/proto
+	url = https://github.com/uniteum/proto

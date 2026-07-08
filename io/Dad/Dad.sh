@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+clone=Dad
+deployer=0x1Eb8dF6040A67025C2aF9a82aB966CCd7bF1e300 # Lepton
+maker=0x05dd500b6f582Db818Dd0B44F4345963f4a0d13D # USDCReflector
+name=Dad
+symbol=1xUSDC
+decimals=6
+supply=1000000000000000 # 1e15
+
+mask=0xffff00000000000000000000000000000000ffff
+target=0xdad0000000000000000000000000000000000dad
+
+variant=0x000000000000000000000000000000000000000000000000000000002e762cc5
+
+source "$(dirname "${BASH_SOURCE}")/../predictReflection.sh"

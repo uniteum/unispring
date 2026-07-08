@@ -6,10 +6,10 @@ import {Test} from "forge-std/Test.sol";
 
 /**
  * @title ForkBase
- * @notice Shared base for mainnet fork tests. Resolves chain-local
- *         addresses from `.env` (names mirror the env keys exactly),
- *         selects the mainnet fork (pinned via `FORK_BLOCK` if set, else
- *         HEAD), and verifies the uniteum singletons exist at that block.
+ * @notice Shared base for fork tests. Resolves chain-local addresses
+ *         from `.env` (names mirror the env keys exactly), selects the
+ *         `forknet` fork (pinned via `FORK_BLOCK` if set, else HEAD),
+ *         and verifies the uniteum singletons exist at that block.
  *         Subclasses override {setUp} and must call `super.setUp()` first.
  */
 contract ForkBase is Test {
@@ -32,9 +32,9 @@ contract ForkBase is Test {
     function setUp() public virtual {
         uint256 forkBlock = vm.envOr("FORK_BLOCK", uint256(0));
         if (forkBlock == 0) {
-            vm.createSelectFork("mainnet");
+            vm.createSelectFork("forknet");
         } else {
-            vm.createSelectFork("mainnet", forkBlock);
+            vm.createSelectFork("forknet", forkBlock);
         }
 
         require(PoolManagerLookup.code.length > 0, "PoolManagerLookup missing at forked block");
