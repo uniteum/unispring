@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+clone=Ganjaloon
+deployer=0x1Eb8dF6040A67025C2aF9a82aB966CCd7bF1e300 # Lepton
+maker=0x0420Df438b95de9C3e739c2F4af256fD6BdA0420 # GanjaloonReflector
+name=Ganjaloon
+symbol=GNJL
+decimals=6
+supply=1000000000000000 # 1e15
+
+mask=0xffff00000000000000000000000000000000ffff
+target=0x0420000000000000000000000000000000000420
+
+variant=0x000000000000000000000000000000000000000000000000000000010687e395
+
+source "$(dirname "${BASH_SOURCE}")/../predictReflection.sh"
